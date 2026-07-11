@@ -17,6 +17,7 @@ if(CARDSTACK_ENABLE_GPL_BTRIEVEFILESAVER)
     target_link_libraries(cardstack_btrieve_filesaver
         PUBLIC
             Qt6::Core
+            cardstack_btrieve
         PRIVATE
             btrievefilesaver_gpl
     )
