@@ -1,7 +1,10 @@
 #include "../support/ModalDialogDriver.h"
 
 #include "DeckWorkspace.h"
+#include "FieldDefinition.h"
 #include "MainWindow.h"
+#include "SQLiteDeckStore.h"
+#include "TemplateDesignerWidget.h"
 #include "UiBuilder.h"
 #include "UiIds.h"
 
@@ -10,6 +13,8 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
@@ -17,6 +22,8 @@
 #include <QMessageBox>
 #include <QMdiArea>
 #include <QMdiSubWindow>
+#include <QPointer>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QtTest/QtTest>
 
@@ -96,6 +103,58 @@ void acceptNextNewFileDialog(int sourceIndex)
     });
 }
 
+void acceptNextOpenDialogWithFile(const QString& filePath)
+{
+    auto attemptsRemaining = std::make_shared<int>(80);
+    auto retry = std::make_shared<std::function<void()>>();
+    *retry = [filePath, attemptsRemaining, retry]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QFileDialog*>(widget);
+            if (dialog == nullptr || !dialog->isVisible() || dialog->objectName() != QStringLiteral("cardstackOpenDialog")) {
+                continue;
+            }
+
+            dialog->selectFile(filePath);
+            static_cast<QDialog*>(dialog)->accept();
+            return;
+        }
+
+        --(*attemptsRemaining);
+        if (*attemptsRemaining > 0) {
+            QTimer::singleShot(10, qApp, *retry);
+        }
+    };
+
+    QTimer::singleShot(0, qApp, *retry);
+}
+
+void acceptNextPatternDeckDialogWithFile(const QString& filePath)
+{
+    auto attemptsRemaining = std::make_shared<int>(300);
+    auto retry = std::make_shared<std::function<void()>>();
+    *retry = [filePath, attemptsRemaining, retry]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QFileDialog*>(widget);
+            if (dialog == nullptr || !dialog->isVisible() || dialog->objectName() != QStringLiteral("cardstackPatternDeckDialog")) {
+                continue;
+            }
+
+            const QFileInfo fileInfo(filePath);
+            dialog->setDirectory(fileInfo.absolutePath());
+            dialog->selectFile(fileInfo.fileName());
+            static_cast<QDialog*>(dialog)->accept();
+            return;
+        }
+
+        --(*attemptsRemaining);
+        if (*attemptsRemaining > 0) {
+            QTimer::singleShot(10, qApp, *retry);
+        }
+    };
+
+    QTimer::singleShot(0, qApp, *retry);
+}
+
 void acceptNextSecurityDialog(const QString& dialogName, const QString& password, bool encrypted = false)
 {
     handleNextLegacyDialog(dialogName, [password, encrypted](QDialog* dialog) {
@@ -143,6 +202,64 @@ DeckWorkspace* activeWorkspace(MainWindow& window)
         return nullptr;
     }
     return qobject_cast<DeckWorkspace*>(mdiArea->activeSubWindow()->widget());
+}
+
+QMdiSubWindow* subWindowForWidget(MainWindow& window, QWidget* child)
+{
+    auto* mdiArea = window.findChild<QMdiArea*>();
+    if (mdiArea == nullptr || child == nullptr) {
+        return nullptr;
+    }
+    for (QMdiSubWindow* subWindow : mdiArea->subWindowList()) {
+        if (subWindow->widget() == child) {
+            return subWindow;
+        }
+    }
+    return nullptr;
+}
+
+Deck makeSearchWorkflowDeck()
+{
+    Deck deck(QStringLiteral("Workflow Deck"));
+    deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 80));
+    deck.addField(FieldDefinition(QStringLiteral("Group"), FieldType::Text, 80));
+    deck.addCard(CardRecord({QStringLiteral("Charlie"), QStringLiteral("Blue")}));
+    deck.addCard(CardRecord({QStringLiteral("Alpha"), QStringLiteral("Red")}));
+    deck.addCard(CardRecord({QStringLiteral("Beta"), QStringLiteral("Red")}));
+    return deck;
+}
+
+QString writeWorkflowDeck(QTemporaryDir* directory)
+{
+    const QString filePath = directory->filePath(QStringLiteral("workflow.cardstack"));
+    SQLiteDeckStore writer;
+    QString error;
+    if (!writer.open(filePath, &error) || !writer.saveDeck(makeSearchWorkflowDeck(), &error)) {
+        return {};
+    }
+    return filePath;
+}
+
+DeckWorkspace* openWorkflowDeck(MainWindow* window, const QString& filePath)
+{
+    QAction* openAction = findCommandAction(window->menuBar(), UiIds::Command::FileOpen);
+    if (openAction == nullptr) {
+        return nullptr;
+    }
+
+    acceptNextOpenDialogWithFile(filePath);
+    openAction->trigger();
+    QCoreApplication::processEvents();
+    return activeWorkspace(*window);
+}
+
+void setComboText(QDialog* dialog, int controlId, const QString& text)
+{
+    auto* combo = qobject_cast<QComboBox*>(UiBuilder::controlById(dialog, controlId));
+    if (combo == nullptr) {
+        return;
+    }
+    combo->setEditText(text);
 }
 
 } // namespace
@@ -375,6 +492,166 @@ private slots:
         QTRY_VERIFY(!workspace->hasSecurity());
         QVERIFY(!workspace->hasEncryptedSecurity());
         QCOMPARE(removeDialogStep, 2);
+    }
+
+    void findReplaceAndSortRunThroughDialogs()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString filePath = writeWorkflowDeck(&directory);
+        QVERIFY(!filePath.isEmpty());
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = openWorkflowDeck(&window, filePath);
+        QTRY_VERIFY(workspace != nullptr);
+        QCOMPARE(workspace->deck().cardCount(), 3);
+
+        QAction* findAction = findCommandAction(window.menuBar(), UiIds::Command::SearchFind);
+        QVERIFY(findAction != nullptr);
+        handleNextLegacyDialog(QStringLiteral("SEARCH"), [](QDialog* dialog) {
+            setComboText(dialog, UiIds::Control::SearchText, QStringLiteral("Beta"));
+            dialog->accept();
+            return true;
+        });
+        findAction->trigger();
+        QCoreApplication::processEvents();
+        QCOMPARE(workspace->currentCardIndex(), 2);
+
+        QAction* replaceAction = findCommandAction(window.menuBar(), UiIds::Command::SearchReplace);
+        QVERIFY(replaceAction != nullptr);
+        handleNextLegacyDialog(QStringLiteral("REPLACE"), [](QDialog* dialog) {
+            setComboText(dialog, UiIds::Control::SearchText, QStringLiteral("Beta"));
+            setComboText(dialog, UiIds::Control::SearchSecondText, QStringLiteral("Bravo"));
+            dialog->accept();
+            return true;
+        });
+        replaceAction->trigger();
+        QCoreApplication::processEvents();
+        QCOMPARE(workspace->deck().cardAt(workspace->currentCardIndex()).valueAt(0), QStringLiteral("Bravo"));
+
+        QAction* sortAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigureIndex);
+        QVERIFY(sortAction != nullptr);
+        handleNextLegacyDialog(QStringLiteral("SORT"), [](QDialog* dialog) {
+            auto* field = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog, UiIds::Control::SortFieldLevel1));
+            if (field == nullptr) {
+                dialog->reject();
+                return true;
+            }
+            field->setCurrentIndex(1);
+            dialog->accept();
+            return true;
+        });
+        sortAction->trigger();
+        QCoreApplication::processEvents();
+
+        QCOMPARE(workspace->deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(workspace->deck().cardAt(1).valueAt(0), QStringLiteral("Bravo"));
+        QCOMPARE(workspace->deck().cardAt(2).valueAt(0), QStringLiteral("Charlie"));
+    }
+
+    void replaceAllRunsThroughReplaceDialog()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString filePath = writeWorkflowDeck(&directory);
+        QVERIFY(!filePath.isEmpty());
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = openWorkflowDeck(&window, filePath);
+        QTRY_VERIFY(workspace != nullptr);
+
+        QAction* replaceAction = findCommandAction(window.menuBar(), UiIds::Command::SearchReplace);
+        QVERIFY(replaceAction != nullptr);
+        handleNextLegacyDialog(QStringLiteral("REPLACE"), [](QDialog* dialog) {
+            setComboText(dialog, UiIds::Control::SearchText, QStringLiteral("Red"));
+            setComboText(dialog, UiIds::Control::SearchSecondText, QStringLiteral("Warm"));
+            auto* replaceAll = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::SearchDirectionBeginning));
+            if (replaceAll == nullptr) {
+                dialog->reject();
+                return true;
+            }
+            replaceAll->click();
+            return true;
+        });
+        replaceAction->trigger();
+        QCoreApplication::processEvents();
+
+        QCOMPARE(workspace->deck().cardAt(0).valueAt(1), QStringLiteral("Blue"));
+        QCOMPARE(workspace->deck().cardAt(1).valueAt(1), QStringLiteral("Warm"));
+        QCOMPARE(workspace->deck().cardAt(2).valueAt(1), QStringLiteral("Warm"));
+    }
+
+    void designFromScratchCreatesDeckOnlyAfterDesignerClose()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+
+        acceptNextNewFileDialog(1);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* designer = window.findChild<TemplateDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        QVERIFY(activeWorkspace(window) == nullptr);
+
+        designer->addTextFrame();
+        QVERIFY(designer->isDirty());
+        const qsizetype expectedFrameCount = designer->layoutDefinition().frames.size();
+
+        QPointer<QMdiSubWindow> designerWindow = subWindowForWidget(window, designer);
+        QVERIFY(designerWindow != nullptr);
+
+        chooseMessageBoxButtons({QMessageBox::Save, QMessageBox::Yes});
+        QVERIFY(designerWindow->close());
+        QCoreApplication::processEvents();
+
+        QTRY_VERIFY(activeWorkspace(window) != nullptr);
+        QVERIFY(activeWorkspace(window)->deck().cardTemplateLayout().frames.size() >= expectedFrameCount);
+    }
+
+    void patternAfterDeckFileOpensDraftTemplateDesigner()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString filePath = writeWorkflowDeck(&directory);
+        QVERIFY(!filePath.isEmpty());
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+
+        acceptNextNewFileDialog(3);
+        acceptNextPatternDeckDialogWithFile(filePath);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* designer = window.findChild<TemplateDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        QVERIFY(activeWorkspace(window) == nullptr);
+        QVERIFY(designer->fieldNames().contains(QStringLiteral("Name")));
+        QVERIFY(designer->fieldNames().contains(QStringLiteral("Group")));
+
+        QPointer<QMdiSubWindow> designerWindow = subWindowForWidget(window, designer);
+        QVERIFY(designerWindow != nullptr);
+        chooseMessageBoxButtons({QMessageBox::No});
+        QVERIFY(designerWindow->close());
+        QCoreApplication::processEvents();
+        QVERIFY(activeWorkspace(window) == nullptr);
     }
 
     void phoneDialerQuickDialFeedsDialDialog()

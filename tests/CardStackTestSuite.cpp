@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QEvent>
 #include <QString>
 #include <QTest>
 #include <QVector>
@@ -111,6 +112,8 @@ int main(int argc, char** argv)
 
         matchedSelectedTest = true;
         failures += entry.run(forwardedArgc, forwardedArgv);
+        QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
     }
 
     if (!matchedSelectedTest) {
