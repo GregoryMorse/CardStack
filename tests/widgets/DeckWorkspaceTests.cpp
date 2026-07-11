@@ -109,6 +109,40 @@ private slots:
         QVERIFY(workspace.canUndelete());
     }
 
+    void addDuplicateDeleteAndUndeleteKeepCardLifecycleStable()
+    {
+        DeckWorkspace workspace(createTwoCardDeck());
+
+        const int initialCount = workspace.deck().cardCount();
+        workspace.addCard();
+        QCOMPARE(workspace.deck().cardCount(), initialCount + 1);
+        QCOMPARE(workspace.currentCardIndex(), workspace.deck().cardCount() - 1);
+        QCOMPARE(workspace.deck().cardAt(workspace.currentCardIndex()).valueAt(0), QString());
+
+        workspace.duplicateCurrentCard();
+        QCOMPARE(workspace.deck().cardCount(), initialCount + 2);
+        QCOMPARE(workspace.currentCardIndex(), workspace.deck().cardCount() - 1);
+
+        workspace.deleteCurrentCard();
+        QCOMPARE(workspace.deck().cardCount(), initialCount + 1);
+        QVERIFY(workspace.canUndelete());
+
+        QVERIFY(workspace.undeleteCard());
+        QCOMPARE(workspace.deck().cardCount(), initialCount + 2);
+        QCOMPARE(workspace.currentCardIndex(), workspace.deck().cardCount() - 1);
+
+        while (workspace.deck().cardCount() > 1) {
+            workspace.deleteCurrentCard();
+        }
+        QCOMPARE(workspace.deck().cardCount(), 1);
+
+        workspace.deleteCurrentCard();
+        QCOMPARE(workspace.deck().cardCount(), 1);
+        QCOMPARE(workspace.currentCardIndex(), 0);
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QString());
+        QVERIFY(workspace.isDirty());
+    }
+
     void deletingLastCardLeavesEditableBlankCard()
     {
         Deck deck(QStringLiteral("Blank Card Test"));

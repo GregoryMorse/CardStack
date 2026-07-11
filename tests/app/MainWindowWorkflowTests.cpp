@@ -378,6 +378,100 @@ private slots:
         QTRY_VERIFY(!window.isVisible());
     }
 
+    void closeDirtyDeckWithSavePersistsAndClosesWindow()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(mdiArea != nullptr);
+        QTRY_COMPARE(mdiArea->subWindowList().size(), 1);
+
+        QPointer<DeckWorkspace> workspace = activeWorkspace(window);
+        QVERIFY(workspace != nullptr);
+        const QString filePath = directory.filePath(QStringLiteral("close-save.cardstack"));
+        workspace->setProperty("cardstackFilePath", filePath);
+        workspace->markDirty();
+        QVERIFY(workspace->isDirty());
+
+        QPointer<QMdiSubWindow> deckWindow = subWindowForWidget(window, workspace);
+        QVERIFY(deckWindow != nullptr);
+
+        QAction* closeAction = findCommandAction(window.menuBar(), UiIds::Command::FileClose);
+        QVERIFY(closeAction != nullptr);
+        chooseMessageBoxButtons({QMessageBox::Save});
+        closeAction->trigger();
+        QCoreApplication::processEvents();
+
+        QTRY_VERIFY(deckWindow.isNull() || !deckWindow->isVisible());
+        QVERIFY2(QFileInfo::exists(filePath), qPrintable(filePath));
+
+        Deck loaded;
+        QString error;
+        SQLiteDeckStore store;
+        QVERIFY2(store.open(filePath, &error), qPrintable(error));
+        QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error));
+        QVERIFY(loaded.fieldCount() > 0);
+        QVERIFY(loaded.cardCount() > 0);
+    }
+
+    void windowArrangementCommandsKeepOpenWindowsReachable()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(mdiArea != nullptr);
+        QTRY_COMPARE(mdiArea->subWindowList().size(), 2);
+
+        const QVector<int> commands = {
+            UiIds::Command::WindowCascade,
+            UiIds::Command::WindowTileVertical,
+            UiIds::Command::WindowTileHorizontal,
+            UiIds::Command::WindowArrangeIcons,
+        };
+        for (int commandId : commands) {
+            QAction* action = findCommandAction(window.menuBar(), commandId);
+            QVERIFY(action != nullptr);
+            QVERIFY(action->isEnabled());
+            action->trigger();
+            QCoreApplication::processEvents();
+
+            QCOMPARE(mdiArea->subWindowList().size(), 2);
+            for (QMdiSubWindow* subWindow : mdiArea->subWindowList()) {
+                QVERIFY(subWindow->isVisible());
+                QVERIFY(subWindow->geometry().isValid());
+                QVERIFY(subWindow->widget() != nullptr);
+            }
+        }
+
+        QAction* closeAllAction = findCommandAction(window.menuBar(), UiIds::Command::WindowCloseAll);
+        QVERIFY(closeAllAction != nullptr);
+        chooseMessageBoxButtons({QMessageBox::Discard, QMessageBox::Discard});
+        closeAllAction->trigger();
+        QTRY_COMPARE(mdiArea->subWindowList().size(), 0);
+    }
+
     void reportManagerAddsDefaultsFromEmptyReportList()
     {
         MainWindow window(nullptr, false);
