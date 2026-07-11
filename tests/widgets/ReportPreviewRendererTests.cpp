@@ -5,7 +5,9 @@
 #include <QImage>
 #include <QLabel>
 #include <QPainter>
+#include <QPdfWriter>
 #include <QTest>
+#include <QTemporaryDir>
 
 #include "LegacyReportReader.h"
 #include "UiIds.h"
@@ -157,6 +159,35 @@ private slots:
         QCOMPARE(image.pixelColor(5, 5), QColor(255, 0, 255));
         QVERIFY(image.pixelColor(50, 40) != QColor(255, 0, 255));
         QVERIFY(hasInk(image.copy(40, 30, 280, 200)));
+    }
+
+    void rendersPrintPageToPdfFile()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+
+        const QString filePath = directory.filePath(QStringLiteral("report-output.pdf"));
+        QPdfWriter writer(filePath);
+        writer.setPageSize(QPageSize(QPageSize::Letter));
+        writer.setResolution(96);
+
+        QVector<ReportPreviewData> records;
+        ReportPreviewData data;
+        data.fieldValues.insert(QStringLiteral("Project"), QStringLiteral("PDF Smoke Test"));
+        data.systemValues.insert(QStringLiteral("page"), QStringLiteral("1"));
+        records.append(data);
+
+        const ReportDefinition report = makeReport();
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+        QCOMPARE(pages.size(), 1);
+
+        QPainter painter(&writer);
+        ReportPrintEngine::renderPage(&painter, report, records, pages.first(), QRectF(0, 0, 816, 1056));
+        painter.end();
+
+        const QFileInfo output(filePath);
+        QVERIFY(output.exists());
+        QVERIFY(output.size() > 0);
     }
 
     void createsUiPreviewDialogWithCanvas()

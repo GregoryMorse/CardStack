@@ -96,6 +96,23 @@ void acceptNextNewFileDialog(int sourceIndex)
     });
 }
 
+void acceptNextSecurityDialog(const QString& dialogName, const QString& password, bool encrypted = false)
+{
+    handleNextLegacyDialog(dialogName, [password, encrypted](QDialog* dialog) {
+        auto* passwordEdit = qobject_cast<QLineEdit*>(
+            UiBuilder::controlById(dialog, UiIds::Control::SecurityPassword));
+        if (passwordEdit != nullptr) {
+            passwordEdit->setText(password);
+        }
+        if (auto* encryptButton = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::SecurityEncryptData))) {
+            encryptButton->setChecked(encrypted);
+        }
+        dialog->accept();
+        return true;
+    });
+}
+
 void chooseMessageBoxButtons(QVector<QMessageBox::StandardButton> buttons)
 {
     auto pending = std::make_shared<QVector<QMessageBox::StandardButton>>(std::move(buttons));
@@ -167,6 +184,40 @@ private slots:
         QTRY_COMPARE(mdiArea->subWindowList().size(), 0);
     }
 
+    void exitPromptsEachDirtyWindowAndStopsOnCancel()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(mdiArea != nullptr);
+        QTRY_COMPARE(mdiArea->subWindowList().size(), 2);
+
+        QAction* exitAction = findCommandAction(window.menuBar(), UiIds::Command::FileExit);
+        QVERIFY(exitAction != nullptr);
+
+        chooseMessageBoxButtons({QMessageBox::Cancel});
+        exitAction->trigger();
+        QCoreApplication::processEvents();
+        QVERIFY(window.isVisible());
+        QCOMPARE(mdiArea->subWindowList().size(), 2);
+
+        chooseMessageBoxButtons({QMessageBox::Discard, QMessageBox::Discard});
+        exitAction->trigger();
+        QTRY_VERIFY(!window.isVisible());
+    }
+
     void reportManagerAddsDefaultsFromEmptyReportList()
     {
         MainWindow window(nullptr, false);
@@ -217,6 +268,113 @@ private slots:
         }();
         QVERIFY(reportNames.contains(QStringLiteral("Default Page Report")));
         QVERIFY(reportNames.contains(QStringLiteral("Default Row Report")));
+    }
+
+    void reportManagerDeletesAndRestoresReportDefinition()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = activeWorkspace(window);
+        QVERIFY(workspace != nullptr);
+        QTRY_VERIFY(workspace->deck().reportCount() >= 2);
+        const int initialReportCount = workspace->deck().reportCount();
+        const QString firstReportName = workspace->deck().reportAt(0).name;
+
+        int dialogStep = 0;
+        handleNextLegacyDialog(QStringLiteral("DESIGNREPORTS"), [&dialogStep](QDialog* dialog) {
+            auto* reportList = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
+            if (reportList != nullptr && reportList->count() > 0) {
+                reportList->setCurrentRow(0);
+            }
+
+            if (dialogStep == 0) {
+                ++dialogStep;
+                auto* deleteButton = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::ReportsDelete));
+                if (deleteButton != nullptr) {
+                    deleteButton->click();
+                }
+                return false;
+            }
+
+            if (dialogStep == 1) {
+                ++dialogStep;
+                auto* undoButton = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::ReportsUndoDelete));
+                if (undoButton != nullptr) {
+                    undoButton->click();
+                }
+                return false;
+            }
+
+            dialog->reject();
+            return true;
+        });
+
+        QAction* printReportAction = findCommandAction(window.menuBar(), UiIds::Command::FilePrintReport);
+        QVERIFY(printReportAction != nullptr);
+        printReportAction->trigger();
+        QCoreApplication::processEvents();
+
+        QTRY_COMPARE(workspace->deck().reportCount(), initialReportCount);
+        QCOMPARE(workspace->deck().reportAt(0).name, firstReportName);
+    }
+
+    void addAndRemoveSecurityRequiresCorrectPassword()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = activeWorkspace(window);
+        QVERIFY(workspace != nullptr);
+        QVERIFY(!workspace->hasSecurity());
+
+        QAction* securityAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigureAddSecurity);
+        QVERIFY(securityAction != nullptr);
+
+        acceptNextSecurityDialog(QStringLiteral("ADDSECURITY"), QStringLiteral("secure"), true);
+        acceptNextSecurityDialog(QStringLiteral("VERIFYPASSWORD"), QStringLiteral("secure"));
+        securityAction->trigger();
+        QCoreApplication::processEvents();
+
+        QTRY_VERIFY(workspace->hasSecurity());
+        QVERIFY(workspace->hasEncryptedSecurity());
+        QVERIFY(workspace->securityPasswordMatches(QStringLiteral("SECURE")));
+
+        int removeDialogStep = 0;
+        handleNextLegacyDialog(QStringLiteral("REMOVESECURITY"), [&removeDialogStep](QDialog* dialog) {
+            auto* passwordEdit = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog, UiIds::Control::SecurityPassword));
+            if (passwordEdit != nullptr) {
+                passwordEdit->setText(removeDialogStep == 0 ? QStringLiteral("wrong") : QStringLiteral("secure"));
+            }
+            ++removeDialogStep;
+            dialog->accept();
+            return removeDialogStep >= 2;
+        });
+        chooseMessageBoxButtons({QMessageBox::Ok});
+        securityAction->trigger();
+        QCoreApplication::processEvents();
+
+        QTRY_VERIFY(!workspace->hasSecurity());
+        QVERIFY(!workspace->hasEncryptedSecurity());
+        QCOMPARE(removeDialogStep, 2);
     }
 
     void phoneDialerQuickDialFeedsDialDialog()

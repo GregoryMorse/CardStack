@@ -8,6 +8,14 @@ Use this checklist for end-to-end manual testing once a fresh build is available
 - For 1.0, repeat the full checklist against installed release packages on Windows, macOS, and Linux.
 - Track any failure as P0/P1/P2 so beta blockers and 1.0 blockers are obvious.
 
+Beta manual focus after the automated gate:
+
+- Confirm installed release packages launch outside the build tree on Windows, macOS, and Linux.
+- Compare report preview/PDF output against golden report expectations by eye.
+- Inspect card stack layout, index bar resizing, dialogs, toolbar icons, and template/report designers at common display scaling levels.
+- Smoke-test native integrations that automation intentionally avoids: file dialogs, print/page setup dialogs, browser help launch, and `tel:` phone links.
+- Treat any data-loss, save/reopen, password, import, or crash issue as a beta blocker even if it appears visually minor.
+
 ## Startup and identity
 
 - Launch `CardStack.exe` from the build/deploy folder.

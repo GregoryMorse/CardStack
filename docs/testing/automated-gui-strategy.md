@@ -17,6 +17,13 @@ CardStack can move to `v0.2.0-beta.1` when automated tests cover the normal user
 - Legacy workflows: golden fixtures import deterministically, including password/encryption, notes-heavy, many-fields, reports/sidecars, and supported interchange formats.
 - Packaging workflows: CI builds and release packages pass on Windows, macOS, and Linux.
 
+Current automated status:
+
+- Covered by `MainWindowActionTests`: startup/deck/designer menu and toolbar routing, dynamic MDI window list, view-mode checkmarks and navigation shortcuts, safe shell/help/about routes, close prompts for dirty child windows, new-deck design routes, open/save/save-as, modern security prompt on open, CSV import, merge, redefine/template-designer persistence, report form presets, report save-as, and dirty report-designer close behavior.
+- Covered by `MainWindowWorkflowTests`: Close All prompt sequencing, app Exit prompt sequencing, Available Reports opening on empty report lists, Add Defaults, Delete/Undo Del, modern security add/remove with encrypted flag and wrong-password retry, and phone quick-dial configuration feeding Phone > Dial.
+- Covered by widget/core/storage/legacy suites: blank editable card behavior, last-card delete behavior, undelete, title sort refresh, deck merge, template definitions, report pagination/rendering, deterministic PDF rendering through `QPdfWriter`, SQLite deck/package persistence, and WineVDM fixture import smoke checks when fixture environment variables are present.
+- Remaining beta verification is intentionally manual/visual: report preview fidelity against golden output, printed/PDF visual quality, card-stack comfort at display scaling, native file/print/phone integration smoke checks, and installed package smoke testing on each OS.
+
 ### 1.0 gate
 
 CardStack can move to `v1.0.0` when beta has survived real use and:
