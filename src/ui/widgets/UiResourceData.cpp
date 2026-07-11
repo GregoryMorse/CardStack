@@ -79,7 +79,7 @@ namespace ComboBox {
 inline constexpr std::uint32_t Simple = 0x00000001u;
 inline constexpr std::uint32_t DropDown = 0x00000002u;
 inline constexpr std::uint32_t DropDownList = 0x00000003u;
-inline constexpr std::uint32_t Reserved0008 = 0x00000008u;
+inline constexpr std::uint32_t NameSelectionComboBox = 0x00000008u;
 inline constexpr std::uint32_t OwnerDrawFixed = 0x00000010u;
 inline constexpr std::uint32_t OwnerDrawVariable = 0x00000020u;
 inline constexpr std::uint32_t AutoHScroll = 0x00000040u;
@@ -712,7 +712,7 @@ const UiControl dialog_controls_SAVEDESIGN[] = {
 const UiControl dialog_controls_DATAFRAME[] = {
     {"static", "&Name:", 4207, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 9, 7, 35, 8},
     {"edit", "", 4206, Style::Child | Style::Visible | Style::ClipSiblings | Style::Border | Style::TabStop | Style::Edit::Left | Style::Edit::AutoHScroll, 11, 17, 143, 12},
-    {"combobox", "", 4306, Style::Child | Style::Visible | Style::ClipSiblings | Style::VScroll | Style::TabStop | Style::ComboBox::DropDown | Style::ComboBox::Reserved0008, 8, 17, 80, 82},
+    {"combobox", "", 4306, Style::Child | Style::Visible | Style::ClipSiblings | Style::VScroll | Style::TabStop | Style::ComboBox::DropDown | Style::ComboBox::NameSelectionComboBox, 8, 17, 80, 82},
     {"button", "&Print entire contents", 4209, Style::Child | Style::Visible | Style::Group | Style::TabStop | Style::Button::AutoCheckBox, 9, 35, 82, 12},
     {"button", "Alignment", 65535, Style::Child | Style::Visible | Style::Button::GroupBox, 8, 49, 66, 56},
     {"button", "&Left", 4203, Style::Child | Style::Visible | Style::Group | Style::TabStop | Style::Button::AutoRadioButton, 19, 63, 40, 12},
@@ -1010,7 +1010,7 @@ const UiControl dialog_controls_REPORT_FRAME_TOOLBAR[] = {
     {"bitmapbutton", "", 4301, Style::Child | Style::Visible | Style::Border, 168, 2, 25, 22},
     {"static", "N&ame:", 4207, Style::Child | Style::Visible | Style::Static::Left, 202, 1, 50, 16},
     {"edit", "", 4206, Style::Child | Style::Visible | Style::ClipSiblings | Style::Border | Style::TabStop | Style::Edit::Left | Style::Edit::AutoHScroll, 202, 19, 140, 20},
-    {"combobox", "", 4306, Style::Child | Style::Visible | Style::ClipSiblings | Style::VScroll | Style::ComboBox::DropDownList | Style::ComboBox::Reserved0008, 202, 19, 160, 160},
+    {"combobox", "", 4306, Style::Child | Style::Visible | Style::ClipSiblings | Style::VScroll | Style::ComboBox::DropDownList | Style::ComboBox::NameSelectionComboBox, 202, 19, 160, 160},
     {"bitmapbutton", "", 4303, Style::Child | Style::Visible | Style::Border | Style::BitmapButton::ToggleState, 374, 2, 25, 22},
     {"bitmapbutton", "", 4304, Style::Child | Style::Visible | Style::Border | Style::BitmapButton::ToggleState, 398, 2, 25, 22},
     {"bitmapbutton", "", 4305, Style::Child | Style::Visible | Style::Border | Style::BitmapButton::ToggleState, 422, 2, 25, 22},

@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "BuiltInReportTemplates.h"
 #include "DelimitedText.h"
 #include "DeckTemplate.h"
 #include "LegacyDeckReader.h"
@@ -726,21 +727,13 @@ int addStandardReportDefinitions(DeckWorkspace* workspace)
     };
 
     const QString pageReportName = QObject::tr("Default Page Report");
-    if (!hasReportNamed(pageReportName)) {
-        workspace->saveReportDefinition(
-            -1,
-            createDefaultReportDefinition(workspace->deck(), pageReportName));
-        ++added;
-    }
-
     const QString rowReportName = QObject::tr("Default Row Report");
-    if (!hasReportNamed(rowReportName)) {
-        ReportDefinition rowReport = createDefaultReportDefinition(workspace->deck(), rowReportName);
-        rowReport.formType = ReportFormType::Card;
-        rowReport.rows = 1;
-        rowReport.columns = 1;
-        workspace->saveReportDefinition(-1, rowReport);
-        ++added;
+    const QVector<ReportDefinition> standardReports =
+        standardReportDefinitionsForDeck(workspace->deck(), pageReportName, rowReportName);
+    for (const ReportDefinition& report : standardReports) {
+        if (!hasReportNamed(report.name) && workspace->saveReportDefinition(-1, report)) {
+            ++added;
+        }
     }
 
     return added;

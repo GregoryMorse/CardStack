@@ -190,6 +190,65 @@ private slots:
         QVERIFY(output.size() > 0);
     }
 
+    void rendersEveryLineAndFillStyle()
+    {
+        ReportDefinition report;
+        report.name = QStringLiteral("Style Matrix");
+        report.formWidth = 12000;
+        report.formHeight = 9000;
+        report.textFont.faceName = QStringLiteral("Arial");
+
+        for (int lineStyle = 0; lineStyle < ReportLineStyleCount; ++lineStyle) {
+            ReportFrameDefinition frame;
+            frame.kind = ReportFrameKind::LineOrBox;
+            frame.lineBoxShape = ReportLineShapeBox;
+            frame.lineStyle = lineStyle;
+            frame.fillPattern = ReportFillPatternClear;
+            frame.bounds = QRect(200 + lineStyle * 850, 200, 650, 420);
+            report.frames.append(frame);
+        }
+
+        for (int fillPattern = 0; fillPattern < ReportFillPatternCount; ++fillPattern) {
+            ReportFrameDefinition frame;
+            frame.kind = ReportFrameKind::LineOrBox;
+            frame.lineBoxShape = ReportLineShapeBox;
+            frame.lineStyle = ReportLineStyleSolid;
+            frame.fillPattern = fillPattern;
+            frame.bounds = QRect(200 + (fillPattern % 13) * 850, 900 + (fillPattern / 13) * 620, 650, 420);
+            report.frames.append(frame);
+        }
+
+        ReportFrameDefinition horizontal;
+        horizontal.kind = ReportFrameKind::LineOrBox;
+        horizontal.lineBoxShape = ReportLineShapeHorizontal;
+        horizontal.lineStyle = ReportLineStyleDashDot;
+        horizontal.bounds = QRect(200, 2300, 2500, 120);
+        report.frames.append(horizontal);
+
+        ReportFrameDefinition vertical;
+        vertical.kind = ReportFrameKind::LineOrBox;
+        vertical.lineBoxShape = ReportLineShapeVertical;
+        vertical.lineStyle = ReportLineStyleDashDotDot;
+        vertical.bounds = QRect(3000, 2200, 120, 1100);
+        report.frames.append(vertical);
+
+        ReportFrameDefinition legacyAutoLine;
+        legacyAutoLine.kind = ReportFrameKind::LineOrBox;
+        legacyAutoLine.lineBoxShape = ReportLineShapeLegacyAuto;
+        legacyAutoLine.lineStyle = ReportLineStyleThickDash;
+        legacyAutoLine.bounds = QRect(3400, 2300, 2500, 120);
+        report.frames.append(legacyAutoLine);
+
+        QImage image(960, 720, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+
+        QPainter painter(&image);
+        ReportPreviewRenderer::render(&painter, report, QRectF(0, 0, image.width(), image.height()), {});
+        painter.end();
+
+        QVERIFY(hasInk(image));
+    }
+
     void rendersMultiPageGridReportToPdfFile()
     {
         QTemporaryDir directory;

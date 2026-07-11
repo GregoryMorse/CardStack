@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QStringList>
 
+#include "ReportDefinition.h"
+
 namespace CardStack {
 namespace ReportStyleCatalog {
 
@@ -10,7 +12,7 @@ inline QStringList lineStyleNames()
 {
     // Legacy PopulateLineAndFillStyleCombos inserts line-style indexes 0..9.
     // Resource type 263 stores the pen/style table; string 11109 names the final "No Outline" entry.
-    return {
+    QStringList names = {
         QObject::tr("Solid"),
         QObject::tr("Dash"),
         QObject::tr("Dot"),
@@ -22,13 +24,15 @@ inline QStringList lineStyleNames()
         QObject::tr("Hairline"),
         QObject::tr("No Outline"),
     };
+    Q_ASSERT(names.size() == ReportLineStyleCount);
+    return names;
 }
 
 inline QStringList fillPatternNames()
 {
     // Legacy PopulateLineAndFillStyleCombos inserts fill-pattern indexes 0..25.
     // These names come directly from legacy strings 11000..11025.
-    return {
+    QStringList names = {
         QObject::tr("Clear"),
         QObject::tr("Solid"),
         QObject::tr("5%"),
@@ -56,6 +60,8 @@ inline QStringList fillPatternNames()
         QObject::tr("Lt Grid"),
         QObject::tr("Lt Trellis"),
     };
+    Q_ASSERT(names.size() == ReportFillPatternCount);
+    return names;
 }
 
 } // namespace ReportStyleCatalog

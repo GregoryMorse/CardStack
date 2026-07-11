@@ -111,13 +111,13 @@ int lineBoxShapeValue(ReportLineBoxShape shape)
 {
     switch (shape) {
     case ReportLineBoxShape::HorizontalLine:
-        return 'h';
+        return ReportLineShapeHorizontal;
     case ReportLineBoxShape::VerticalLine:
-        return 'v';
+        return ReportLineShapeVertical;
     case ReportLineBoxShape::Box:
         break;
     }
-    return 'b';
+    return ReportLineShapeBox;
 }
 
 } // namespace
@@ -481,8 +481,8 @@ void ReportDesignerWidget::addLineBoxFrameShape(ReportLineBoxShape shape, int li
 {
     ReportFrameDefinition frame = defaultFrame(ReportFrameKind::LineOrBox);
     frame.lineBoxShape = lineBoxShapeValue(shape);
-    frame.lineStyle = std::clamp(lineStyle, 0, 9);
-    frame.fillPattern = std::clamp(fillPattern, 0, 25);
+    frame.lineStyle = std::clamp(lineStyle, 0, ReportLineStyleCount - 1);
+    frame.fillPattern = std::clamp(fillPattern, 0, ReportFillPatternCount - 1);
     frame.cornerRadius = std::max(0, cornerRadius);
     switch (shape) {
     case ReportLineBoxShape::HorizontalLine:
@@ -629,9 +629,9 @@ void ReportDesignerWidget::buildUi()
     m_alignmentCombo->addItem(tr("Center"), ReportStyleFlagAlignCenter);
     m_alignmentCombo->addItem(tr("Right"), ReportStyleFlagAlignRight);
     m_lineShapeCombo = new QComboBox(side);
-    m_lineShapeCombo->addItem(tr("Box"), 'b');
-    m_lineShapeCombo->addItem(tr("Horizontal line"), 'h');
-    m_lineShapeCombo->addItem(tr("Vertical line"), 'v');
+    m_lineShapeCombo->addItem(tr("Box"), ReportLineShapeBox);
+    m_lineShapeCombo->addItem(tr("Horizontal line"), ReportLineShapeHorizontal);
+    m_lineShapeCombo->addItem(tr("Vertical line"), ReportLineShapeVertical);
     m_lineStyleCombo = new QComboBox(side);
     const QStringList lineStyles = lineStyleNames();
     for (int index = 0; index < lineStyles.size(); ++index) {
@@ -856,8 +856,8 @@ void ReportDesignerWidget::applyPropertyEdits()
     styleFlags |= static_cast<quint8>(m_alignmentCombo->currentData().toInt());
     frame.styleFlags = styleFlags;
     frame.lineBoxShape = m_lineShapeCombo->currentData().toInt();
-    frame.lineStyle = std::clamp(m_lineStyleCombo->currentData().toInt(), 0, 9);
-    frame.fillPattern = std::clamp(m_fillPatternCombo->currentData().toInt(), 0, 25);
+    frame.lineStyle = std::clamp(m_lineStyleCombo->currentData().toInt(), 0, ReportLineStyleCount - 1);
+    frame.fillPattern = std::clamp(m_fillPatternCombo->currentData().toInt(), 0, ReportFillPatternCount - 1);
     frame.cornerRadius = std::max(0, m_cornerRadiusSpin->value());
     frame.fieldPlaceholders.clear();
     frame.systemTokens.clear();
@@ -897,7 +897,7 @@ ReportFrameDefinition ReportDesignerWidget::defaultFrame(ReportFrameKind kind) c
         break;
     case ReportFrameKind::LineOrBox:
         frame.text.clear();
-        frame.lineBoxShape = 'b';
+        frame.lineBoxShape = ReportLineShapeBox;
         break;
     case ReportFrameKind::Text:
     case ReportFrameKind::Unknown:

@@ -121,22 +121,22 @@ qreal framePadding(qreal scale)
 
 Qt::PenStyle penStyleForFrame(const ReportFrameDefinition& frame)
 {
-    switch (std::clamp(frame.lineStyle, 0, 9)) {
-    case 1:
-    case 6:
+    switch (std::clamp(frame.lineStyle, 0, ReportLineStyleCount - 1)) {
+    case ReportLineStyleDash:
+    case ReportLineStyleThickDash:
         return Qt::DashLine;
-    case 2:
-    case 7:
+    case ReportLineStyleDot:
+    case ReportLineStyleThickDot:
         return Qt::DotLine;
-    case 3:
+    case ReportLineStyleDashDot:
         return Qt::DashDotLine;
-    case 4:
+    case ReportLineStyleDashDotDot:
         return Qt::DashDotDotLine;
-    case 9:
+    case ReportLineStyleNoOutline:
         return Qt::NoPen;
-    case 0:
-    case 5:
-    case 8:
+    case ReportLineStyleSolid:
+    case ReportLineStyleThickSolid:
+    case ReportLineStyleHairline:
     default:
         return Qt::SolidLine;
     }
@@ -145,13 +145,13 @@ Qt::PenStyle penStyleForFrame(const ReportFrameDefinition& frame)
 qreal penWidthForFrame(const ReportFrameDefinition& frame, qreal scale)
 {
     qreal width = std::clamp(scale * LogicalFrameLineWidth, MinimumFrameLineWidth, MaximumFrameLineWidth);
-    switch (std::clamp(frame.lineStyle, 0, 9)) {
-    case 5:
-    case 6:
-    case 7:
+    switch (std::clamp(frame.lineStyle, 0, ReportLineStyleCount - 1)) {
+    case ReportLineStyleThickSolid:
+    case ReportLineStyleThickDash:
+    case ReportLineStyleThickDot:
         width *= 1.8;
         break;
-    case 8:
+    case ReportLineStyleHairline:
         width = MinimumFrameLineWidth;
         break;
     default:
@@ -162,47 +162,47 @@ qreal penWidthForFrame(const ReportFrameDefinition& frame, qreal scale)
 
 Qt::BrushStyle brushStyleForFrame(const ReportFrameDefinition& frame)
 {
-    switch (std::clamp(frame.fillPattern, 0, 25)) {
-    case 1:
+    switch (std::clamp(frame.fillPattern, 0, ReportFillPatternCount - 1)) {
+    case ReportFillPatternSolid:
         return Qt::SolidPattern;
-    case 2:
+    case ReportFillPattern5Percent:
         return Qt::Dense1Pattern;
-    case 3:
+    case ReportFillPattern10Percent:
         return Qt::Dense2Pattern;
-    case 4:
+    case ReportFillPattern20Percent:
         return Qt::Dense3Pattern;
-    case 5:
+    case ReportFillPattern25Percent:
         return Qt::Dense4Pattern;
-    case 6:
+    case ReportFillPattern30Percent:
         return Qt::Dense5Pattern;
-    case 7:
+    case ReportFillPattern40Percent:
         return Qt::Dense6Pattern;
-    case 8:
+    case ReportFillPattern50Percent:
         return Qt::Dense7Pattern;
-    case 9:
-    case 15:
-    case 21:
+    case ReportFillPattern60Percent:
+    case ReportFillPatternDarkVertical:
+    case ReportFillPatternLightVertical:
         return Qt::HorPattern;
-    case 10:
-    case 16:
-    case 22:
+    case ReportFillPattern70Percent:
+    case ReportFillPatternDarkDownDiagonal:
+    case ReportFillPatternLightDownDiagonal:
         return Qt::VerPattern;
-    case 11:
-    case 17:
-    case 23:
+    case ReportFillPattern75Percent:
+    case ReportFillPatternDarkUpDiagonal:
+    case ReportFillPatternLightUpDiagonal:
         return Qt::CrossPattern;
-    case 12:
-    case 18:
-    case 24:
+    case ReportFillPattern80Percent:
+    case ReportFillPatternDarkGrid:
+    case ReportFillPatternLightGrid:
         return Qt::BDiagPattern;
-    case 13:
-    case 19:
-    case 25:
+    case ReportFillPattern90Percent:
+    case ReportFillPatternDarkTrellis:
+    case ReportFillPatternLightTrellis:
         return Qt::FDiagPattern;
-    case 14:
-    case 20:
+    case ReportFillPatternDarkHorizontal:
+    case ReportFillPatternLightHorizontal:
         return Qt::DiagCrossPattern;
-    case 0:
+    case ReportFillPatternClear:
     default:
         return Qt::NoBrush;
     }
@@ -215,12 +215,12 @@ void drawLineOrBox(QPainter* painter, const QRectF& frameRect, const ReportFrame
     pen.setWidthF(penWidthForFrame(frame, scale));
     painter->setPen(pen);
 
-    const bool horizontalLine = frame.lineBoxShape == 'h'
-        || (frame.lineBoxShape != 'b'
+    const bool horizontalLine = frame.lineBoxShape == ReportLineShapeHorizontal
+        || (frame.lineBoxShape != ReportLineShapeBox
             && frameRect.height() <= std::max<qreal>(MinimumLineFrameThreshold, scale * LogicalLineFrameThreshold)
             && frameRect.width() >= frameRect.height());
-    const bool verticalLine = frame.lineBoxShape == 'v'
-        || (frame.lineBoxShape != 'b'
+    const bool verticalLine = frame.lineBoxShape == ReportLineShapeVertical
+        || (frame.lineBoxShape != ReportLineShapeBox
             && frameRect.width() <= std::max<qreal>(MinimumLineFrameThreshold, scale * LogicalLineFrameThreshold)
             && frameRect.height() > frameRect.width());
 

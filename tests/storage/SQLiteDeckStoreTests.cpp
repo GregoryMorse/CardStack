@@ -1,4 +1,6 @@
-﻿#include "SQLiteDeckStore.h"
+#include "SQLiteDeckStore.h"
+
+#include "DeckTemplate.h"
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -220,6 +222,34 @@ private slots:
         QCOMPARE(loaded.reportCount(), 0);
         QCOMPARE(loaded.fieldAt(0).name(), QStringLiteral("Only Field"));
         QCOMPARE(loaded.cardAt(0).valueAt(0), QStringLiteral("Only Card"));
+    }
+
+    void preservesBuiltInTemplateReportPresets()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+
+        const Deck software = createDeckFromTemplateName(QStringLiteral("Software Library"));
+        QCOMPARE(software.reportCount(), 3);
+
+        const QString path = directory.filePath(QStringLiteral("software.cardstack"));
+        QString error;
+        SQLiteDeckStore writer;
+        QVERIFY2(writer.open(path, &error), qPrintable(error));
+        QVERIFY2(writer.saveDeck(software, &error), qPrintable(error));
+        writer.close();
+
+        Deck loaded;
+        SQLiteDeckStore reader;
+        QVERIFY2(reader.open(path, &error), qPrintable(error));
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+
+        QCOMPARE(loaded.reportCount(), 3);
+        QCOMPARE(loaded.reportAt(0).name, QStringLiteral("Index Card (3 x 5 - laser)"));
+        QCOMPARE(loaded.reportAt(1).name, QStringLiteral("Index Card (3 x 5 - pin)"));
+        QCOMPARE(loaded.reportAt(2).name, QStringLiteral("Software Registrations"));
+        QCOMPARE(loaded.reportAt(2).frames.size(), 14);
+        QCOMPARE(loaded.reportAt(2).frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
     }
 
     void createsVersionedSpecSchema()

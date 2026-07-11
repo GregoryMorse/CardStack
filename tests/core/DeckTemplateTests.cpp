@@ -1,4 +1,6 @@
-﻿#include "DeckTemplate.h"
+#include "DeckTemplate.h"
+
+#include "BuiltInReportTemplates.h"
 
 #include <QTest>
 
@@ -39,8 +41,25 @@ private slots:
             QCOMPARE(deck.name(), deckTemplate.name);
             QCOMPARE(deck.cardCount(), 0);
             QCOMPARE(deck.fieldCount(), deckTemplate.fields.size());
+            QCOMPARE(deck.reportCount(), deckTemplate.reports.size());
             QCOMPARE(deck.cardTemplateLayout(), deckTemplate.layout);
             QVERIFY2(deck.fieldCount() > 0, qPrintable(deckTemplate.name));
+            QVERIFY2(deck.reportCount() > 0, qPrintable(deckTemplate.name));
+            for (const ReportDefinition& report : deck.reports()) {
+                for (const ReportFrameDefinition& frame : report.frames) {
+                    if (frame.kind != ReportFrameKind::LineOrBox) {
+                        continue;
+                    }
+                    QVERIFY2(frame.lineStyle >= 0 && frame.lineStyle < ReportLineStyleCount,
+                             qPrintable(QStringLiteral("%1 / %2 line style %3")
+                                            .arg(deckTemplate.name, report.name)
+                                            .arg(frame.lineStyle)));
+                    QVERIFY2(frame.fillPattern >= 0 && frame.fillPattern < ReportFillPatternCount,
+                             qPrintable(QStringLiteral("%1 / %2 fill pattern %3")
+                                            .arg(deckTemplate.name, report.name)
+                                            .arg(frame.fillPattern)));
+                }
+            }
         }
 
         const Deck software = createDeckFromTemplateName(QStringLiteral("Software Library"));
@@ -50,6 +69,12 @@ private slots:
         QCOMPARE(software.fieldAt(10).name(), QStringLiteral("Notes"));
         QCOMPARE(software.fieldAt(10).type(), FieldType::Notes);
         QCOMPARE(software.fieldAt(10).maxLength(), 40);
+        QCOMPARE(software.reportCount(), 3);
+        QCOMPARE(software.reportAt(0).name, QStringLiteral("Index Card (3 x 5 - laser)"));
+        QCOMPARE(software.reportAt(1).name, QStringLiteral("Index Card (3 x 5 - pin)"));
+        QCOMPARE(software.reportAt(2).name, QStringLiteral("Software Registrations"));
+        QCOMPARE(software.reportAt(2).declaredFrameCount, 14);
+        QCOMPARE(software.reportAt(2).frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
 
         const std::optional<DeckTemplate> softwareTemplate = findBuiltInDeckTemplate(QStringLiteral("Software Library"));
         QVERIFY(softwareTemplate.has_value());
@@ -79,6 +104,7 @@ private slots:
         const Deck scratch = createDeckFromScratch();
         QCOMPARE(scratch.name(), QStringLiteral("Untitled Deck"));
         QCOMPARE(scratch.fieldCount(), 1);
+        QCOMPARE(scratch.reportCount(), 0);
         QCOMPARE(scratch.fieldAt(0).name(), QStringLiteral("New Data Box"));
         QVERIFY(!scratch.cardTemplateLayout().frames.isEmpty());
 
@@ -93,13 +119,46 @@ private slots:
         memoFrame.bounds = QRect(100, 200, 3000, 1200);
         sourceLayout.frames.append(memoFrame);
         source.setCardTemplateLayout(sourceLayout);
+        ReportDefinition sourceReport;
+        sourceReport.name = QStringLiteral("Source Report");
+        sourceReport.formatMagic = QStringLiteral("RPT@#$B");
+        sourceReport.formType = ReportFormType::Report;
+        sourceReport.formWidth = 8500;
+        sourceReport.formHeight = 11000;
+        source.addReport(sourceReport);
 
         const Deck patterned = createDeckPatternedAfterDeck(source, QStringLiteral("Patterned"));
         QCOMPARE(patterned.name(), QStringLiteral("Patterned"));
         QCOMPARE(patterned.fieldCount(), 2);
         QCOMPARE(patterned.cardCount(), 0);
+        QCOMPARE(patterned.reportCount(), 1);
+        QCOMPARE(patterned.reportAt(0).name, QStringLiteral("Source Report"));
         QCOMPARE(patterned.fieldAt(1).type(), FieldType::Notes);
         QCOMPARE(patterned.cardTemplateLayout(), sourceLayout);
+    }
+
+    void createsProceduralStandardReportDefinitionsForAddDefaults()
+    {
+        Deck deck(QStringLiteral("Report Source"));
+        deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64));
+        deck.addField(FieldDefinition(QStringLiteral("Notes"), FieldType::Notes, 4096));
+
+        const QVector<ReportDefinition> reports = standardReportDefinitionsForDeck(
+            deck,
+            QStringLiteral("Default Page Report"),
+            QStringLiteral("Default Row Report"));
+
+        QCOMPARE(reports.size(), 2);
+        QCOMPARE(reports.at(0).name, QStringLiteral("Default Page Report"));
+        QCOMPARE(reports.at(1).name, QStringLiteral("Default Row Report"));
+        QCOMPARE(reports.at(0).formType, ReportFormType::Report);
+        QCOMPARE(reports.at(1).formType, ReportFormType::Report);
+        QCOMPARE(reports.at(0).frames.size(), deck.fieldCount() + 2);
+        QCOMPARE(reports.at(1).frames.size(), deck.fieldCount() + 2);
+        QCOMPARE(reports.at(0).frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Name")});
+        QCOMPARE(reports.at(0).frames.at(1).fieldPlaceholders, QVector<QString>{QStringLiteral("Notes")});
+        QCOMPARE(reports.at(0).frames.at(1).printEntireContentsFlag, quint8(1));
+        QCOMPARE(reports.at(0).frames.last().systemTokens, QVector<QString>{QStringLiteral("page")});
     }
 };
 

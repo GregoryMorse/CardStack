@@ -52,6 +52,52 @@ inline constexpr quint8 ReportStyleFlagUnderline = 0x04;
 inline constexpr quint8 ReportStyleFlagAlignCenter = 0x10;
 inline constexpr quint8 ReportStyleFlagAlignRight = 0x20;
 
+inline constexpr int ReportLineShapeNone = 0;
+inline constexpr int ReportLineShapeBox = 'b';
+inline constexpr int ReportLineShapeHorizontal = 'h';
+inline constexpr int ReportLineShapeVertical = 'v';
+inline constexpr int ReportLineShapeLegacyAuto = 'l';
+
+inline constexpr int ReportLineStyleSolid = 0;
+inline constexpr int ReportLineStyleDash = 1;
+inline constexpr int ReportLineStyleDot = 2;
+inline constexpr int ReportLineStyleDashDot = 3;
+inline constexpr int ReportLineStyleDashDotDot = 4;
+inline constexpr int ReportLineStyleThickSolid = 5;
+inline constexpr int ReportLineStyleThickDash = 6;
+inline constexpr int ReportLineStyleThickDot = 7;
+inline constexpr int ReportLineStyleHairline = 8;
+inline constexpr int ReportLineStyleNoOutline = 9;
+inline constexpr int ReportLineStyleCount = 10;
+
+inline constexpr int ReportFillPatternClear = 0;
+inline constexpr int ReportFillPatternSolid = 1;
+inline constexpr int ReportFillPattern5Percent = 2;
+inline constexpr int ReportFillPattern10Percent = 3;
+inline constexpr int ReportFillPattern20Percent = 4;
+inline constexpr int ReportFillPattern25Percent = 5;
+inline constexpr int ReportFillPattern30Percent = 6;
+inline constexpr int ReportFillPattern40Percent = 7;
+inline constexpr int ReportFillPattern50Percent = 8;
+inline constexpr int ReportFillPattern60Percent = 9;
+inline constexpr int ReportFillPattern70Percent = 10;
+inline constexpr int ReportFillPattern75Percent = 11;
+inline constexpr int ReportFillPattern80Percent = 12;
+inline constexpr int ReportFillPattern90Percent = 13;
+inline constexpr int ReportFillPatternDarkHorizontal = 14;
+inline constexpr int ReportFillPatternDarkVertical = 15;
+inline constexpr int ReportFillPatternDarkDownDiagonal = 16;
+inline constexpr int ReportFillPatternDarkUpDiagonal = 17;
+inline constexpr int ReportFillPatternDarkGrid = 18;
+inline constexpr int ReportFillPatternDarkTrellis = 19;
+inline constexpr int ReportFillPatternLightHorizontal = 20;
+inline constexpr int ReportFillPatternLightVertical = 21;
+inline constexpr int ReportFillPatternLightDownDiagonal = 22;
+inline constexpr int ReportFillPatternLightUpDiagonal = 23;
+inline constexpr int ReportFillPatternLightGrid = 24;
+inline constexpr int ReportFillPatternLightTrellis = 25;
+inline constexpr int ReportFillPatternCount = 26;
+
 struct ReportDefinition {
     QString name;
     QString formatMagic;

@@ -140,6 +140,16 @@ ReportFrameKind classifyFrame(const QString& text, const QVector<QString>& field
     return ReportFrameKind::Text;
 }
 
+int normalizedLineStyle(int value)
+{
+    return value >= 0 && value < ReportLineStyleCount ? value : ReportLineStyleSolid;
+}
+
+int normalizedFillPattern(int value)
+{
+    return value >= 0 && value < ReportFillPatternCount ? value : ReportFillPatternClear;
+}
+
 ReportFrameDefinition readFrame(const QByteArray& bytes, int offset)
 {
     ReportFrameDefinition frame;
@@ -164,8 +174,8 @@ ReportFrameDefinition readFrame(const QByteArray& bytes, int offset)
     frame.styleFlags = static_cast<quint8>(bytes.at(offset + FrameStyleFlagsOffset));
     if (frame.kind == ReportFrameKind::LineOrBox) {
         frame.lineBoxShape = static_cast<quint8>(bytes.at(offset + FrameLineBoxShapeOffset));
-        frame.lineStyle = readU16(bytes, offset + FrameLineStyleOffset);
-        frame.fillPattern = readU16(bytes, offset + FrameFillPatternOffset);
+        frame.lineStyle = normalizedLineStyle(readU16(bytes, offset + FrameLineStyleOffset));
+        frame.fillPattern = normalizedFillPattern(readU16(bytes, offset + FrameFillPatternOffset));
         frame.cornerRadius = readU16(bytes, offset + FrameCornerRadiusOffset);
     }
     return frame;

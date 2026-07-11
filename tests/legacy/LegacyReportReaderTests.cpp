@@ -9,6 +9,7 @@ using namespace CardStack;
 namespace {
 
 constexpr int HeaderSize = 0x3f5;
+constexpr int OldHeaderSize = 0x3c9;
 constexpr int FrameSize = 0x9b;
 
 void putU16(QByteArray* bytes, int offset, quint16 value)
@@ -54,6 +55,28 @@ QByteArray makeSyntheticReportStore()
 
     putFrame(&bytes, HeaderSize, 0, QRect(20, 30, 300, 40), "Product: [Product]");
     putFrame(&bytes, HeaderSize + FrameSize, 0xffff, QRect(20, 90, 300, 40), "{reportname} - {page}");
+    return bytes;
+}
+
+QByteArray makeOldFormatLineReportStore()
+{
+    constexpr int frameCount = 1;
+    constexpr int entrySize = OldHeaderSize + frameCount * FrameSize;
+    QByteArray bytes(entrySize, '\0');
+    putCString(&bytes, 0, 8, "RPT@#$A");
+    putU16(&bytes, 0x08, entrySize);
+    putCString(&bytes, 0x0a, 64, "Old Line Report");
+    putU16(&bytes, 0x4b, 2000);
+    putU16(&bytes, 0x4d, 1000);
+    putU16(&bytes, 0x53, frameCount);
+    putU16(&bytes, 0x55, 1);
+    putU16(&bytes, 0x57, 1);
+    putU16(&bytes, 0x59, 4);
+
+    const int frameOffset = OldHeaderSize;
+    putFrame(&bytes, frameOffset, ReportLineStyleDash, QRect(20, 30, 300, 4), "");
+    putU16(&bytes, frameOffset + 0x04, 50);
+    bytes[frameOffset + 0x8e] = static_cast<char>(ReportLineShapeLegacyAuto);
     return bytes;
 }
 
@@ -127,6 +150,21 @@ private slots:
         QCOMPARE(result.reports.at(2).declaredFrameCount, 14);
         QCOMPARE(result.reports.at(2).frames.at(12).systemTokens, QVector<QString>{QStringLiteral("reportname")});
         QCOMPARE(result.reports.at(2).frames.at(13).systemTokens, QVector<QString>{QStringLiteral("page")});
+    }
+
+    void normalizesOldFormatLineFrameFillWords()
+    {
+        const LegacyReportReader reader;
+        const LegacyReportReader::Result result = reader.readBytes(makeOldFormatLineReportStore());
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+
+        QCOMPARE(result.reports.size(), 1);
+        const ReportFrameDefinition& frame = result.reports.first().frames.first();
+        QCOMPARE(frame.kind, ReportFrameKind::LineOrBox);
+        QCOMPARE(frame.lineBoxShape, ReportLineShapeLegacyAuto);
+        QCOMPARE(frame.lineStyle, ReportLineStyleDash);
+        QCOMPARE(frame.order, 50);
+        QCOMPARE(frame.fillPattern, ReportFillPatternClear);
     }
 };
 

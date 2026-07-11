@@ -1,4 +1,6 @@
 qt_add_library(cardstack_core STATIC
+    BuiltInReportTemplates.cpp
+    BuiltInReportTemplates.h
     CardRecord.cpp
     CardRecord.h
     CardTemplateLayout.h

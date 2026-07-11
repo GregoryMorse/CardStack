@@ -75,6 +75,36 @@ private slots:
         QVERIFY(designer.isDirty());
     }
 
+    void exposesAndStoresEveryReportLineAndFillStyle()
+    {
+        ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});
+
+        designer.addLineBoxFrameShape(
+            ReportLineBoxShape::Box,
+            ReportLineStyleNoOutline + 10,
+            ReportFillPatternLightTrellis + 10,
+            3);
+        QCOMPARE(designer.report().frames.last().lineStyle, ReportLineStyleNoOutline);
+        QCOMPARE(designer.report().frames.last().fillPattern, ReportFillPatternLightTrellis);
+        QCOMPARE(designer.report().frames.last().lineBoxShape, ReportLineShapeBox);
+
+        designer.addLineBoxFrameShape(ReportLineBoxShape::HorizontalLine, ReportLineStyleDash, ReportFillPatternClear, 0);
+        QCOMPARE(designer.report().frames.last().lineBoxShape, ReportLineShapeHorizontal);
+
+        designer.addLineBoxFrameShape(ReportLineBoxShape::VerticalLine, ReportLineStyleDot, ReportFillPatternSolid, 0);
+        QCOMPARE(designer.report().frames.last().lineBoxShape, ReportLineShapeVertical);
+
+        for (int lineStyle = 0; lineStyle < ReportLineStyleCount; ++lineStyle) {
+            designer.addLineBoxFrameShape(ReportLineBoxShape::Box, lineStyle, ReportFillPatternClear, 0);
+            QCOMPARE(designer.report().frames.last().lineStyle, lineStyle);
+        }
+
+        for (int fillPattern = 0; fillPattern < ReportFillPatternCount; ++fillPattern) {
+            designer.addLineBoxFrameShape(ReportLineBoxShape::Box, ReportLineStyleSolid, fillPattern, 0);
+            QCOMPARE(designer.report().frames.last().fillPattern, fillPattern);
+        }
+    }
+
     void closePromptCancelKeepsDesignerOpen()
     {
         ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});

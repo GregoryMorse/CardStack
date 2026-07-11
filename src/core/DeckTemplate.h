@@ -48,6 +48,7 @@ struct DeckTemplate {
     int legacyResourceId = 0;
     QString name;
     QVector<FieldDefinition> fields;
+    QVector<ReportDefinition> reports;
     QVector<LegacyTemplateFieldDescriptor> legacyFields;
     QVector<LegacyTemplateTextFrameDescriptor> legacyTextFrames;
     CardTemplateLayout layout;
