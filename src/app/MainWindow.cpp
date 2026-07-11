@@ -82,11 +82,13 @@
 #include <optional>
 #include <utility>
 
+extern int qInitResources_cardstack_app();
+
 namespace {
 
 void initializeCardStackApplicationResources()
 {
-    Q_INIT_RESOURCE(cardstack_app);
+    ::qInitResources_cardstack_app();
 }
 
 } // namespace
