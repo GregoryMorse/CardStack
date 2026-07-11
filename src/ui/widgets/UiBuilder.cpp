@@ -184,7 +184,7 @@ void showCardStackHelp(QWidget* parent)
     } else if (dialogName == QStringLiteral("CALL") || dialogName == QStringLiteral("PHNDEF")) {
         dialogHelpHtml = QObject::tr(
             "<h1>Phone Dialing</h1>"
-            "<p>CardStack uses the operating system phone-link handler instead of modem configuration.</p>"
+            "<p>CardStack opens calls through the operating system phone-link handler.</p>"
             "<ul>"
             "<li>Select or type a phone number.</li>"
             "<li>The number is copied to the clipboard.</li>"
@@ -1184,8 +1184,8 @@ void initializeSearchDialog(QDialog* dialog, const UiBuilder::DialogContext& con
     populateComboBox(dialog, Control::SearchSecondAllDataBoxes, fieldsWithAllDataBoxes(context), false);
     populateComboBox(dialog, Control::SearchText, context.recentSearches, true);
     populateComboBox(dialog, Control::SearchSecondText, context.recentSearches, true);
-    setControlWidth(dialog, Control::SearchType, 136);
-    setControlWidth(dialog, Control::SearchSecondType, 136);
+    setControlWidth(dialog, Control::SearchType, 152);
+    setControlWidth(dialog, Control::SearchSecondType, 152);
 
     createExclusiveButtonGroup(
         dialog,
@@ -1527,6 +1527,33 @@ void initializePhoneDialog(QDialog* dialog)
     if (auto* lineEdit = findUiControl<QLineEdit>(dialog, Control::PhoneNumber)) {
         lineEdit->setInputMask(QStringLiteral(""));
     }
+    if (auto* placeCall = findUiControl<QAbstractButton>(dialog, Control::PhonePlaceCall)) {
+        QObject::connect(placeCall, &QAbstractButton::clicked, dialog, &QDialog::accept);
+    }
+}
+
+void initializePhoneDefinitionDialog(QDialog* dialog)
+{
+    const QList<QWidget*> controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+    constexpr int obsoleteSectionBottomPx = 66;
+    constexpr int usefulSectionShiftPx = 62;
+    for (QWidget* widget : controls) {
+        const int controlId = widget->property("originalControlId").toInt();
+        if (controlId == Control::Ok || controlId == Control::Cancel || controlId == Control::Help) {
+            continue;
+        }
+        QRect rect = widget->geometry();
+        if (rect.top() < obsoleteSectionBottomPx && rect.left() < dialog->width() - 80) {
+            widget->hide();
+            continue;
+        }
+        if (rect.top() >= obsoleteSectionBottomPx) {
+            rect.translate(0, -usefulSectionShiftPx);
+            widget->setGeometry(rect);
+        }
+    }
+    dialog->resize(dialog->width(), std::max(1, dialog->height() - usefulSectionShiftPx));
+    dialog->setMinimumSize(dialog->size());
 }
 
 void initializeUiDialog(
@@ -1566,6 +1593,8 @@ void initializeUiDialog(
         initializeSecurityDialog(dialog, context);
     } else if (dialogName == QStringLiteral("CALL")) {
         initializePhoneDialog(dialog);
+    } else if (dialogName == QStringLiteral("PHNDEF")) {
+        initializePhoneDefinitionDialog(dialog);
     }
 }
 

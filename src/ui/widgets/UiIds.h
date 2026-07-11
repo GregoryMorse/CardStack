@@ -254,9 +254,21 @@ inline constexpr int SecurityEncryptData = 503;
 inline constexpr int SecurityFileName = 505;
 inline constexpr int SecurityPassword = 510;
 
+inline constexpr int PhoneOutsideLine = 1407;
+inline constexpr int PhoneOutsideLinePrefix = 1408;
+inline constexpr int PhoneLongDistance = 1409;
+inline constexpr int PhoneLongDistancePrefix = 1410;
+inline constexpr int PhoneLogCall = 1411;
+inline constexpr int PhoneLocalAreaCode = 1412;
 inline constexpr int PhoneNumber = 1413;
 inline constexpr int PhoneCardNumbers = 1414;
+inline constexpr int PhonePlaceCall = 1415;
+inline constexpr int QuickDialDescription = 1420;
+inline constexpr int QuickDialNumber = 1421;
 inline constexpr int PhoneQuickDials = 1422;
+inline constexpr int PhoneQuickDialAdd = 1423;
+inline constexpr int PhoneQuickDialModify = 1424;
+inline constexpr int PhoneQuickDialDelete = 1425;
 } // namespace Control
 
 namespace StringId {

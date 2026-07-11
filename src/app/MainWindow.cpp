@@ -35,6 +35,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QEventLoop>
 #include <QFontDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -130,6 +131,13 @@ bool valueLooksLikePhoneNumber(const QString& value)
 {
     static const QRegularExpression phoneCharacters(QStringLiteral("[0-9][0-9\\s().+\\-#/]{4,}"));
     return phoneCharacters.match(value).hasMatch();
+}
+
+QString quickDialDisplay(const QString& description, const QString& phoneNumber)
+{
+    return description.trimmed().isEmpty()
+        ? phoneNumber.trimmed()
+        : QStringLiteral("%1: %2").arg(description.trimmed(), phoneNumber.trimmed());
 }
 
 QString normalizedPhoneDialString(QString value)
@@ -701,6 +709,43 @@ ReportDefinition createDefaultReportDefinition(const Deck& deck, QString name = 
     return report;
 }
 
+int addStandardReportDefinitions(DeckWorkspace* workspace)
+{
+    if (workspace == nullptr) {
+        return 0;
+    }
+
+    int added = 0;
+    const auto hasReportNamed = [workspace](const QString& name) {
+        for (const ReportDefinition& report : workspace->deck().reports()) {
+            if (report.name.compare(name, Qt::CaseInsensitive) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const QString pageReportName = QObject::tr("Default Page Report");
+    if (!hasReportNamed(pageReportName)) {
+        workspace->saveReportDefinition(
+            -1,
+            createDefaultReportDefinition(workspace->deck(), pageReportName));
+        ++added;
+    }
+
+    const QString rowReportName = QObject::tr("Default Row Report");
+    if (!hasReportNamed(rowReportName)) {
+        ReportDefinition rowReport = createDefaultReportDefinition(workspace->deck(), rowReportName);
+        rowReport.formType = ReportFormType::Card;
+        rowReport.rows = 1;
+        rowReport.columns = 1;
+        workspace->saveReportDefinition(-1, rowReport);
+        ++added;
+    }
+
+    return added;
+}
+
 ReportPreviewData previewDataForCard(const Deck& deck, int cardIndex, const ReportDefinition& report)
 {
     ReportPreviewData data;
@@ -898,6 +943,10 @@ MainWindow::MainWindow(QWidget* parent, bool openInitialSample)
 {
     initializeCardStackApplicationResources();
     setWindowTitle(QStringLiteral("CardStack"));
+    m_quickDials = {
+        {tr("Operator"), QStringLiteral("0")},
+        {tr("Information"), QStringLiteral("411")},
+    };
     if (windowIcon().isNull()) {
         setWindowIcon(cardStackIcon());
     }
@@ -931,6 +980,16 @@ MainWindow::~MainWindow()
         }
         disconnect(m_mdiArea, nullptr, this, nullptr);
     }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (!closeAllSubWindowsWithPrompts()) {
+        event->ignore();
+        return;
+    }
+
+    QMainWindow::closeEvent(event);
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
@@ -1016,13 +1075,16 @@ void MainWindow::rebuildMenus(int menuId)
 
     menuBar()->clear();
     const bool populated = UiBuilder::populateMenuBar(menuBar(), menuId, this, [this](QAction* action) {
-        if (action->data().toInt() == Command::RemovedCommand2800 ||
-            action->data().toInt() == Command::ConfigurePhoneDialer) {
+        if (action->data().toInt() == Command::RemovedCommand2800) {
             action->setVisible(false);
             action->setEnabled(false);
             return;
         }
         action->setEnabled(true);
+        if (action->data().toInt() == Command::ConfigureShowButtonBar) {
+            action->setCheckable(true);
+            action->setChecked(m_buttonBar == nullptr || m_buttonBar->isVisible());
+        }
         connect(action, &QAction::triggered, this, &MainWindow::handleUiAction);
     });
 
@@ -1486,7 +1548,7 @@ void MainWindow::handleUiAction()
         handleNewReportCommand();
         return;
     case Command::FileExit:
-        qApp->quit();
+        close();
         return;
     case Command::WindowTileVertical:
         tileSubWindowsVertical();
@@ -1501,7 +1563,7 @@ void MainWindow::handleUiAction()
         statusBar()->showMessage(tr("Arrange Icons is retained for menu parity; minimized MDI icon layout has no Qt equivalent yet."), StatusMessageTimeoutMs);
         return;
     case Command::WindowCloseAll:
-        m_mdiArea->closeAllSubWindows();
+        closeAllSubWindowsWithPrompts();
         updateCommandState();
         return;
     case Command::ConfigurePhoneDialer:
@@ -2004,101 +2066,100 @@ void MainWindow::handlePrintReportCommand()
         return;
     }
 
-    if (workspace->deck().reportCount() <= 0) {
-        QMessageBox::information(
-            this,
-            tr("CardStack Reports"),
-            tr("This deck does not have any imported report definitions yet."));
-        return;
-    }
+    struct DeletedReport {
+        ReportDefinition report;
+        int index = -1;
+    };
+    std::optional<DeletedReport> deletedReport;
 
-    std::unique_ptr<QDialog> reportsDialog =
-        UiBuilder::createDialog(QStringLiteral("DESIGNREPORTS"), this, dialogContext());
-    if (!reportsDialog) {
-        statusBar()->showMessage(tr("Available Reports dialog is not available."), StatusMessageTimeoutMs);
-        return;
-    }
+    int reportIndex = -1;
+    for (;;) {
+        std::unique_ptr<QDialog> reportsDialog =
+            UiBuilder::createDialog(QStringLiteral("DESIGNREPORTS"), this, dialogContext());
+        if (!reportsDialog) {
+            statusBar()->showMessage(tr("Available Reports dialog is not available."), StatusMessageTimeoutMs);
+            return;
+        }
 
-    QString reportAction = QStringLiteral("print");
-    if (auto* modifyButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsModify)) {
-        connect(modifyButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
-            reportAction = QStringLiteral("modify");
-            dialog->accept();
-        });
-    }
-    if (auto* newButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsNew)) {
-        connect(newButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
-            reportAction = QStringLiteral("new");
-            dialog->accept();
-        });
-    }
-    if (auto* deleteButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsDelete)) {
-        connect(deleteButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
-            reportAction = QStringLiteral("delete");
-            dialog->accept();
-        });
-    }
-    if (auto* addDefaultsButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsAddDefaults)) {
-        connect(addDefaultsButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
-            reportAction = QStringLiteral("defaults");
-            dialog->accept();
-        });
-    }
+        QString reportAction = QStringLiteral("print");
+        if (auto* modifyButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsModify)) {
+            connect(modifyButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
+                reportAction = QStringLiteral("modify");
+                dialog->accept();
+            });
+        }
+        if (auto* newButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsNew)) {
+            connect(newButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
+                reportAction = QStringLiteral("new");
+                dialog->accept();
+            });
+        }
+        if (auto* deleteButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsDelete)) {
+            connect(deleteButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
+                reportAction = QStringLiteral("delete");
+                dialog->accept();
+            });
+        }
+        if (auto* addDefaultsButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsAddDefaults)) {
+            connect(addDefaultsButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
+                reportAction = QStringLiteral("defaults");
+                dialog->accept();
+            });
+        }
+        if (auto* undoButton = uiControl<QAbstractButton>(*reportsDialog, Control::ReportsUndoDelete)) {
+            undoButton->setEnabled(deletedReport.has_value());
+            connect(undoButton, &QAbstractButton::clicked, reportsDialog.get(), [&reportAction, dialog = reportsDialog.get()]() {
+                reportAction = QStringLiteral("undo-delete");
+                dialog->accept();
+            });
+        }
 
-    if (reportsDialog->exec() != QDialog::Accepted) {
-        return;
-    }
+        if (reportsDialog->exec() != QDialog::Accepted) {
+            return;
+        }
 
-    const auto* reportList = uiControl<QListWidget>(*reportsDialog, Control::ReportsList);
-    const int reportIndex = reportList == nullptr ? -1 : reportList->currentRow();
-    if (reportAction == QStringLiteral("new")) {
-        openReportDesigner(
-            workspace,
-            -1,
-            createDefaultReportDefinition(workspace->deck(), tr("Untitled Report")));
-        return;
-    }
-    if (reportAction == QStringLiteral("defaults")) {
-        int added = 0;
-        const QStringList existingNames = reportNamesFromDeck(workspace->deck());
-        if (!existingNames.contains(tr("Default Page Report"))) {
-            workspace->saveReportDefinition(
+        const auto* reportList = uiControl<QListWidget>(*reportsDialog, Control::ReportsList);
+        reportIndex = reportList == nullptr ? -1 : reportList->currentRow();
+        if (reportAction == QStringLiteral("new")) {
+            openReportDesigner(
+                workspace,
                 -1,
-                createDefaultReportDefinition(workspace->deck(), tr("Default Page Report")));
-            ++added;
+                createDefaultReportDefinition(workspace->deck(), tr("Untitled Report")));
+            return;
         }
-        if (!existingNames.contains(tr("Default Row Report"))) {
-            ReportDefinition rowReport = createDefaultReportDefinition(workspace->deck(), tr("Default Row Report"));
-            rowReport.formType = ReportFormType::Card;
-            rowReport.rows = 1;
-            rowReport.columns = 1;
-            workspace->saveReportDefinition(-1, rowReport);
-            ++added;
-        }
-        statusBar()->showMessage(tr("Added %1 default report(s).").arg(added), StatusMessageTimeoutMs);
-        updateCommandState();
-        return;
-    }
-    if (reportIndex < 0 || reportIndex >= workspace->deck().reportCount()) {
-        statusBar()->showMessage(tr("No report was selected."), StatusMessageTimeoutMs);
-        return;
-    }
-
-    if (reportAction == QStringLiteral("modify")) {
-        openReportDesigner(workspace, reportIndex, workspace->deck().reportAt(reportIndex));
-        return;
-    }
-    if (reportAction == QStringLiteral("delete")) {
-        const QString reportName = workspace->deck().reportAt(reportIndex).name;
-        if (QMessageBox::question(
-                this,
-                tr("CardStack Reports"),
-                tr("Delete report design \"%1\"?").arg(reportName)) == QMessageBox::Yes
-            && workspace->removeReportDefinition(reportIndex)) {
-            statusBar()->showMessage(tr("Report design deleted."), StatusMessageTimeoutMs);
+        if (reportAction == QStringLiteral("defaults")) {
+            const int added = addStandardReportDefinitions(workspace);
+            statusBar()->showMessage(tr("Added %1 default report(s).").arg(added), StatusMessageTimeoutMs);
             updateCommandState();
+            continue;
         }
-        return;
+        if (reportAction == QStringLiteral("undo-delete")) {
+            if (deletedReport.has_value() && workspace->insertReportDefinition(deletedReport->index, deletedReport->report)) {
+                deletedReport.reset();
+                statusBar()->showMessage(tr("Report design restored."), StatusMessageTimeoutMs);
+            }
+            updateCommandState();
+            continue;
+        }
+        if (reportIndex < 0 || reportIndex >= workspace->deck().reportCount()) {
+            statusBar()->showMessage(tr("No report was selected."), StatusMessageTimeoutMs);
+            continue;
+        }
+
+        if (reportAction == QStringLiteral("modify")) {
+            openReportDesigner(workspace, reportIndex, workspace->deck().reportAt(reportIndex));
+            return;
+        }
+        if (reportAction == QStringLiteral("delete")) {
+            deletedReport = DeletedReport{workspace->deck().reportAt(reportIndex), reportIndex};
+            if (workspace->removeReportDefinition(reportIndex)) {
+                statusBar()->showMessage(tr("Report design deleted. Use Undo Del to restore it."), StatusMessageTimeoutMs);
+                updateCommandState();
+            }
+            continue;
+        }
+
+        break;
     }
 
     const ReportDefinition& report = workspace->deck().reportAt(reportIndex);
@@ -2775,38 +2836,63 @@ void MainWindow::showAboutDialog()
 void MainWindow::handlePhoneDialCommand()
 {
     DeckWorkspace* workspace = activeDeckWorkspace();
-    QString initialNumber;
+    QStringList candidates;
     if (workspace != nullptr) {
-        const QStringList candidates = phoneCandidatesForWorkspace(*workspace);
-        if (candidates.size() == 1) {
-            initialNumber = phoneValueFromCandidate(candidates.first());
-        } else if (candidates.size() > 1) {
-            bool selected = false;
-            const QString candidate = QInputDialog::getItem(
-                this,
-                tr("Dial Phone Number"),
-                tr("Choose a phone number from the current card:"),
-                candidates,
-                0,
-                false,
-                &selected);
-            if (!selected) {
-                return;
+        candidates = phoneCandidatesForWorkspace(*workspace);
+    }
+
+    std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CALL"), this, dialogContext());
+    if (!dialog) {
+        statusBar()->showMessage(tr("Phone dial dialog is not available."), StatusMessageTimeoutMs);
+        return;
+    }
+
+    auto* numberEdit = uiControl<QLineEdit>(*dialog, Control::PhoneNumber);
+    auto* cardNumbers = uiControl<QListWidget>(*dialog, Control::PhoneCardNumbers);
+    auto* quickDials = uiControl<QListWidget>(*dialog, Control::PhoneQuickDials);
+    if (cardNumbers != nullptr) {
+        cardNumbers->clear();
+        for (const QString& candidate : candidates) {
+            auto* item = new QListWidgetItem(candidate, cardNumbers);
+            item->setData(Qt::UserRole, phoneValueFromCandidate(candidate));
+        }
+        connect(cardNumbers, &QListWidget::currentItemChanged, dialog.get(), [numberEdit](QListWidgetItem* current) {
+            if (numberEdit != nullptr && current != nullptr) {
+                numberEdit->setText(current->data(Qt::UserRole).toString());
             }
-            initialNumber = phoneValueFromCandidate(candidate);
+        });
+        if (cardNumbers->count() > 0) {
+            cardNumbers->setCurrentRow(0);
         }
     }
 
-    bool accepted = false;
-    const QString number = QInputDialog::getText(
-        this,
-        tr("Dial Phone Number"),
-        tr("Phone number:"),
-        QLineEdit::Normal,
-        initialNumber,
-        &accepted).trimmed();
-    if (!accepted) {
+    if (quickDials != nullptr) {
+        quickDials->clear();
+        for (const QuickDial& quickDial : m_quickDials) {
+            auto* item = new QListWidgetItem(quickDialDisplay(quickDial.description, quickDial.phoneNumber), quickDials);
+            item->setData(Qt::UserRole, quickDial.phoneNumber);
+        }
+        connect(quickDials, &QListWidget::currentItemChanged, dialog.get(), [numberEdit](QListWidgetItem* current) {
+            if (numberEdit != nullptr && current != nullptr) {
+                numberEdit->setText(current->data(Qt::UserRole).toString());
+            }
+        });
+    }
+
+    setChecked(*dialog, Control::PhoneOutsideLine, m_phoneGetOutsideLine);
+    setChecked(*dialog, Control::PhoneLongDistance, m_phoneUseLongDistance);
+    setChecked(*dialog, Control::PhoneLogCall, m_phoneLogCalls);
+
+    if (dialog->exec() != QDialog::Accepted) {
         return;
+    }
+
+    QString number = numberEdit == nullptr ? QString() : numberEdit->text().trimmed();
+    if (isChecked(*dialog, Control::PhoneOutsideLine) && !m_phoneOutsideLinePrefix.trimmed().isEmpty()) {
+        number.prepend(m_phoneOutsideLinePrefix.trimmed());
+    }
+    if (isChecked(*dialog, Control::PhoneLongDistance) && !m_phoneLongDistancePrefix.trimmed().isEmpty()) {
+        number.prepend(m_phoneLongDistancePrefix.trimmed());
     }
 
     const QString dialString = normalizedPhoneDialString(number);
@@ -2832,10 +2918,100 @@ void MainWindow::handlePhoneDialCommand()
 
 void MainWindow::handlePhoneDialerConfigCommand()
 {
-    QMessageBox::information(
-        this,
-        tr("Phone Dialer"),
-        tr("Use Phone > Dial to copy a number and open it with your system phone handler."));
+    std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("PHNDEF"), this, dialogContext());
+    if (!dialog) {
+        statusBar()->showMessage(tr("Phone dialer configuration dialog is not available."), StatusMessageTimeoutMs);
+        return;
+    }
+
+    auto* quickDials = uiControl<QListWidget>(*dialog, Control::PhoneQuickDials);
+    const auto refreshQuickDials = [this, quickDials]() {
+        if (quickDials == nullptr) {
+            return;
+        }
+        quickDials->clear();
+        for (const QuickDial& quickDial : m_quickDials) {
+            quickDials->addItem(quickDialDisplay(quickDial.description, quickDial.phoneNumber));
+        }
+        if (quickDials->count() > 0 && quickDials->currentRow() < 0) {
+            quickDials->setCurrentRow(0);
+        }
+    };
+    const auto editQuickDial = [this](const QuickDial& initial, QuickDial* result) {
+        std::unique_ptr<QDialog> quickDialog = UiBuilder::createDialog(QStringLiteral("QUICKDIAL"), this, dialogContext());
+        if (!quickDialog) {
+            return false;
+        }
+        setEditText(*quickDialog, Control::QuickDialDescription, initial.description);
+        setEditText(*quickDialog, Control::QuickDialNumber, initial.phoneNumber);
+        if (quickDialog->exec() != QDialog::Accepted) {
+            return false;
+        }
+        QuickDial updated{
+            editText(*quickDialog, Control::QuickDialDescription).trimmed(),
+            editText(*quickDialog, Control::QuickDialNumber).trimmed(),
+        };
+        if (updated.phoneNumber.isEmpty()) {
+            QMessageBox::information(this, tr("Phone Dialer"), tr("Enter a phone number for the quick dial."));
+            return false;
+        }
+        if (updated.description.isEmpty()) {
+            updated.description = updated.phoneNumber;
+        }
+        *result = updated;
+        return true;
+    };
+
+    setChecked(*dialog, Control::PhoneLongDistance, m_phoneUseLongDistance);
+    setChecked(*dialog, Control::PhoneOutsideLine, m_phoneGetOutsideLine);
+    setChecked(*dialog, Control::PhoneLogCall, m_phoneLogCalls);
+    setEditText(*dialog, Control::PhoneLongDistancePrefix, m_phoneLongDistancePrefix);
+    setEditText(*dialog, Control::PhoneOutsideLinePrefix, m_phoneOutsideLinePrefix);
+    setEditText(*dialog, Control::PhoneLocalAreaCode, m_phoneLocalAreaCode);
+    refreshQuickDials();
+
+    if (auto* add = uiControl<QAbstractButton>(*dialog, Control::PhoneQuickDialAdd)) {
+        connect(add, &QAbstractButton::clicked, dialog.get(), [this, &refreshQuickDials, editQuickDial]() {
+            QuickDial quickDial;
+            if (editQuickDial({}, &quickDial)) {
+                m_quickDials.append(quickDial);
+                refreshQuickDials();
+            }
+        });
+    }
+    if (auto* modify = uiControl<QAbstractButton>(*dialog, Control::PhoneQuickDialModify)) {
+        connect(modify, &QAbstractButton::clicked, dialog.get(), [this, quickDials, &refreshQuickDials, editQuickDial]() {
+            if (quickDials == nullptr || quickDials->currentRow() < 0 || quickDials->currentRow() >= m_quickDials.size()) {
+                return;
+            }
+            QuickDial quickDial;
+            if (editQuickDial(m_quickDials.at(quickDials->currentRow()), &quickDial)) {
+                m_quickDials[quickDials->currentRow()] = quickDial;
+                refreshQuickDials();
+            }
+        });
+    }
+    if (auto* remove = uiControl<QAbstractButton>(*dialog, Control::PhoneQuickDialDelete)) {
+        connect(remove, &QAbstractButton::clicked, dialog.get(), [this, quickDials, &refreshQuickDials]() {
+            if (quickDials == nullptr || quickDials->currentRow() < 0 || quickDials->currentRow() >= m_quickDials.size()) {
+                return;
+            }
+            m_quickDials.removeAt(quickDials->currentRow());
+            refreshQuickDials();
+        });
+    }
+
+    if (dialog->exec() != QDialog::Accepted) {
+        return;
+    }
+
+    m_phoneUseLongDistance = isChecked(*dialog, Control::PhoneLongDistance);
+    m_phoneGetOutsideLine = isChecked(*dialog, Control::PhoneOutsideLine);
+    m_phoneLogCalls = isChecked(*dialog, Control::PhoneLogCall);
+    m_phoneLongDistancePrefix = editText(*dialog, Control::PhoneLongDistancePrefix).trimmed();
+    m_phoneOutsideLinePrefix = editText(*dialog, Control::PhoneOutsideLinePrefix).trimmed();
+    m_phoneLocalAreaCode = editText(*dialog, Control::PhoneLocalAreaCode).trimmed();
+    statusBar()->showMessage(tr("Phone dialer settings updated."), StatusMessageTimeoutMs);
 }
 
 int MainWindow::showUiDialog(const QString& dialogName)
@@ -3292,15 +3468,35 @@ void MainWindow::handleNewDeckCommand()
         openTemplateDesignerForNewDeck(createDeckFromTemplateName(templateName, tr("%1 Deck").arg(templateName)));
         return;
     case 3:
-        if (const DeckWorkspace* workspace = activeDeckWorkspace()) {
-            openTemplateDesignerForNewDeck(createDeckPatternedAfterDeck(workspace->deck()));
-        } else {
-            QMessageBox::information(
-                this,
-                tr("New Card Deck"),
-                tr("Open or select a deck before choosing \"Design Deck patterned after Deck\"."));
+    {
+        QFileDialog patternDialog(this, tr("Select Deck To Pattern After"));
+        patternDialog.setObjectName(QStringLiteral("cardstackPatternDeckDialog"));
+        patternDialog.setOption(QFileDialog::DontUseNativeDialog, true);
+        patternDialog.setFileMode(QFileDialog::ExistingFile);
+        patternDialog.setAcceptMode(QFileDialog::AcceptOpen);
+        patternDialog.setNameFilters({
+            tr("CardStack decks (*.cardstack *.csdeck)"),
+            tr("Legacy Btrieve decks (*.btn *.btr *.dat)"),
+            tr("All files (*.*)"),
+        });
+        if (patternDialog.exec() != QDialog::Accepted) {
+            return;
         }
+
+        const QStringList files = patternDialog.selectedFiles();
+        if (files.isEmpty()) {
+            return;
+        }
+
+        Deck patternDeck;
+        QString error;
+        if (!loadDeckFromPath(files.first(), &patternDeck, &error)) {
+            QMessageBox::critical(this, tr("New Card Deck"), tr("Could not load deck to pattern after:\n%1").arg(error));
+            return;
+        }
+        openTemplateDesignerForNewDeck(createDeckPatternedAfterDeck(patternDeck));
         return;
+    }
     default:
         openDeckWindow(createDeckFromScratch(), {}, true);
         return;
@@ -3873,6 +4069,26 @@ bool MainWindow::confirmCloseDeckWindow(QMdiSubWindow* subWindow)
     return true;
 }
 
+bool MainWindow::closeAllSubWindowsWithPrompts()
+{
+    const QList<QMdiSubWindow*> windows = m_mdiArea->subWindowList(QMdiArea::CreationOrder);
+    for (QMdiSubWindow* window : windows) {
+        if (window == nullptr) {
+            continue;
+        }
+        QPointer<QMdiSubWindow> guard(window);
+        m_mdiArea->setActiveSubWindow(window);
+        window->close();
+        QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        if (guard != nullptr && m_mdiArea->subWindowList().contains(guard.data())) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void MainWindow::updateDeckWindowTitle(QMdiSubWindow* subWindow, const DeckWorkspace* workspace) const
 {
     if (subWindow == nullptr || workspace == nullptr) {
@@ -3903,10 +4119,7 @@ UiBuilder::DialogContext MainWindow::dialogContext() const
         context.deckName = workspace->deck().name();
         context.deckDescription = workspace->deck().description();
         context.fieldNames = workspace->fieldNames();
-        const QStringList reportNames = reportNamesFromDeck(workspace->deck());
-        if (!reportNames.isEmpty()) {
-            context.reportNames = reportNames;
-        }
+        context.reportNames = reportNamesFromDeck(workspace->deck());
     } else {
         context.deckName = tr("Untitled");
     }

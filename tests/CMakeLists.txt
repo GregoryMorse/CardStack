@@ -4,6 +4,7 @@ set(CARDSTACK_WINEVDM_TEST_FIXTURE_DIR
 
 set(CARDSTACK_TEST_SOURCES
     app/MainWindowActionTests.cpp
+    app/MainWindowWorkflowTests.cpp
     core/DeckMergeTests.cpp
     core/DelimitedTextTests.cpp
     core/DeckTemplateTests.cpp
@@ -31,6 +32,11 @@ target_compile_definitions(CardStackTests
         CARDSTACK_TEST_SUITE
 )
 
+target_compile_options(CardStackTests
+    PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/FS>
+)
+
 target_link_libraries(CardStackTests
     PRIVATE
         cardstack_app_lib
@@ -49,7 +55,8 @@ set_target_properties(CardStackTests PROPERTIES
 
 add_test(NAME CardStackTests COMMAND CardStackTests)
 set_tests_properties(CardStackTests PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT
+        "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins"
     ENVIRONMENT_MODIFICATION
         "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;CARDSTACK_WINEVDM_GOLDEN_DIR=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR};CARDSTACK_LEGACY_DECK_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/plain.BTN;CARDSTACK_LEGACY_REPORT_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/reports.RPT"
 )

@@ -7,6 +7,7 @@
 #include <functional>
 
 int runMainWindowActionTests(int argc, char** argv);
+int runMainWindowWorkflowTests(int argc, char** argv);
 int runDeckMergeTests(int argc, char** argv);
 int runDelimitedTextTests(int argc, char** argv);
 int runDeckTemplateTests(int argc, char** argv);
@@ -34,6 +35,7 @@ QVector<TestEntry> testEntries()
 {
     return {
         {"MainWindowActionTests", runMainWindowActionTests},
+        {"MainWindowWorkflowTests", runMainWindowWorkflowTests},
         {"DeckMergeTests", runDeckMergeTests},
         {"DelimitedTextTests", runDelimitedTextTests},
         {"DeckTemplateTests", runDeckTemplateTests},

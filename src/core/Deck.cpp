@@ -2,6 +2,7 @@
 
 #include "DelimitedText.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace CardStack {
@@ -152,6 +153,12 @@ void Deck::addCard(CardRecord card)
 void Deck::addReport(ReportDefinition report)
 {
     m_reports.append(std::move(report));
+}
+
+void Deck::insertReport(int index, ReportDefinition report)
+{
+    const int safeIndex = std::clamp(index, 0, static_cast<int>(m_reports.size()));
+    m_reports.insert(safeIndex, std::move(report));
 }
 
 void Deck::setSortKeys(QVector<DeckSortKey> sortKeys)

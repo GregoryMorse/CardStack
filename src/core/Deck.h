@@ -51,6 +51,7 @@ public:
     void addField(FieldDefinition field);
     void addCard(CardRecord card);
     void addReport(ReportDefinition report);
+    void insertReport(int index, ReportDefinition report);
     void setSortKeys(QVector<DeckSortKey> sortKeys);
     void clearSortKeys();
     void setImportExportProfiles(QVector<ImportExportProfile> profiles);

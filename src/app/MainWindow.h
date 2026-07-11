@@ -8,8 +8,11 @@
 #include <QMainWindow>
 
 #include <optional>
+#include <QString>
+#include <QVector>
 
 class QAction;
+class QCloseEvent;
 class QEvent;
 class QLabel;
 class QMdiArea;
@@ -30,6 +33,7 @@ public:
     ~MainWindow() override;
 
 protected:
+    void closeEvent(QCloseEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -96,6 +100,7 @@ private:
     bool exportTemplatePackageFromDesigner(TemplateDesignerWidget* designer);
     bool exportReportPackageFromDesigner(ReportDesignerWidget* designer);
     bool confirmCloseDeckWindow(QMdiSubWindow* subWindow);
+    bool closeAllSubWindowsWithPrompts();
     void updateDeckWindowTitle(QMdiSubWindow* subWindow, const DeckWorkspace* workspace) const;
     UiBuilder::DialogContext dialogContext() const;
     DeckWorkspace::SearchRequest searchRequestFromDialog(const QDialog& dialog) const;
@@ -107,10 +112,22 @@ private:
     void openTemplateDesigner(DeckWorkspace* workspace);
     void openTemplateDesignerForNewDeck(Deck deck);
 
+    struct QuickDial {
+        QString description;
+        QString phoneNumber;
+    };
+
     QMdiArea* m_mdiArea = nullptr;
     QToolBar* m_buttonBar = nullptr;
     QToolBar* m_indexBar = nullptr;
     QLabel* m_cardPositionLabel = nullptr;
+    QVector<QuickDial> m_quickDials;
+    QString m_phoneLongDistancePrefix = QStringLiteral("1");
+    QString m_phoneOutsideLinePrefix = QStringLiteral("9");
+    QString m_phoneLocalAreaCode;
+    bool m_phoneUseLongDistance = false;
+    bool m_phoneGetOutsideLine = false;
+    bool m_phoneLogCalls = false;
     bool m_enterWorksLikeTab = false;
     int m_currentMenuId = 0;
 };

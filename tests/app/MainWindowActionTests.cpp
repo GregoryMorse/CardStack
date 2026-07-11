@@ -434,13 +434,13 @@ private slots:
         QCOMPARE(checkedCount, 1);
     }
 
-    void hidesRemovedLegacyModemConfigurationCommand()
+    void exposesPhoneDialerConfigurationCommand()
     {
         MainWindow window(nullptr, false);
         auto* phoneDialerAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigurePhoneDialer);
         QVERIFY(phoneDialerAction != nullptr);
-        QVERIFY(!phoneDialerAction->isVisible());
-        QVERIFY(!phoneDialerAction->isEnabled());
+        QVERIFY(phoneDialerAction->isVisible());
+        QVERIFY(phoneDialerAction->isEnabled());
     }
 
     void exposesStartupToolbarCommands()
@@ -515,6 +515,13 @@ private slots:
         auto* viewTableAction = findCommandAction(window.menuBar(), UiIds::Command::ViewTable);
         QVERIFY(viewCardAction != nullptr);
         QVERIFY(viewTableAction != nullptr);
+        QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Card);
+        QVERIFY(viewCardAction->isChecked());
+        QVERIFY(!viewTableAction->isChecked());
+
+        QTest::keyClick(&window, Qt::Key_F9);
+        QCoreApplication::processEvents();
+        QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Table);
         QVERIFY(viewTableAction->isChecked());
         QVERIFY(!viewCardAction->isChecked());
 

@@ -65,6 +65,7 @@ Deck deckWithCards(const Deck& source, const QVector<CardRecord>& cards)
     }
     updated.setSortKeys(source.sortKeys());
     updated.setImportExportProfiles(source.importExportProfiles());
+    updated.setCardTemplateLayout(source.cardTemplateLayout());
     for (const CardRecord& record : cards) {
         updated.addCard(record);
     }
@@ -137,6 +138,16 @@ CardRecord blankCardForDeck(const Deck& deck)
         record.appendValue({});
     }
     return record;
+}
+
+bool isBlankCardForDeck(const Deck& deck, const CardRecord& record)
+{
+    for (int field = 0; field < deck.fieldCount(); ++field) {
+        if (!record.valueAt(field).trimmed().isEmpty()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 Deck deckWithSchema(
@@ -225,6 +236,8 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     , m_tableView(new QTableView(this))
     , m_tableModel(new CardTableModel(this))
 {
+    ensureEditableCard();
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_stack);
@@ -256,7 +269,7 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
 
     m_stack->addWidget(m_cardPage);
     m_stack->addWidget(m_tablePage);
-    showTableView();
+    showCardView();
     setCurrentCardIndex(0);
 }
 
@@ -433,6 +446,9 @@ void DeckWorkspace::deleteCurrentCard()
     }
 
     m_deletedCards.append({deletedRecord, deletedIndex});
+    if (remaining.isEmpty()) {
+        remaining.append(blankCardForDeck(m_deck));
+    }
     replaceCards(remaining);
     m_currentCardIndex = std::min(deletedIndex, m_deck.cardCount() - 1);
     refreshCardEditor();
@@ -571,6 +587,9 @@ bool DeckWorkspace::undeleteCard()
     pushUndoSnapshot();
     const DeletedCard deleted = m_deletedCards.takeLast();
     QVector<CardRecord> cards = m_deck.cards();
+    if (cards.size() == 1 && isBlankCardForDeck(m_deck, cards.first())) {
+        cards.clear();
+    }
     const int insertIndex = std::clamp(deleted.index, 0, static_cast<int>(cards.size()));
     cards.insert(insertIndex, deleted.record);
     replaceCards(cards);
@@ -706,6 +725,19 @@ bool DeckWorkspace::saveReportDefinition(int reportIndex, const ReportDefinition
     } else {
         m_deck.addReport(report);
     }
+    markDirty();
+    return true;
+}
+
+bool DeckWorkspace::insertReportDefinition(int reportIndex, const ReportDefinition& report)
+{
+    if (report.name.trimmed().isEmpty()) {
+        return false;
+    }
+
+    syncCardEditorToDeck();
+    pushUndoSnapshot();
+    m_deck.insertReport(reportIndex, report);
     markDirty();
     return true;
 }
@@ -925,6 +957,9 @@ void DeckWorkspace::refreshCardHeader()
 
 void DeckWorkspace::refreshCardEditor()
 {
+    if (ensureEditableCard()) {
+        syncModel();
+    }
     refreshCardStack();
 
     refreshCardHeader();
@@ -942,6 +977,17 @@ void DeckWorkspace::refreshCardEditor()
         m_valueEditors[fieldIndex]->setEnabled(true);
         setEditorText(m_valueEditors[fieldIndex], record.valueAt(fieldIndex));
     }
+}
+
+bool DeckWorkspace::ensureEditableCard()
+{
+    if (m_deck.cardCount() > 0 || m_deck.fieldCount() <= 0) {
+        return false;
+    }
+
+    m_deck.addCard(blankCardForDeck(m_deck));
+    m_currentCardIndex = 0;
+    return true;
 }
 
 void DeckWorkspace::syncCardEditorToDeck()
@@ -1029,6 +1075,7 @@ void DeckWorkspace::pushUndoSnapshot()
 void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
 {
     m_deck = snapshot.deck;
+    ensureEditableCard();
     m_deletedCards = snapshot.deletedCards;
     m_currentCardIndex = snapshot.cardIndex;
     m_currentFieldIndex = snapshot.fieldIndex;
@@ -1087,6 +1134,9 @@ QString DeckWorkspace::normalizedFieldValue(int fieldIndex, QString value) const
 void DeckWorkspace::setCurrentCardIndex(int index)
 {
     syncCardEditorToDeck();
+    if (ensureEditableCard()) {
+        syncModel();
+    }
     if (m_deck.cardCount() <= 0) {
         m_currentCardIndex = 0;
         refreshCardEditor();

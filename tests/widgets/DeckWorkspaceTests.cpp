@@ -109,6 +109,25 @@ private slots:
         QVERIFY(workspace.canUndelete());
     }
 
+    void deletingLastCardLeavesEditableBlankCard()
+    {
+        Deck deck(QStringLiteral("Blank Card Test"));
+        deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 255));
+        deck.addCard(CardRecord({QStringLiteral("Only")}));
+
+        DeckWorkspace workspace(deck);
+        QCOMPARE(workspace.viewMode(), DeckWorkspace::ViewMode::Card);
+
+        workspace.deleteCurrentCard();
+        QCOMPARE(workspace.deck().cardCount(), 1);
+        QCOMPARE(workspace.currentCardIndex(), 0);
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QString());
+
+        QVERIFY(workspace.undeleteCard());
+        QCOMPARE(workspace.deck().cardCount(), 1);
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Only"));
+    }
+
     void deckDescriptionChangeCanBeUndone()
     {
         DeckWorkspace workspace(createTwoCardDeck());
@@ -403,9 +422,12 @@ private slots:
         QVERIFY(workspace.removeReportDefinition(0));
         QCOMPARE(workspace.deck().reportCount(), 0);
 
-        QVERIFY(workspace.undo());
+        QVERIFY(workspace.insertReportDefinition(0, report));
         QCOMPARE(workspace.deck().reportCount(), 1);
         QCOMPARE(workspace.deck().reportAt(0).name, QStringLiteral("Renamed Report"));
+
+        QVERIFY(workspace.undo());
+        QCOMPARE(workspace.deck().reportCount(), 0);
     }
 };
 

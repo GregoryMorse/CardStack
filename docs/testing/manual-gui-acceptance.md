@@ -2,6 +2,12 @@
 
 Use this checklist for end-to-end manual testing once a fresh build is available. It is intentionally workflow-oriented: each item should either pass, fail with a concrete bug, or be explicitly deferred.
 
+## Release stage
+
+- For beta, prioritize confirming automated workflow coverage is trustworthy and manually inspect visual fidelity.
+- For 1.0, repeat the full checklist against installed release packages on Windows, macOS, and Linux.
+- Track any failure as P0/P1/P2 so beta blockers and 1.0 blockers are obvious.
+
 ## Startup and identity
 
 - Launch `CardStack.exe` from the build/deploy folder.

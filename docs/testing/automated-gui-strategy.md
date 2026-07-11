@@ -2,6 +2,33 @@
 
 CardStack is now past the recovery-scaffolding stage: the remaining confidence gap is not whether the old Win16 facts exist, but whether the modern Qt app exercises them repeatably.
 
+## Release confidence gates
+
+### Beta gate
+
+CardStack can move to `v0.2.0-beta.1` when automated tests cover the normal user workflows and the remaining manual pass is mostly visual judgment:
+
+- File workflows: New, Open, Save, Save As, Close, Close All, Exit, and unsaved-change prompts with Save/Discard/Cancel behavior.
+- Deck workflows: card view default, editable blank-card behavior, add/delete/undelete/duplicate cards, table/card synchronization, index bar navigation, search, replace, sort, merge, and security add/remove.
+- Template workflows: create from template, create from scratch, pattern after template, pattern after deck file, edit layout, save, close, use template to create deck, save/reopen.
+- Report workflows: Available Reports always opens, Add Defaults, New, Modify, Delete, Undo Del, report designer frame creation/editing, preview routing, save/reopen.
+- Print workflows: report output uses a deterministic PDF target for automation, with native print dialogs reserved for manual smoke testing.
+- Phone workflows: configure dialing defaults/prefixes/quick dials, then verify Phone > Dial reflects configured data and current-card phone fields.
+- Legacy workflows: golden fixtures import deterministically, including password/encryption, notes-heavy, many-fields, reports/sidecars, and supported interchange formats.
+- Packaging workflows: CI builds and release packages pass on Windows, macOS, and Linux.
+
+### 1.0 gate
+
+CardStack can move to `v1.0.0` when beta has survived real use and:
+
+- No known data-loss bugs remain.
+- All P0/P1 beta bugs are closed.
+- Legacy import/export support is documented and fixture-tested.
+- Report preview/PDF output has passed manual visual comparison.
+- Template/card layout has passed manual visual comparison.
+- Cross-platform release packages have been installed and smoke-tested outside the build tree.
+- Help and README content are sufficient for a normal user who has no project history context.
+
 ## Automated first
 
 These checks should be covered by Qt Test or small helper tools before the final manual pass:

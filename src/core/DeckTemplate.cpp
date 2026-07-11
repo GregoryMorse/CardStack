@@ -18,6 +18,11 @@ constexpr quint16 LegacyFixedTextField = 0;
 constexpr quint16 LegacyNotesField = LegacyVariableTextField | LegacyMultilineEditor;
 constexpr quint16 LegacyNotDialable = 0;
 constexpr quint16 LegacyDialable = 1;
+constexpr int DefaultReportPageWidthMils = 8500;
+constexpr int DefaultReportPageHeightMils = 11000;
+constexpr int DefaultReportMarginMils = 500;
+constexpr int DefaultCardReportWidthMils = 5000;
+constexpr int DefaultCardReportHeightMils = 3000;
 
 FieldDefinition textField(const QString& name, int maxLength = DefaultTextLength)
 {
@@ -113,6 +118,70 @@ Deck deckWithFields(QString name, const QVector<FieldDefinition>& fields)
         deck.addField(field);
     }
     return deck;
+}
+
+ReportDefinition defaultTemplateReport(const Deck& deck, QString name, ReportFormType formType)
+{
+    ReportDefinition report;
+    report.name = std::move(name);
+    report.formatMagic = QStringLiteral("RPT@#$B");
+    report.formType = formType;
+    report.formWidth = formType == ReportFormType::Report ? DefaultReportPageWidthMils : DefaultCardReportWidthMils;
+    report.formHeight = formType == ReportFormType::Report ? DefaultReportPageHeightMils : DefaultCardReportHeightMils;
+    report.rows = 1;
+    report.columns = 1;
+    report.marginLeft = formType == ReportFormType::Report ? DefaultReportMarginMils : 0;
+    report.marginTop = formType == ReportFormType::Report ? DefaultReportMarginMils : 0;
+    report.marginRight = formType == ReportFormType::Report ? DefaultReportMarginMils : 0;
+    report.marginBottom = formType == ReportFormType::Report ? DefaultReportMarginMils : 0;
+    report.textFont.faceName = QStringLiteral("Arial");
+    report.dataFont.faceName = QStringLiteral("Arial");
+
+    ReportFrameDefinition title;
+    title.signature = 0xabcd;
+    title.kind = ReportFrameKind::SystemText;
+    title.bounds = QRect(500, 350, 3600, 360);
+    title.text = QStringLiteral("{reportname}");
+    title.systemTokens = {QStringLiteral("reportname")};
+    report.frames.append(title);
+
+    int top = formType == ReportFormType::Report ? 950 : 450;
+    for (int fieldIndex = 0; fieldIndex < deck.fieldCount(); ++fieldIndex) {
+        const QString fieldName = deck.fieldAt(fieldIndex).name();
+        ReportFrameDefinition label;
+        label.signature = 0xabcd;
+        label.kind = ReportFrameKind::Text;
+        label.bounds = QRect(500, top, 1250, 300);
+        label.text = fieldName;
+        report.frames.append(label);
+
+        ReportFrameDefinition data;
+        data.signature = 0xabcd;
+        data.kind = ReportFrameKind::Data;
+        data.bounds = QRect(1850, top, 3000, 300);
+        data.text = QStringLiteral("[%1]").arg(fieldName);
+        data.fieldPlaceholders = {fieldName};
+        data.printEntireContentsFlag = deck.fieldAt(fieldIndex).isNotes() ? 1 : 0;
+        report.frames.append(data);
+
+        top += deck.fieldAt(fieldIndex).isNotes() ? 760 : 380;
+        if (top > report.formHeight - 600) {
+            break;
+        }
+    }
+
+    return report;
+}
+
+void addDefaultTemplateReports(Deck* deck)
+{
+    if (deck == nullptr || deck->reportCount() > 0) {
+        return;
+    }
+
+    deck->addReport(defaultTemplateReport(*deck, QStringLiteral("Default Page Report"), ReportFormType::Report));
+    deck->addReport(defaultTemplateReport(*deck, QStringLiteral("Default Row Report"), ReportFormType::Card));
+    deck->addReport(defaultTemplateReport(*deck, QStringLiteral("Default Card Report"), ReportFormType::Card));
 }
 
 CardTemplateLayout generatedLayoutForFields(const QVector<FieldDefinition>& fields)
@@ -450,6 +519,7 @@ Deck createDeckFromTemplate(const DeckTemplate& deckTemplate, QString deckName)
     }
     Deck deck = deckWithFields(std::move(deckName), deckTemplate.fields);
     deck.setCardTemplateLayout(deckTemplate.layout);
+    addDefaultTemplateReports(&deck);
     return deck;
 }
 
@@ -472,6 +542,7 @@ Deck createDeckFromScratch(QString deckName)
     deck.setDescription(QStringLiteral("Designed from scratch."));
     deck.addField(textField(QStringLiteral("New Data Box")));
     deck.setCardTemplateLayout(generatedLayoutForFields(deck.fields()));
+    addDefaultTemplateReports(&deck);
     return deck;
 }
 
@@ -494,6 +565,7 @@ Deck createDeckPatternedAfterDeck(const Deck& sourceDeck, QString deckName)
         deck.addReport(report);
     }
     deck.setCardTemplateLayout(sourceDeck.cardTemplateLayout());
+    addDefaultTemplateReports(&deck);
     return deck;
 }
 

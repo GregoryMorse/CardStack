@@ -83,7 +83,7 @@ public:
         QVector<DeletedCard> deletedCards;
         int cardIndex = 0;
         int fieldIndex = 0;
-        ViewMode viewMode = ViewMode::Table;
+        ViewMode viewMode = ViewMode::Card;
     };
 
     explicit DeckWorkspace(Deck deck, QWidget* parent = nullptr);
@@ -131,6 +131,7 @@ public:
         QString* errorMessage = nullptr);
     void setCardTemplateLayout(const CardTemplateLayout& layout);
     bool saveReportDefinition(int reportIndex, const ReportDefinition& report);
+    bool insertReportDefinition(int reportIndex, const ReportDefinition& report);
     bool removeReportDefinition(int reportIndex);
 
     bool hasSecurity() const;
@@ -160,6 +161,7 @@ private:
     QString cardTitle(int cardIndex) const;
     void refreshCardHeader();
     void refreshCardEditor();
+    bool ensureEditableCard();
     void syncCardEditorToDeck();
     void syncModel();
     bool sortCardsByTitleIfNeeded();
@@ -183,7 +185,7 @@ private:
     Deck m_deck;
     int m_currentCardIndex = -1;
     int m_currentFieldIndex = 0;
-    ViewMode m_viewMode = ViewMode::Table;
+    ViewMode m_viewMode = ViewMode::Card;
     bool m_dirty = false;
     SearchRequest m_lastSearchRequest;
     bool m_hasLastSearchRequest = false;
