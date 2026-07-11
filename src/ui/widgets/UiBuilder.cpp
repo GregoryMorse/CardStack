@@ -3,6 +3,7 @@
 #include "UiIds.h"
 #include "UiResourceData.h"
 
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QDialogButtonBox>
@@ -49,6 +50,12 @@ constexpr int EditableComboMinimumWidthPx = 150;
 constexpr int FixedComboMinimumWidthPx = 112;
 constexpr int EditableComboMaximumWidthPx = 280;
 constexpr int FixedComboMaximumWidthPx = 190;
+constexpr int NewFileSourceComboWidthPx = 236;
+constexpr int NewFileSourcePopupWidthPx = 292;
+constexpr int ShortNumericEditWidthPx = 48;
+constexpr int MicroScrollWidthPx = 10;
+constexpr int PhoneConfigModernSectionTopPx = 70;
+constexpr int PhoneConfigModernSectionShiftPx = 112;
 constexpr int DialogControlGapPx = 8;
 constexpr int DialogOuterMarginPx = 16;
 constexpr int ComboMinimumShrunkWidthPx = 92;
@@ -782,6 +789,15 @@ int preferredTextControlWidth(const QWidget* widget)
             preferredWidth,
             comboBox->isEditable() ? EditableComboMaximumWidthPx : FixedComboMaximumWidthPx);
     } else if (qobject_cast<const QLineEdit*>(widget) != nullptr) {
+        const QString dialogName = widget->window()->property("legacyDialogName").toString();
+        const int controlId = widget->property("originalControlId").toInt();
+        if ((dialogName == QStringLiteral("PRINT") && controlId == Control::PrintCopyCount) ||
+            (dialogName == QStringLiteral("PHNDEF") &&
+             (controlId == Control::PhoneLongDistancePrefix ||
+              controlId == Control::PhoneOutsideLinePrefix ||
+              controlId == Control::PhoneLocalAreaCode))) {
+            return ShortNumericEditWidthPx;
+        }
         preferredWidth = std::max(preferredWidth, EditableComboMinimumWidthPx);
     }
     return preferredWidth;
@@ -798,6 +814,41 @@ QWidget* directControlById(QDialog* dialog, int controlId)
     return nullptr;
 }
 
+void setDirectControlWidth(QDialog* dialog, int controlId, int width)
+{
+    QWidget* widget = directControlById(dialog, controlId);
+    if (widget == nullptr) {
+        return;
+    }
+
+    QRect rect = widget->geometry();
+    rect.setWidth(width);
+    widget->setMinimumWidth(width);
+    widget->setMaximumWidth(width);
+    widget->setGeometry(rect);
+}
+
+void refinePrintDialog(QDialog* dialog)
+{
+    if (dialog->property("legacyDialogName").toString() != QStringLiteral("PRINT")) {
+        return;
+    }
+
+    setDirectControlWidth(dialog, Control::PrintCopyCount, ShortNumericEditWidthPx);
+    const QList<QWidget*> controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+    for (QWidget* widget : controls) {
+        if (widget->property("uiControlClass").toString() != QStringLiteral("MicroScroll")) {
+            continue;
+        }
+        QRect rect = widget->geometry();
+        rect.setWidth(MicroScrollWidthPx);
+        rect.setHeight(std::max(rect.height(), widget->minimumSizeHint().height()));
+        widget->setMinimumWidth(MicroScrollWidthPx);
+        widget->setMaximumWidth(MicroScrollWidthPx);
+        widget->setGeometry(rect);
+    }
+}
+
 void refineDefineFormDialog(QDialog* dialog)
 {
     if (dialog->property("legacyDialogName").toString() != QStringLiteral("DEFINEFORM")) {
@@ -806,7 +857,6 @@ void refineDefineFormDialog(QDialog* dialog)
 
     constexpr int NumericFieldWidthPx = 48;
     constexpr int CountFieldWidthPx = 36;
-    constexpr int MicroScrollWidthPx = 10;
     const int numericControls[] = {
         Control::DefineFormHeight,
         Control::DefineFormWidth,
@@ -886,6 +936,48 @@ void refineDefineFormDialog(QDialog* dialog)
     }
 }
 
+void refinePhoneConfigDialog(QDialog* dialog)
+{
+    if (dialog->property("legacyDialogName").toString() != QStringLiteral("PHNDEF")) {
+        return;
+    }
+
+    const QList<QWidget*> controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+    for (QWidget* widget : controls) {
+        const QRect rect = widget->geometry();
+        const int controlId = widget->property("originalControlId").toInt();
+        const QString text = qobject_cast<QAbstractButton*>(widget) != nullptr
+            ? plainVisibleText(qobject_cast<QAbstractButton*>(widget)->text())
+            : QString();
+        const bool isDialogButton = controlId == Control::Ok ||
+            controlId == Control::Cancel ||
+            controlId == Control::Help;
+        const bool isLegacyModemControl = controlId == 1428 ||
+            text == QStringLiteral("Port") ||
+            text == QStringLiteral("Dial Method") ||
+            text == QStringLiteral("Initialization") ||
+            text.startsWith(QStringLiteral("COM")) ||
+            text == QStringLiteral("Tone") ||
+            text == QStringLiteral("Pulse") ||
+            text == QStringLiteral("Use default") ||
+            text == QStringLiteral("Use custom");
+
+        if (isLegacyModemControl) {
+            widget->hide();
+            continue;
+        }
+
+        if (!isDialogButton && rect.top() >= PhoneConfigModernSectionTopPx) {
+            QRect moved = rect.translated(0, -PhoneConfigModernSectionShiftPx);
+            widget->setGeometry(moved);
+        }
+    }
+
+    setDirectControlWidth(dialog, Control::PhoneLongDistancePrefix, ShortNumericEditWidthPx);
+    setDirectControlWidth(dialog, Control::PhoneOutsideLinePrefix, ShortNumericEditWidthPx);
+    setDirectControlWidth(dialog, Control::PhoneLocalAreaCode, ShortNumericEditWidthPx);
+}
+
 void refineDialogGeometry(QDialog* dialog)
 {
     const QList<QWidget*> controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
@@ -935,7 +1027,9 @@ void refineDialogGeometry(QDialog* dialog)
         }
     }
 
+    refinePrintDialog(dialog);
     refineDefineFormDialog(dialog);
+    refinePhoneConfigDialog(dialog);
 
     QRect childrenBounds;
     for (const QWidget* widget : controls) {
@@ -972,13 +1066,19 @@ template <typename T>
 T* findUiControl(QWidget* parent, int controlId)
 {
     const QList<T*> controls = parent->findChildren<T*>();
+    T* hiddenCandidate = nullptr;
     for (T* control : controls) {
         if (control->property("originalControlId").toInt() == controlId) {
-            return control;
+            if (!control->isHidden()) {
+                return control;
+            }
+            if (hiddenCandidate == nullptr) {
+                hiddenCandidate = control;
+            }
         }
     }
 
-    return nullptr;
+    return hiddenCandidate;
 }
 
 void setControlsEnabled(QWidget* parent, const QList<int>& controlIds, bool enabled)
@@ -1163,6 +1263,8 @@ void initializeNewFileDialog(QDialog* dialog, const UiBuilder::DialogContext& co
     if (sourceCombo == nullptr || templateList == nullptr) {
         return;
     }
+    setControlWidth(dialog, Control::NewFileSourceCombo, NewFileSourceComboWidthPx);
+    sourceCombo->view()->setMinimumWidth(NewFileSourcePopupWidthPx);
 
     auto updateTemplateState = [sourceCombo, templateList]() {
         const int selected = sourceCombo->currentIndex();
