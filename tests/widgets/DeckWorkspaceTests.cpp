@@ -340,6 +340,44 @@ private slots:
         QCOMPARE(workspace.currentCardIndex(), 1);
     }
 
+    void searchTypesAndDirectionsFollowDialogSemantics()
+    {
+        Deck deck(QStringLiteral("Search Type Test"));
+        deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 255));
+        deck.addCard(CardRecord({QStringLiteral("Alpha One")}));
+        deck.addCard(CardRecord({QStringLiteral("Beta Two")}));
+        deck.addCard(CardRecord({QStringLiteral("Gamma Three")}));
+
+        DeckWorkspace workspace(std::move(deck));
+
+        DeckWorkspace::SearchRequest beginsWith;
+        beginsWith.first.text = QStringLiteral("beta");
+        beginsWith.first.fieldIndex = 0;
+        beginsWith.first.type = DeckWorkspace::SearchType::BeginsWith;
+        QVERIFY(workspace.find(beginsWith));
+        QCOMPARE(workspace.currentCardIndex(), 1);
+
+        workspace.lastCard();
+        DeckWorkspace::SearchRequest backward = beginsWith;
+        backward.direction = DeckWorkspace::SearchDirection::BackwardFromCurrent;
+        QVERIFY(workspace.find(backward));
+        QCOMPARE(workspace.currentCardIndex(), 1);
+
+        DeckWorkspace::SearchRequest doesNotContain;
+        doesNotContain.first.text = QStringLiteral("Two");
+        doesNotContain.first.fieldIndex = 0;
+        doesNotContain.first.type = DeckWorkspace::SearchType::DoesNotContain;
+        QVERIFY(workspace.find(doesNotContain));
+        QCOMPARE(workspace.currentCardIndex(), 0);
+
+        DeckWorkspace::SearchRequest greaterThan;
+        greaterThan.first.text = QStringLiteral("Beta Two");
+        greaterThan.first.fieldIndex = 0;
+        greaterThan.first.type = DeckWorkspace::SearchType::GreaterThan;
+        QVERIFY(workspace.find(greaterThan));
+        QCOMPARE(workspace.currentCardIndex(), 2);
+    }
+
     void sortCardsUpdatesProfileAndCanBeUndone()
     {
         Deck deck(QStringLiteral("Sort Test"));

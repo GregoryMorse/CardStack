@@ -16,6 +16,7 @@
 #include <QDialog>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
@@ -581,6 +582,84 @@ private slots:
 
         QTRY_COMPARE(workspace->deck().reportCount(), initialReportCount);
         QCOMPARE(workspace->deck().reportAt(0).name, firstReportName);
+    }
+
+    void printReportPreviewUsesSelectedScopeAndPreviewNavigation()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = activeWorkspace(window);
+        QVERIFY(workspace != nullptr);
+        QTRY_VERIFY(workspace->deck().reportCount() > 0);
+        const QString reportName = workspace->deck().reportAt(0).name;
+
+        bool sawPrintDialog = false;
+        bool sawPreviewDialog = false;
+        bool previewStateWasValid = false;
+        handleNextLegacyDialog(QStringLiteral("DESIGNREPORTS"), [](QDialog* dialog) {
+            auto* reportList = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
+            if (reportList != nullptr && reportList->count() > 0) {
+                reportList->setCurrentRow(0);
+            }
+            dialog->accept();
+            return true;
+        });
+        handleNextLegacyDialog(QStringLiteral("PRINT"), [&sawPrintDialog, &sawPreviewDialog, &previewStateWasValid, reportName](QDialog* dialog) {
+            sawPrintDialog = true;
+            auto* allCards = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PrintAllCards));
+            if (allCards != nullptr) {
+                allCards->setChecked(true);
+            }
+
+            handleNextLegacyDialog(QStringLiteral("PRINTPREVIEW"), [&sawPreviewDialog, &previewStateWasValid, reportName](QDialog* previewDialog) {
+                auto* title = qobject_cast<QLabel*>(
+                    UiBuilder::controlById(previewDialog, UiIds::Control::PreviewTitle));
+                auto* pageStatus = qobject_cast<QLabel*>(
+                    UiBuilder::controlById(previewDialog, UiIds::Control::PreviewPageStatus));
+                auto* nextPage = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(previewDialog, UiIds::Control::PreviewNextPage));
+                auto* firstPage = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(previewDialog, UiIds::Control::PreviewFirstPage));
+                sawPreviewDialog = true;
+                previewStateWasValid = title != nullptr
+                    && title->text() == reportName
+                    && pageStatus != nullptr
+                    && pageStatus->text().startsWith(QStringLiteral("Page 1 of "))
+                    && nextPage != nullptr
+                    && firstPage != nullptr
+                    && !firstPage->isEnabled();
+                previewDialog->reject();
+                return true;
+            });
+
+            auto* preview = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PrintPreview));
+            if (preview != nullptr) {
+                preview->click();
+            }
+            dialog->reject();
+            return true;
+        });
+
+        QAction* printReportAction = findCommandAction(window.menuBar(), UiIds::Command::FilePrintReport);
+        QVERIFY(printReportAction != nullptr);
+        printReportAction->trigger();
+        QCoreApplication::processEvents();
+
+        QTRY_VERIFY(sawPrintDialog);
+        QTRY_VERIFY(sawPreviewDialog);
+        QVERIFY(previewStateWasValid);
+        QCOMPARE(reportName, workspace->deck().reportAt(0).name);
     }
 
     void reportManagerNewModifyAndDesignerToolsSaveReport()
