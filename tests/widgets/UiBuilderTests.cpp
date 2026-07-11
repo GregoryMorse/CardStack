@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialog>
 #include <QGroupBox>
 #include <QLineEdit>
@@ -507,6 +508,36 @@ private slots:
             QVERIFY(left != nullptr);
             QVERIFY(left->isChecked());
         }
+    }
+
+    void initializesColorDialogRolesAndSystemPaletteMode()
+    {
+        const UiBuilder::DialogContext context = populatedContext();
+        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHOOSECOLOR"), nullptr, context);
+        QVERIFY(dialog != nullptr);
+
+        auto* roleCombo = qobject_cast<QComboBox*>(
+            UiBuilder::controlById(dialog.get(), UiIds::Control::ColorRoleCombo));
+        auto* swatchGrid = UiBuilder::controlById(dialog.get(), UiIds::Control::ColorCustomGrid);
+        auto* useSystem = qobject_cast<QAbstractButton*>(
+            UiBuilder::controlById(dialog.get(), UiIds::Control::ColorUseSystem));
+
+        QVERIFY(roleCombo != nullptr);
+        QVERIFY(swatchGrid != nullptr);
+        QVERIFY(useSystem != nullptr);
+        QCOMPARE(roleCombo->count(), UiIds::StringId::ColorRoleLast - UiIds::StringId::ColorRoleFirst + 1);
+        QCOMPARE(roleCombo->currentIndex(), 5);
+        QVERIFY(useSystem->isCheckable());
+#ifdef Q_OS_WIN
+        QVERIFY(!useSystem->isHidden());
+#else
+        QVERIFY(useSystem->isHidden());
+#endif
+        roleCombo->setCurrentIndex(1);
+        useSystem->setChecked(true);
+        QCoreApplication::processEvents();
+        QCOMPARE(roleCombo->currentIndex(), 1);
+        QVERIFY(useSystem->isChecked());
     }
 
     void everyVisibleDialogControlHasSafeGeometry()

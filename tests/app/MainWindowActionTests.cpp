@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGroupBox>
 #include <QLabel>
 #include <QMessageBox>
 #include <QMdiArea>
@@ -195,6 +196,32 @@ void acceptNextDialogByLegacyName(const QString& dialogName)
             }
 
             dialog->accept();
+            return;
+        }
+
+        --(*attemptsRemaining);
+        if (*attemptsRemaining > 0) {
+            QTimer::singleShot(10, qApp, *retry);
+        }
+    };
+
+    QTimer::singleShot(0, qApp, *retry);
+}
+
+void handleNextDialogByLegacyName(
+    const QString& dialogName,
+    const std::function<void(QDialog*)>& handler)
+{
+    auto attemptsRemaining = std::make_shared<int>(80);
+    auto retry = std::make_shared<std::function<void()>>();
+    *retry = [dialogName, handler, attemptsRemaining, retry]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QDialog*>(widget);
+            if (dialog == nullptr || !dialog->isVisible() || dialog->property("legacyDialogName").toString() != dialogName) {
+                continue;
+            }
+
+            handler(dialog);
             return;
         }
 
@@ -1120,6 +1147,95 @@ private slots:
         QCOMPARE(report.formHeight, 14000);
         QCOMPARE(report.rows, 1);
         QCOMPARE(report.columns, 1);
+    }
+
+    void newReportCustomFormUpdatesDefineFormPreviewState()
+    {
+        MainWindow window(nullptr, true);
+        window.show();
+        QCoreApplication::processEvents();
+
+        auto* newReportAction = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+        QVERIFY(newReportAction != nullptr);
+        QVERIFY(newReportAction->isEnabled());
+
+        bool sawDefineFormState = false;
+        handleNextDialogByLegacyName(QStringLiteral("REPORTFORM"), [](QDialog* dialog) {
+            auto* customButton = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportFormCustom));
+            QVERIFY(customButton != nullptr);
+            customButton->click();
+        });
+        handleNextDialogByLegacyName(QStringLiteral("DEFINEFORM"), [&sawDefineFormState](QDialog* dialog) {
+            auto* label = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormLabel));
+            auto* landscape = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormLandscape));
+            auto* rows = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormRows));
+            auto* columns = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormColumns));
+            auto* width = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormWidth));
+            auto* height = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormHeight));
+            auto* countGroup = qobject_cast<QGroupBox*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormCountGroup));
+            auto* widthLabel = qobject_cast<QLabel*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormComputedWidth));
+            auto* heightLabel = qobject_cast<QLabel*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormComputedHeight));
+            QWidget* sample = UiBuilder::controlById(dialog, UiIds::Control::DefineFormSample);
+
+            QVERIFY(label != nullptr);
+            QVERIFY(landscape != nullptr);
+            QVERIFY(rows != nullptr);
+            QVERIFY(columns != nullptr);
+            QVERIFY(width != nullptr);
+            QVERIFY(height != nullptr);
+            QVERIFY(countGroup != nullptr);
+            QVERIFY(widthLabel != nullptr);
+            QVERIFY(heightLabel != nullptr);
+            QVERIFY(sample != nullptr);
+
+            label->click();
+            landscape->click();
+            rows->setText(QStringLiteral("2"));
+            columns->setText(QStringLiteral("3"));
+            width->setText(QStringLiteral("4.00"));
+            height->setText(QStringLiteral("6.00"));
+            emit rows->editingFinished();
+            emit columns->editingFinished();
+            emit width->editingFinished();
+            emit height->editingFinished();
+            QCoreApplication::processEvents();
+
+            sawDefineFormState = countGroup->title() == QStringLiteral("Labels per page") &&
+                rows->isEnabled() &&
+                columns->isEnabled() &&
+                widthLabel->text().startsWith(QStringLiteral("Label width (in): 4.00")) &&
+                heightLabel->text().startsWith(QStringLiteral("Label height (in): 6.00")) &&
+                sample->property("formSample").toBool() &&
+                sample->property("formSampleRows").toInt() == 2 &&
+                sample->property("formSampleColumns").toInt() == 3 &&
+                sample->property("formSampleWidthMils").toInt() == 4000 &&
+                sample->property("formSampleHeightMils").toInt() == 6000;
+            dialog->accept();
+        });
+
+        newReportAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        QVERIFY(sawDefineFormState);
+
+        const ReportDefinition report = designer->report();
+        QCOMPARE(report.formType, ReportFormType::Label);
+        QCOMPARE(report.formWidth, 6000);
+        QCOMPARE(report.formHeight, 4000);
+        QCOMPARE(report.rows, 2);
+        QCOMPARE(report.columns, 3);
     }
 
     void reportDesignerSaveAsExportsPackageThroughDialog()
