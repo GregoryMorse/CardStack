@@ -190,6 +190,41 @@ private slots:
         QVERIFY(output.size() > 0);
     }
 
+    void rendersMultiPageGridReportToPdfFile()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+
+        const QString filePath = directory.filePath(QStringLiteral("multi-page-report-output.pdf"));
+        QPdfWriter writer(filePath);
+        writer.setPageSize(QPageSize(QPageSize::Letter));
+        writer.setResolution(96);
+
+        QVector<ReportPreviewData> records;
+        for (int index = 0; index < 5; ++index) {
+            ReportPreviewData data;
+            data.fieldValues.insert(QStringLiteral("Project"), QStringLiteral("PDF Grid %1").arg(index + 1));
+            records.append(data);
+        }
+
+        const ReportDefinition report = makeCardGridReport();
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+        QCOMPARE(pages.size(), 2);
+
+        QPainter painter(&writer);
+        for (int pageIndex = 0; pageIndex < pages.size(); ++pageIndex) {
+            if (pageIndex > 0) {
+                QVERIFY(writer.newPage());
+            }
+            ReportPrintEngine::renderPage(&painter, report, records, pages.at(pageIndex), QRectF(0, 0, 816, 1056));
+        }
+        painter.end();
+
+        const QFileInfo output(filePath);
+        QVERIFY(output.exists());
+        QVERIFY(output.size() > 0);
+    }
+
     void createsUiPreviewDialogWithCanvas()
     {
         const ReportDefinition report = makeReport();

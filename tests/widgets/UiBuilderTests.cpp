@@ -447,6 +447,68 @@ private slots:
         QCOMPARE(password->echoMode(), QLineEdit::Password);
     }
 
+    void initializesExpectedRadioButtonDefaults()
+    {
+        const UiBuilder::DialogContext context = populatedContext();
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("REPORTFORM"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* report = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::ReportFormReport));
+            QVERIFY(report != nullptr);
+            QVERIFY(report->isChecked());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("DEFINEFORM"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* report = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::DefineFormReport));
+            auto* portrait = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::DefineFormPortrait));
+            QVERIFY(report != nullptr);
+            QVERIFY(portrait != nullptr);
+            QVERIFY(report->isChecked());
+            QVERIFY(portrait->isChecked());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("SEARCH"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* noCompare = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SearchCompareNone));
+            auto* beginning = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SearchDirectionBeginning));
+            QVERIFY(noCompare != nullptr);
+            QVERIFY(beginning != nullptr);
+            QVERIFY(noCompare->isChecked());
+            QVERIFY(beginning->isChecked());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("ADDSYSTEMBOX"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* date = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SystemBoxDateCategory));
+            auto* left = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SystemBoxLeft));
+            QVERIFY(date != nullptr);
+            QVERIFY(left != nullptr);
+            QVERIFY(date->isChecked());
+            QVERIFY(left->isChecked());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("TEXTFRAME"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* left = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::FrameAlignmentLeft));
+            QVERIFY(left != nullptr);
+            QVERIFY(left->isChecked());
+        }
+    }
+
     void everyVisibleDialogControlHasSafeGeometry()
     {
         const UiBuilder::DialogContext context = populatedContext();

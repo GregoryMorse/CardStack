@@ -550,6 +550,10 @@ private slots:
             if (fieldList != nullptr && fieldList->count() > 0) {
                 fieldList->setCurrentIndex(0);
             }
+            if (auto* printEntire = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::DataFramePrintEntireContents))) {
+                printEntire->setChecked(true);
+            }
             dialog->accept();
             return true;
         });
@@ -564,6 +568,23 @@ private slots:
         QCoreApplication::processEvents();
 
         handleNextLegacyDialog(QStringLiteral("LINEFRAME"), [](QDialog* dialog) {
+            if (auto* box = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::LineFrameBox))) {
+                box->setChecked(true);
+            }
+            if (auto* lineStyle = qobject_cast<QComboBox*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::LineFrameLineStyle))) {
+                if (lineStyle->count() > 0) {
+                    lineStyle->setCurrentIndex(std::min(2, lineStyle->count() - 1));
+                }
+            }
+            if (auto* fillPattern = qobject_cast<QComboBox*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::LineFrameFillPattern))) {
+                if (fillPattern->count() > 0) {
+                    fillPattern->setCurrentIndex(std::min(3, fillPattern->count() - 1));
+                }
+            }
+            setLineEditText(dialog, UiIds::Control::LineFrameCornerRadius, QStringLiteral("5"));
             dialog->accept();
             return true;
         });
@@ -571,6 +592,19 @@ private slots:
         QCoreApplication::processEvents();
 
         QCOMPARE(designer->report().frames.size(), initialFrameCount + 4);
+        const QVector<ReportFrameDefinition> customizedFrames = designer->report().frames;
+        QVERIFY(std::any_of(customizedFrames.cbegin(), customizedFrames.cend(), [](const ReportFrameDefinition& frame) {
+            return frame.kind == ReportFrameKind::Text && frame.text == QStringLiteral("Beta report title");
+        }));
+        QVERIFY(std::any_of(customizedFrames.cbegin(), customizedFrames.cend(), [](const ReportFrameDefinition& frame) {
+            return frame.kind == ReportFrameKind::Data && frame.printEntireContentsFlag != 0;
+        }));
+        QVERIFY(std::any_of(customizedFrames.cbegin(), customizedFrames.cend(), [](const ReportFrameDefinition& frame) {
+            return frame.kind == ReportFrameKind::LineOrBox
+                && frame.lineStyle == 2
+                && frame.fillPattern == 3
+                && frame.cornerRadius == 5;
+        }));
         saveReport->trigger();
         QCoreApplication::processEvents();
         QTRY_COMPARE(workspace->deck().reportCount(), initialReportCount + 1);
@@ -961,6 +995,91 @@ private slots:
 
         QVERIFY(sawCurrentCardNumber);
         QVERIFY(sawPrefixes);
+    }
+
+    void phoneDialerPersistsModernConfigurationOptions()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* phoneConfigAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigurePhoneDialer);
+        QVERIFY(phoneConfigAction != nullptr);
+
+        handleNextLegacyDialog(QStringLiteral("PHNDEF"), [](QDialog* dialog) {
+            auto* outside = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneOutsideLine));
+            auto* longDistance = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneLongDistance));
+            auto* logCall = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneLogCall));
+            if (outside != nullptr) {
+                outside->setChecked(true);
+            }
+            if (longDistance != nullptr) {
+                longDistance->setChecked(true);
+            }
+            if (logCall != nullptr) {
+                logCall->setChecked(true);
+            }
+            setLineEditText(dialog, UiIds::Control::PhoneOutsideLinePrefix, QStringLiteral("8"));
+            setLineEditText(dialog, UiIds::Control::PhoneLongDistancePrefix, QStringLiteral("1"));
+            setLineEditText(dialog, UiIds::Control::PhoneLocalAreaCode, QStringLiteral("212"));
+
+            handleNextLegacyDialog(QStringLiteral("QUICKDIAL"), [](QDialog* quickDialog) {
+                setLineEditText(quickDialog, UiIds::Control::QuickDialDescription, QStringLiteral("Office"));
+                setLineEditText(quickDialog, UiIds::Control::QuickDialNumber, QStringLiteral("555-3434"));
+                quickDialog->accept();
+                return true;
+            });
+            if (auto* add = qobject_cast<QAbstractButton*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::PhoneQuickDialAdd))) {
+                add->click();
+            }
+            QTimer::singleShot(60, dialog, &QDialog::accept);
+            return true;
+        });
+        phoneConfigAction->trigger();
+        QCoreApplication::processEvents();
+
+        bool verified = false;
+        handleNextLegacyDialog(QStringLiteral("PHNDEF"), [&verified](QDialog* dialog) {
+            const auto* outside = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneOutsideLine));
+            const auto* longDistance = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneLongDistance));
+            const auto* logCall = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneLogCall));
+            const auto* quickDials = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneQuickDials));
+            const auto editText = [dialog](int controlId) {
+                const auto* edit = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, controlId));
+                return edit == nullptr ? QString() : edit->text();
+            };
+
+            verified = outside != nullptr && outside->isChecked()
+                && longDistance != nullptr && longDistance->isChecked()
+                && logCall != nullptr && logCall->isChecked()
+                && editText(UiIds::Control::PhoneOutsideLinePrefix) == QStringLiteral("8")
+                && editText(UiIds::Control::PhoneLongDistancePrefix) == QStringLiteral("1")
+                && editText(UiIds::Control::PhoneLocalAreaCode) == QStringLiteral("212");
+
+            bool sawQuickDial = false;
+            if (quickDials != nullptr) {
+                for (int row = 0; row < quickDials->count(); ++row) {
+                    const QString text = quickDials->item(row)->text();
+                    if (text.contains(QStringLiteral("Office")) && text.contains(QStringLiteral("555-3434"))) {
+                        sawQuickDial = true;
+                        break;
+                    }
+                }
+            }
+            verified = verified && sawQuickDial;
+            dialog->accept();
+            return true;
+        });
+        phoneConfigAction->trigger();
+        QTRY_VERIFY(verified);
     }
 };
 

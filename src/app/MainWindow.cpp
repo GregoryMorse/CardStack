@@ -1083,7 +1083,7 @@ void MainWindow::rebuildMenus(int menuId)
         action->setEnabled(true);
         if (action->data().toInt() == Command::ConfigureShowButtonBar) {
             action->setCheckable(true);
-            action->setChecked(m_buttonBar == nullptr || m_buttonBar->isVisible());
+            action->setChecked(m_buttonBar == nullptr || !m_buttonBar->isHidden());
         }
         connect(action, &QAction::triggered, this, &MainWindow::handleUiAction);
     });
@@ -1271,6 +1271,7 @@ void MainWindow::createToolBar()
     m_buttonBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_buttonBar->setIconSize(QSize(MainToolbarIconSizePx, MainToolbarIconSizePx));
     configureToolBarForMenu(Menu::Startup);
+    updateCommandState();
 }
 
 void MainWindow::createIndexBar()
@@ -4190,7 +4191,7 @@ void MainWindow::updateCommandState()
 
     if (QAction* action = findUiAction(Command::ConfigureShowButtonBar)) {
         action->setCheckable(true);
-        action->setChecked(m_buttonBar != nullptr && m_buttonBar->isVisible());
+        action->setChecked(m_buttonBar != nullptr && !m_buttonBar->isHidden());
     }
     if (QAction* action = findUiAction(Command::ConfigureEnterWorksLikeTab)) {
         action->setCheckable(true);

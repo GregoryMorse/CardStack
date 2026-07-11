@@ -443,6 +443,32 @@ private slots:
         QVERIFY(phoneDialerAction->isEnabled());
     }
 
+    void initializesShowButtonBarMenuStateAndTracksToolbar()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        auto* showButtonBarAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigureShowButtonBar);
+        auto* toolBar = window.findChild<QToolBar*>(QStringLiteral("buttonBar"));
+        QVERIFY(showButtonBarAction != nullptr);
+        QVERIFY(toolBar != nullptr);
+
+        QVERIFY(showButtonBarAction->isCheckable());
+        QVERIFY(showButtonBarAction->isChecked());
+        QVERIFY(toolBar->isVisible());
+
+        showButtonBarAction->trigger();
+        QCoreApplication::processEvents();
+        QVERIFY(!showButtonBarAction->isChecked());
+        QVERIFY(!toolBar->isVisible());
+
+        showButtonBarAction->trigger();
+        QCoreApplication::processEvents();
+        QVERIFY(showButtonBarAction->isChecked());
+        QVERIFY(toolBar->isVisible());
+    }
+
     void exposesStartupToolbarCommands()
     {
         MainWindow window(nullptr, false);

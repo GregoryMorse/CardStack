@@ -1658,6 +1658,34 @@ void initializePhoneDefinitionDialog(QDialog* dialog)
     dialog->setMinimumSize(dialog->size());
 }
 
+void initializeReportFormDialog(QDialog* dialog)
+{
+    createExclusiveButtonGroup(
+        dialog,
+        {Control::ReportFormCard, Control::ReportFormLabel, Control::ReportFormReport},
+        Control::ReportFormReport);
+}
+
+void initializeDefineFormDialog(QDialog* dialog)
+{
+    createExclusiveButtonGroup(
+        dialog,
+        {Control::DefineFormCard, Control::DefineFormLabel, Control::DefineFormReport},
+        Control::DefineFormReport);
+    createExclusiveButtonGroup(
+        dialog,
+        {Control::DefineFormPortrait, Control::DefineFormLandscape},
+        Control::DefineFormPortrait);
+}
+
+void initializeTextFrameDialog(QDialog* dialog)
+{
+    createExclusiveButtonGroup(
+        dialog,
+        {Control::FrameAlignmentLeft, Control::FrameAlignmentCenter, Control::FrameAlignmentRight},
+        Control::FrameAlignmentLeft);
+}
+
 void initializeUiDialog(
     QDialog* dialog,
     const QString& dialogName,
@@ -1697,6 +1725,12 @@ void initializeUiDialog(
         initializePhoneDialog(dialog);
     } else if (dialogName == QStringLiteral("PHNDEF")) {
         initializePhoneDefinitionDialog(dialog);
+    } else if (dialogName == QStringLiteral("REPORTFORM")) {
+        initializeReportFormDialog(dialog);
+    } else if (dialogName == QStringLiteral("DEFINEFORM")) {
+        initializeDefineFormDialog(dialog);
+    } else if (dialogName == QStringLiteral("TEXTFRAME") || dialogName == QStringLiteral("TPLTEXTFRAME")) {
+        initializeTextFrameDialog(dialog);
     }
 }
 
