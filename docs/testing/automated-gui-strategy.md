@@ -51,6 +51,7 @@ These checks should be covered by Qt Test or small helper tools before the final
 - Deck workflow smoke tests: create, open, save, import, export, field edit, card edit, search, sort, merge, and security prompts run without relying on mouse focus.
 - Template designer tests: add text/data/notes/line/box frames, edit geometry/style, save template, reload template, and apply template to a deck.
 - Report designer tests: add/edit text/data/system/line frames, save report, reload report, preview pages, and invoke print-preview routing without requiring a real printer.
+- Report preview image gallery: set `CARDSTACK_REPORT_PREVIEW_IMAGE_DIR` while running `ReportPreviewRendererTests` to write a PNG gallery of the line/fill style matrix and built-in report presets for manual visual inspection.
 - Legacy importer tests: golden `.BTN`, report, template, text, cardfile, and WordPerfect fixtures import into deterministic core models.
 - Packaging smoke tests: a deployed Windows bundle starts, finds Qt plugins, loads icons, and reports useful diagnostics when optional translations are absent.
 

@@ -1,6 +1,7 @@
-﻿#include "ReportPreviewRenderer.h"
+#include "ReportPreviewRenderer.h"
 
 #include <QAbstractButton>
+#include <QDir>
 #include <QFileInfo>
 #include <QImage>
 #include <QLabel>
@@ -9,6 +10,7 @@
 #include <QTest>
 #include <QTemporaryDir>
 
+#include "DeckTemplate.h"
 #include "LegacyReportReader.h"
 #include "UiIds.h"
 #include "UiBuilder.h"
@@ -18,6 +20,10 @@
 using namespace CardStack;
 
 namespace {
+
+constexpr int ManualPreviewImageLimit = 40;
+constexpr int ManualPreviewImageWidth = 960;
+constexpr int ManualPreviewImageHeight = 720;
 
 ReportDefinition makeReport()
 {
@@ -42,6 +48,58 @@ ReportDefinition makeReport()
     return report;
 }
 
+ReportDefinition makeStyleMatrixReport()
+{
+    ReportDefinition report;
+    report.name = QStringLiteral("Style Matrix");
+    report.formWidth = 12000;
+    report.formHeight = 9000;
+    report.textFont.faceName = QStringLiteral("Arial");
+
+    for (int lineStyle = 0; lineStyle < ReportLineStyleCount; ++lineStyle) {
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::LineOrBox;
+        frame.lineBoxShape = ReportLineShapeBox;
+        frame.lineStyle = lineStyle;
+        frame.fillPattern = ReportFillPatternClear;
+        frame.bounds = QRect(200 + lineStyle * 850, 200, 650, 420);
+        report.frames.append(frame);
+    }
+
+    for (int fillPattern = 0; fillPattern < ReportFillPatternCount; ++fillPattern) {
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::LineOrBox;
+        frame.lineBoxShape = ReportLineShapeBox;
+        frame.lineStyle = ReportLineStyleSolid;
+        frame.fillPattern = fillPattern;
+        frame.bounds = QRect(200 + (fillPattern % 13) * 850, 900 + (fillPattern / 13) * 620, 650, 420);
+        report.frames.append(frame);
+    }
+
+    ReportFrameDefinition horizontal;
+    horizontal.kind = ReportFrameKind::LineOrBox;
+    horizontal.lineBoxShape = ReportLineShapeHorizontal;
+    horizontal.lineStyle = ReportLineStyleDashDot;
+    horizontal.bounds = QRect(200, 2300, 2500, 120);
+    report.frames.append(horizontal);
+
+    ReportFrameDefinition vertical;
+    vertical.kind = ReportFrameKind::LineOrBox;
+    vertical.lineBoxShape = ReportLineShapeVertical;
+    vertical.lineStyle = ReportLineStyleDashDotDot;
+    vertical.bounds = QRect(3000, 2200, 120, 1100);
+    report.frames.append(vertical);
+
+    ReportFrameDefinition legacyAutoLine;
+    legacyAutoLine.kind = ReportFrameKind::LineOrBox;
+    legacyAutoLine.lineBoxShape = ReportLineShapeLegacyAuto;
+    legacyAutoLine.lineStyle = ReportLineStyleThickDash;
+    legacyAutoLine.bounds = QRect(3400, 2300, 2500, 120);
+    report.frames.append(legacyAutoLine);
+
+    return report;
+}
+
 ReportDefinition makeCardGridReport()
 {
     ReportDefinition report = makeReport();
@@ -61,6 +119,52 @@ bool hasInk(const QImage& image)
         }
     }
     return false;
+}QString safeFileStem(QString text)
+{
+    text = text.trimmed();
+    QString result;
+    result.reserve(text.size());
+    for (const QChar character : text) {
+        result.append(character.isLetterOrNumber() ? character.toLower() : QLatin1Char('_'));
+    }
+    while (result.contains(QStringLiteral("__"))) {
+        result.replace(QStringLiteral("__"), QStringLiteral("_"));
+    }
+    while (result.startsWith(QLatin1Char('_'))) {
+        result.remove(0, 1);
+    }
+    while (result.endsWith(QLatin1Char('_'))) {
+        result.chop(1);
+    }
+    return result.isEmpty() ? QStringLiteral("preview") : result;
+}
+
+ReportPreviewData previewDataForTemplate(const DeckTemplate& deckTemplate, int sampleIndex)
+{
+    ReportPreviewData data;
+    for (const FieldDefinition& field : deckTemplate.fields) {
+        data.fieldValues.insert(
+            field.name(),
+            QStringLiteral("%1 sample %2").arg(field.name()).arg(sampleIndex));
+    }
+    data.systemValues.insert(QStringLiteral("page"), QString::number(sampleIndex));
+    return data;
+}
+
+bool writePreviewImage(const ReportDefinition& report, const ReportPreviewData& data, const QString& filePath)
+{
+    QImage image(ManualPreviewImageWidth, ManualPreviewImageHeight, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+
+    QPainter painter(&image);
+    ReportPreviewRenderer::render(
+        &painter,
+        report,
+        QRectF(20, 20, image.width() - 40, image.height() - 40),
+        data);
+    painter.end();
+
+    return hasInk(image) && image.save(filePath);
 }
 
 } // namespace
@@ -192,52 +296,7 @@ private slots:
 
     void rendersEveryLineAndFillStyle()
     {
-        ReportDefinition report;
-        report.name = QStringLiteral("Style Matrix");
-        report.formWidth = 12000;
-        report.formHeight = 9000;
-        report.textFont.faceName = QStringLiteral("Arial");
-
-        for (int lineStyle = 0; lineStyle < ReportLineStyleCount; ++lineStyle) {
-            ReportFrameDefinition frame;
-            frame.kind = ReportFrameKind::LineOrBox;
-            frame.lineBoxShape = ReportLineShapeBox;
-            frame.lineStyle = lineStyle;
-            frame.fillPattern = ReportFillPatternClear;
-            frame.bounds = QRect(200 + lineStyle * 850, 200, 650, 420);
-            report.frames.append(frame);
-        }
-
-        for (int fillPattern = 0; fillPattern < ReportFillPatternCount; ++fillPattern) {
-            ReportFrameDefinition frame;
-            frame.kind = ReportFrameKind::LineOrBox;
-            frame.lineBoxShape = ReportLineShapeBox;
-            frame.lineStyle = ReportLineStyleSolid;
-            frame.fillPattern = fillPattern;
-            frame.bounds = QRect(200 + (fillPattern % 13) * 850, 900 + (fillPattern / 13) * 620, 650, 420);
-            report.frames.append(frame);
-        }
-
-        ReportFrameDefinition horizontal;
-        horizontal.kind = ReportFrameKind::LineOrBox;
-        horizontal.lineBoxShape = ReportLineShapeHorizontal;
-        horizontal.lineStyle = ReportLineStyleDashDot;
-        horizontal.bounds = QRect(200, 2300, 2500, 120);
-        report.frames.append(horizontal);
-
-        ReportFrameDefinition vertical;
-        vertical.kind = ReportFrameKind::LineOrBox;
-        vertical.lineBoxShape = ReportLineShapeVertical;
-        vertical.lineStyle = ReportLineStyleDashDotDot;
-        vertical.bounds = QRect(3000, 2200, 120, 1100);
-        report.frames.append(vertical);
-
-        ReportFrameDefinition legacyAutoLine;
-        legacyAutoLine.kind = ReportFrameKind::LineOrBox;
-        legacyAutoLine.lineBoxShape = ReportLineShapeLegacyAuto;
-        legacyAutoLine.lineStyle = ReportLineStyleThickDash;
-        legacyAutoLine.bounds = QRect(3400, 2300, 2500, 120);
-        report.frames.append(legacyAutoLine);
+        const ReportDefinition report = makeStyleMatrixReport();
 
         QImage image(960, 720, QImage::Format_ARGB32_Premultiplied);
         image.fill(Qt::white);
@@ -247,6 +306,48 @@ private slots:
         painter.end();
 
         QVERIFY(hasInk(image));
+    }
+
+    void writesManualInspectionPreviewImagesWhenConfigured()
+    {
+        const QString outputPath = qEnvironmentVariable("CARDSTACK_REPORT_PREVIEW_IMAGE_DIR");
+        if (outputPath.isEmpty()) {
+            QSKIP("Set CARDSTACK_REPORT_PREVIEW_IMAGE_DIR to write report-preview PNGs for manual inspection.");
+        }
+
+        QDir outputDirectory(outputPath);
+        QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+
+        int written = 0;
+        ReportPreviewData styleData;
+        styleData.systemValues.insert(QStringLiteral("page"), QStringLiteral("1"));
+        QVERIFY(writePreviewImage(
+            makeStyleMatrixReport(),
+            styleData,
+            outputDirectory.filePath(QStringLiteral("%1_style_matrix.png").arg(written, 2, 10, QLatin1Char('0')))));
+        ++written;
+
+        for (const DeckTemplate& deckTemplate : builtInDeckTemplates()) {
+            ReportPreviewData data = previewDataForTemplate(deckTemplate, written + 1);
+            for (const ReportDefinition& report : deckTemplate.reports) {
+                if (written >= ManualPreviewImageLimit) {
+                    qInfo("Wrote %d manual report preview images to %s", written, qPrintable(outputDirectory.absolutePath()));
+                    return;
+                }
+
+                data.systemValues.insert(QStringLiteral("reportname"), report.name);
+                const QString fileName = QStringLiteral("%1_%2_%3.png")
+                                             .arg(written, 2, 10, QLatin1Char('0'))
+                                             .arg(safeFileStem(deckTemplate.name), safeFileStem(report.name));
+                QVERIFY2(
+                    writePreviewImage(report, data, outputDirectory.filePath(fileName)),
+                    qPrintable(fileName));
+                ++written;
+            }
+        }
+
+        QVERIFY(written > 1);
+        qInfo("Wrote %d manual report preview images to %s", written, qPrintable(outputDirectory.absolutePath()));
     }
 
     void rendersMultiPageGridReportToPdfFile()
