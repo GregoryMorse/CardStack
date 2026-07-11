@@ -28,19 +28,10 @@ jobs:
         include:
           - name: Windows MSVC
             os: windows-latest
-            configure: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DQt6_DIR="${{ env.Qt6_DIR }}" -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
-            build: cmake --build build --config Release --target CardStack CardStackTests
-            test: ctest --test-dir build -C Release --output-on-failure
           - name: Ubuntu GCC
             os: ubuntu-latest
-            configure: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="${{ env.Qt6_DIR }}" -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
-            build: cmake --build build --target CardStack CardStackTests
-            test: ctest --test-dir build --output-on-failure
           - name: macOS Clang
             os: macos-latest
-            configure: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="${{ env.Qt6_DIR }}" -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
-            build: cmake --build build --target CardStack CardStackTests
-            test: ctest --test-dir build --output-on-failure
 
     steps:
       - name: Check out source
@@ -64,13 +55,40 @@ jobs:
           version: ${{ env.QT_VERSION }}
           cache: true
 
-      - name: Configure
-        run: ${{ matrix.configure }}
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >
+          cmake -S . -B build
+          -G "Visual Studio 17 2022" -A x64
+          -DQt6_DIR="$env:Qt6_DIR"
+          -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
 
-      - name: Build
-        run: ${{ matrix.build }}
+      - name: Configure Unix
+        if: runner.os != 'Windows'
+        run: >
+          cmake -S . -B build
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DQt6_DIR="$Qt6_DIR"
+          -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
 
-      - name: Test
-        run: ${{ matrix.test }}
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: cmake --build build --config Release --target CardStack CardStackTests
+
+      - name: Build Unix
+        if: runner.os != 'Windows'
+        run: cmake --build build --target CardStack CardStackTests
+
+      - name: Test Windows
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build -C Release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Test Unix
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen

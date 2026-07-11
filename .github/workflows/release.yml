@@ -51,10 +51,11 @@ jobs:
 
       - name: Configure Windows
         if: runner.os == 'Windows'
+        shell: pwsh
         run: >
           cmake -S . -B build
           -G "Visual Studio 17 2022" -A x64
-          -DQt6_DIR="${{ env.Qt6_DIR }}"
+          -DQt6_DIR="$env:Qt6_DIR"
           -DCMAKE_BUILD_TYPE=Release
           -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=ON
           -DCARDSTACK_WINDEPLOYQT_MODE=release
@@ -66,7 +67,7 @@ jobs:
           cmake -S . -B build
           -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DQt6_DIR="${{ env.Qt6_DIR }}"
+          -DQt6_DIR="$Qt6_DIR"
           -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
           -DCARDSTACK_DEPLOY_QT_TRANSLATIONS=OFF
 
