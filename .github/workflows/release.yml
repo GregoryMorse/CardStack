@@ -145,7 +145,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CardStack-${{ matrix.name }}
-          path: artifacts/CardStack-*
+          path: artifacts/*.zip
           if-no-files-found: error
 
   publish:
