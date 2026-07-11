@@ -131,6 +131,10 @@ jobs:
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
           export QMAKE="$(command -v qmake6 || command -v qmake)"
+          qt_plugin_dir="$("$QMAKE" -query QT_INSTALL_PLUGINS)"
+          if [ -d "$qt_plugin_dir/sqldrivers" ]; then
+            find "$qt_plugin_dir/sqldrivers" -type f ! -name 'libqsqlite.so' -delete
+          fi
           export APPIMAGE_EXTRACT_AND_RUN=1
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage
           mv CardStack-*.AppImage artifacts/CardStack-linux-x64.AppImage
