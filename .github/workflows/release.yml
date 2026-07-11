@@ -21,11 +21,11 @@ jobs:
       matrix:
         include:
           - name: windows-x64
-            os: windows-latest
+            os: windows-2022
           - name: linux-x64
             os: ubuntu-latest
           - name: macos
-            os: macos-latest
+            os: macos-14
 
     steps:
       - name: Check out source

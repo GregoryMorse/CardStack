@@ -82,6 +82,15 @@
 #include <optional>
 #include <utility>
 
+namespace {
+
+void initializeCardStackApplicationResources()
+{
+    Q_INIT_RESOURCE(cardstack_app);
+}
+
+} // namespace
+
 namespace CardStack {
 
 namespace {
@@ -885,7 +894,7 @@ MainWindow::MainWindow(QWidget* parent, bool openInitialSample)
     : QMainWindow(parent)
     , m_mdiArea(new QMdiArea(this))
 {
-    Q_INIT_RESOURCE(cardstack_app);
+    initializeCardStackApplicationResources();
     setWindowTitle(QStringLiteral("CardStack"));
     if (windowIcon().isNull()) {
         setWindowIcon(cardStackIcon());
