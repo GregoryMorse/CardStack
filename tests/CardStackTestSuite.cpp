@@ -70,6 +70,8 @@ bool stringEquals(const char* left, const char* right)
 
 int main(int argc, char** argv)
 {
+    qputenv("QT_LOGGING_RULES", "qt.qpa.*=false");
+
     QString selectedTest;
     QVector<char*> forwardedArgs;
     forwardedArgs.reserve(argc);
