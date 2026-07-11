@@ -156,6 +156,20 @@ void acceptNextPatternDeckDialogWithFile(const QString& filePath)
     QTimer::singleShot(0, qApp, *retry);
 }
 
+void acceptNextPatternAfterDeckFlow(const QString& filePath)
+{
+    handleNextLegacyDialog(QStringLiteral("NEWFILE"), [filePath](QDialog* dialog) {
+        auto* sourceCombo = qobject_cast<QComboBox*>(
+            UiBuilder::controlById(dialog, UiIds::Control::NewFileSourceCombo));
+        if (sourceCombo != nullptr) {
+            sourceCombo->setCurrentIndex(3);
+        }
+        acceptNextPatternDeckDialogWithFile(filePath);
+        dialog->accept();
+        return true;
+    });
+}
+
 void acceptNextSecurityDialog(const QString& dialogName, const QString& password, bool encrypted = false)
 {
     handleNextLegacyDialog(dialogName, [password, encrypted](QDialog* dialog) {
@@ -791,8 +805,7 @@ private slots:
         QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
         QVERIFY(newAction != nullptr);
 
-        acceptNextNewFileDialog(3);
-        acceptNextPatternDeckDialogWithFile(filePath);
+        acceptNextPatternAfterDeckFlow(filePath);
         newAction->trigger();
         QCoreApplication::processEvents();
 
