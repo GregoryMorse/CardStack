@@ -4,7 +4,7 @@
 
 Source: https://github.com/erniehh/BtrieveFileSaver-Code
 
-Included as a Git submodule at commit: `376f78ef34bebf203e3d81a1e404025268cf7067`
+Included as a Git submodule at commit: `a7f42c9f3764beae178c96897a4c97196714b245`
 
 The repository states that it is a clone of the SourceForge Btrieve File Saver project and that the main development was done by dbcoretech.
 
