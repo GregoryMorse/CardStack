@@ -3,6 +3,7 @@
 #include <QString>
 #include <QTest>
 #include <QVector>
+#include <QWidget>
 
 #include <cstdio>
 #include <functional>
@@ -69,6 +70,20 @@ bool stringEquals(const char* left, const char* right)
     return QString::fromLocal8Bit(left) == QString::fromLocal8Bit(right);
 }
 
+void cleanupTopLevelWidgets()
+{
+    const QList<QWidget*> widgets = QApplication::topLevelWidgets();
+    for (QWidget* widget : widgets) {
+        if (widget == nullptr) {
+            continue;
+        }
+        widget->close();
+        widget->deleteLater();
+    }
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -112,8 +127,7 @@ int main(int argc, char** argv)
 
         matchedSelectedTest = true;
         failures += entry.run(forwardedArgc, forwardedArgv);
-        QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        QCoreApplication::processEvents();
+        cleanupTopLevelWidgets();
     }
 
     if (!matchedSelectedTest) {
@@ -122,5 +136,6 @@ int main(int argc, char** argv)
         return 2;
     }
 
+    cleanupTopLevelWidgets();
     return failures == 0 ? 0 : 1;
 }

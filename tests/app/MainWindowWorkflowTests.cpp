@@ -3,6 +3,7 @@
 #include "DeckWorkspace.h"
 #include "FieldDefinition.h"
 #include "MainWindow.h"
+#include "ReportDesignerWidget.h"
 #include "SQLiteDeckStore.h"
 #include "TemplateDesignerWidget.h"
 #include "UiBuilder.h"
@@ -229,12 +230,32 @@ Deck makeSearchWorkflowDeck()
     return deck;
 }
 
+Deck makePhoneWorkflowDeck()
+{
+    Deck deck(QStringLiteral("Phone Workflow Deck"));
+    deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 80));
+    deck.addField(FieldDefinition(QStringLiteral("Phone"), FieldType::Text, 80));
+    deck.addCard(CardRecord({QStringLiteral("Support"), QStringLiteral("555-0100")}));
+    return deck;
+}
+
 QString writeWorkflowDeck(QTemporaryDir* directory)
 {
     const QString filePath = directory->filePath(QStringLiteral("workflow.cardstack"));
     SQLiteDeckStore writer;
     QString error;
     if (!writer.open(filePath, &error) || !writer.saveDeck(makeSearchWorkflowDeck(), &error)) {
+        return {};
+    }
+    return filePath;
+}
+
+QString writePhoneWorkflowDeck(QTemporaryDir* directory)
+{
+    const QString filePath = directory->filePath(QStringLiteral("phone-workflow.cardstack"));
+    SQLiteDeckStore writer;
+    QString error;
+    if (!writer.open(filePath, &error) || !writer.saveDeck(makePhoneWorkflowDeck(), &error)) {
         return {};
     }
     return filePath;
@@ -260,6 +281,14 @@ void setComboText(QDialog* dialog, int controlId, const QString& text)
         return;
     }
     combo->setEditText(text);
+}
+
+void setLineEditText(QDialog* dialog, int controlId, const QString& text)
+{
+    auto* edit = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, controlId));
+    if (edit != nullptr) {
+        edit->setText(text);
+    }
 }
 
 } // namespace
@@ -444,6 +473,133 @@ private slots:
 
         QTRY_COMPARE(workspace->deck().reportCount(), initialReportCount);
         QCOMPARE(workspace->deck().reportAt(0).name, firstReportName);
+    }
+
+    void reportManagerNewModifyAndDesignerToolsSaveReport()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = activeWorkspace(window);
+        QVERIFY(workspace != nullptr);
+        const int initialReportCount = workspace->deck().reportCount();
+
+        handleNextLegacyDialog(QStringLiteral("DESIGNREPORTS"), [](QDialog* dialog) {
+            auto* newReport = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportsNew));
+            if (newReport != nullptr) {
+                newReport->click();
+            } else {
+                dialog->reject();
+            }
+            return true;
+        });
+        QAction* printReportAction = findCommandAction(window.menuBar(), UiIds::Command::FilePrintReport);
+        QVERIFY(printReportAction != nullptr);
+        printReportAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        QCOMPARE(designer->report().name, QStringLiteral("Untitled Report"));
+        const int initialFrameCount = designer->report().frames.size();
+
+        QAction* addText = findCommandAction(window.menuBar(), UiIds::Command::ToolAddText);
+        QAction* addData = findCommandAction(window.menuBar(), UiIds::Command::ToolAddDataBox);
+        QAction* addSystem = findCommandAction(window.menuBar(), UiIds::Command::ToolAddSystemData);
+        QAction* addLine = findCommandAction(window.menuBar(), UiIds::Command::ToolAddLineOrBox);
+        QAction* saveReport = findCommandAction(window.menuBar(), UiIds::Command::FileSaveReport);
+        QVERIFY(addText != nullptr);
+        QVERIFY(addData != nullptr);
+        QVERIFY(addSystem != nullptr);
+        QVERIFY(addLine != nullptr);
+        QVERIFY(saveReport != nullptr);
+
+        handleNextLegacyDialog(QStringLiteral("TEXTFRAME"), [](QDialog* dialog) {
+            setLineEditText(dialog, UiIds::Control::FrameText, QStringLiteral("Beta report title"));
+            dialog->accept();
+            return true;
+        });
+        addText->trigger();
+        QCoreApplication::processEvents();
+
+        handleNextLegacyDialog(QStringLiteral("DATAFRAME"), [](QDialog* dialog) {
+            auto* fieldList = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DataFrameFieldList));
+            if (fieldList != nullptr && fieldList->count() > 0) {
+                fieldList->setCurrentIndex(0);
+            }
+            dialog->accept();
+            return true;
+        });
+        addData->trigger();
+        QCoreApplication::processEvents();
+
+        handleNextLegacyDialog(QStringLiteral("ADDSYSTEMBOX"), [](QDialog* dialog) {
+            dialog->accept();
+            return true;
+        });
+        addSystem->trigger();
+        QCoreApplication::processEvents();
+
+        handleNextLegacyDialog(QStringLiteral("LINEFRAME"), [](QDialog* dialog) {
+            dialog->accept();
+            return true;
+        });
+        addLine->trigger();
+        QCoreApplication::processEvents();
+
+        QCOMPARE(designer->report().frames.size(), initialFrameCount + 4);
+        saveReport->trigger();
+        QCoreApplication::processEvents();
+        QTRY_COMPARE(workspace->deck().reportCount(), initialReportCount + 1);
+        QCOMPARE(workspace->deck().reportAt(initialReportCount).frames.size(), initialFrameCount + 4);
+
+        QPointer<QMdiSubWindow> designerWindow = subWindowForWidget(window, designer);
+        QVERIFY(designerWindow != nullptr);
+        QVERIFY(designerWindow->close());
+        QCoreApplication::processEvents();
+
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(mdiArea != nullptr);
+        if (QMdiSubWindow* workspaceWindow = subWindowForWidget(window, workspace)) {
+            mdiArea->setActiveSubWindow(workspaceWindow);
+        }
+        QCoreApplication::processEvents();
+
+        handleNextLegacyDialog(QStringLiteral("DESIGNREPORTS"), [initialReportCount](QDialog* dialog) {
+            auto* list = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
+            if (list != nullptr) {
+                list->setCurrentRow(initialReportCount);
+            }
+            auto* modify = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportsModify));
+            if (modify != nullptr) {
+                modify->click();
+            } else {
+                dialog->reject();
+            }
+            return true;
+        });
+        printReportAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* modifiedDesigner = window.findChild<ReportDesignerWidget*>();
+        QTRY_VERIFY(modifiedDesigner != nullptr);
+        QCOMPARE(modifiedDesigner->report().frames.size(), initialFrameCount + 4);
+
+        QPointer<QMdiSubWindow> modifiedDesignerWindow = subWindowForWidget(window, modifiedDesigner);
+        QVERIFY(modifiedDesignerWindow != nullptr);
+        QVERIFY(modifiedDesignerWindow->close());
+        QCoreApplication::processEvents();
     }
 
     void addAndRemoveSecurityRequiresCorrectPassword()
@@ -719,6 +875,79 @@ private slots:
         QCoreApplication::processEvents();
 
         QVERIFY(sawQuickDial);
+    }
+
+    void phoneDialerCurrentCardNumbersAndPrefixesReachDialDialog()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString filePath = writePhoneWorkflowDeck(&directory);
+        QVERIFY(!filePath.isEmpty());
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = openWorkflowDeck(&window, filePath);
+        QTRY_VERIFY(workspace != nullptr);
+
+        QAction* phoneConfigAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigurePhoneDialer);
+        QVERIFY(phoneConfigAction != nullptr);
+        handleNextLegacyDialog(QStringLiteral("PHNDEF"), [](QDialog* dialog) {
+            auto* outside = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneOutsideLine));
+            auto* longDistance = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneLongDistance));
+            if (outside != nullptr) {
+                outside->setChecked(true);
+            }
+            if (longDistance != nullptr) {
+                longDistance->setChecked(true);
+            }
+            setLineEditText(dialog, UiIds::Control::PhoneOutsideLinePrefix, QStringLiteral("8"));
+            setLineEditText(dialog, UiIds::Control::PhoneLongDistancePrefix, QStringLiteral("1"));
+            dialog->accept();
+            return true;
+        });
+        phoneConfigAction->trigger();
+        QCoreApplication::processEvents();
+
+        QAction* dialAction = findCommandAction(window.menuBar(), UiIds::Command::PhoneDial);
+        QVERIFY(dialAction != nullptr);
+
+        bool sawCurrentCardNumber = false;
+        bool sawPrefixes = false;
+        handleNextLegacyDialog(QStringLiteral("CALL"), [&sawCurrentCardNumber, &sawPrefixes](QDialog* dialog) {
+            auto* cardNumbers = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneCardNumbers));
+            auto* number = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneNumber));
+            auto* outside = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneOutsideLine));
+            auto* longDistance = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::PhoneLongDistance));
+            sawPrefixes = outside != nullptr && outside->isChecked()
+                && longDistance != nullptr && longDistance->isChecked();
+            if (cardNumbers != nullptr) {
+                for (int row = 0; row < cardNumbers->count(); ++row) {
+                    if (cardNumbers->item(row)->text().contains(QStringLiteral("555-0100"))) {
+                        cardNumbers->setCurrentRow(row);
+                        sawCurrentCardNumber = true;
+                        break;
+                    }
+                }
+            }
+            if (number != nullptr) {
+                sawCurrentCardNumber = sawCurrentCardNumber && number->text() == QStringLiteral("555-0100");
+            }
+            dialog->reject();
+            return true;
+        });
+        dialAction->trigger();
+        QCoreApplication::processEvents();
+
+        QVERIFY(sawCurrentCardNumber);
+        QVERIFY(sawPrefixes);
     }
 };
 

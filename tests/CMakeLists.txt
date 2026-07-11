@@ -53,10 +53,35 @@ set_target_properties(CardStackTests PROPERTIES
     WIN32_EXECUTABLE OFF
 )
 
-add_test(NAME CardStackTests COMMAND CardStackTests)
-set_tests_properties(CardStackTests PROPERTIES
-    ENVIRONMENT
-        "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins"
-    ENVIRONMENT_MODIFICATION
-        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;CARDSTACK_WINEVDM_GOLDEN_DIR=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR};CARDSTACK_LEGACY_DECK_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/plain.BTN;CARDSTACK_LEGACY_REPORT_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/reports.RPT"
+set(CARDSTACK_TEST_SUITE_NAMES
+    MainWindowActionTests
+    MainWindowWorkflowTests
+    DeckMergeTests
+    DelimitedTextTests
+    DeckTemplateTests
+    LegacyDeckReaderTests
+    LegacyInterchangeReaderTests
+    LegacyReportReaderTests
+    BtrieveAuditReaderTests
+    SQLiteDeckStoreTests
+    SQLitePackageStoreTests
+    PhoneticSearchTests
+    DeckWorkspaceTests
+    ReportPreviewRendererTests
+    UiBuilderTests
+    ReportDesignerWidgetTests
+    TemplateDesignerWidgetTests
 )
+
+foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
+    add_test(
+        NAME ${cardstack_test_suite}
+        COMMAND CardStackTests --test ${cardstack_test_suite} -o ${cardstack_test_suite}.txt,txt
+    )
+    set_tests_properties(${cardstack_test_suite} PROPERTIES
+        ENVIRONMENT
+            "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;CARDSTACK_WINEVDM_GOLDEN_DIR=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR};CARDSTACK_LEGACY_DECK_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/plain.BTN;CARDSTACK_LEGACY_REPORT_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/reports.RPT"
+    )
+endforeach()
