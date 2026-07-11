@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "legacyExecutable": "",
+  "legacyDirectory": "",
+  "notes": [
+    "Optional local-only helper for the WineVDM oracle scripts.",
+    "Set legacyExecutable to the full path of the legacy Win16 executable, or set legacyDirectory to a directory containing it.",
+    "Prefer CARDSTACK_LEGACY_EXE or CARDSTACK_LEGACY_DIR for automation."
+  ]
+}

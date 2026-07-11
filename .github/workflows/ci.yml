@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: 6.8.3
+
+jobs:
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows MSVC
+            os: windows-latest
+            configure: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DQt6_DIR="${{ env.Qt6_DIR }}" -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
+            build: cmake --build build --config Release --target CardStack CardStackTests
+            test: ctest --test-dir build -C Release --output-on-failure
+          - name: Ubuntu GCC
+            os: ubuntu-latest
+            configure: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="${{ env.Qt6_DIR }}" -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
+            build: cmake --build build --target CardStack CardStackTests
+            test: ctest --test-dir build --output-on-failure
+          - name: macOS Clang
+            os: macos-latest
+            configure: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="${{ env.Qt6_DIR }}" -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
+            build: cmake --build build --target CardStack CardStackTests
+            test: ctest --test-dir build --output-on-failure
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
+
+      - name: Install Ninja
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+
+      - name: Configure
+        run: ${{ matrix.configure }}
+
+      - name: Build
+        run: ${{ matrix.build }}
+
+      - name: Test
+        run: ${{ matrix.test }}
+        env:
+          QT_QPA_PLATFORM: offscreen

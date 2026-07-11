@@ -1,0 +1,184 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CardStack Help</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d252c;
+      --muted: #536370;
+      --heading: #12384d;
+      --rule: #d7e8ef;
+      --panel: #f5fbfd;
+      --accent: #4f9ab8;
+      --code: #edf4f6;
+    }
+    body {
+      color: var(--ink);
+      font: 15px/1.58 "Segoe UI", "Helvetica Neue", sans-serif;
+      margin: 28px;
+      max-width: 920px;
+    }
+    h1, h2, h3 {
+      color: var(--heading);
+      line-height: 1.2;
+    }
+    h1 {
+      border-bottom: 3px solid var(--rule);
+      padding-bottom: 10px;
+    }
+    h2 {
+      margin-top: 30px;
+    }
+    h3 {
+      margin-top: 20px;
+    }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    ul {
+      padding-left: 22px;
+    }
+    .note {
+      background: var(--panel);
+      border-left: 4px solid var(--accent);
+      padding: 10px 14px;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    }
+    .card {
+      background: #fbfdfe;
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <h1>CardStack Help</h1>
+  <p class="note">CardStack is an open-source card database for modern desktops. It is designed for small structured databases: contacts, inventories, research notes, recipes, collections, report lists, and other information that benefits from both a table view and a comfortable card view.</p>
+
+  <h2>Quick start</h2>
+  <ol>
+    <li>Choose <strong>File &gt; New</strong>.</li>
+    <li>Select a built-in template, design a new template, or pattern a deck after an existing deck.</li>
+    <li>Add cards with <strong>Card &gt; Add</strong> or the toolbar.</li>
+    <li>Use <strong>View &gt; Card</strong> for focused editing and <strong>View &gt; Table</strong> for list editing.</li>
+    <li>Save with <strong>File &gt; Save As</strong>. CardStack stores modern decks as SQLite-backed package files.</li>
+  </ol>
+
+  <h2>Decks, cards, and data boxes</h2>
+  <p>A deck is a database. A card is one record in that database. A data box is a field, such as Name, Phone, Category, Serial Number, or Notes.</p>
+  <div class="grid">
+    <div class="card"><strong>Card view</strong><br>Shows one card at a time with a styled editor. Use it for comfortable data entry and notes-heavy records.</div>
+    <div class="card"><strong>Table view</strong><br>Shows records in rows and fields in columns. Use it for scanning, sorting, bulk editing, and selection.</div>
+    <div class="card"><strong>Dirty state</strong><br>Unsaved decks show a modified marker in the window title and prompt before closing.</div>
+  </div>
+
+  <h2>Creating decks</h2>
+  <p><strong>File &gt; New</strong> offers four creation routes:</p>
+  <ul>
+    <li><strong>New deck from template</strong> creates a ready-to-use deck from the selected built-in template.</li>
+    <li><strong>Design deck from scratch</strong> creates a minimal deck and opens the visual template designer.</li>
+    <li><strong>Design deck patterned after template</strong> starts from a built-in template and opens the designer immediately.</li>
+    <li><strong>Design deck patterned after deck</strong> clones the active deck schema/layout so you can design a related deck.</li>
+  </ul>
+
+  <h2>Redefining fields and designing templates</h2>
+  <p><strong>File &gt; Redefine</strong> changes the deck schema: field names, field order, field type, field length, and how existing card data maps into the new schema. This is the right command when you need to add, remove, reorder, or rename data boxes.</p>
+  <p>The template designer controls the visual card layout. It can add and edit text labels, data boxes, notes boxes, lines, and boxes. Saving the designer applies the layout to the owning deck. Template packages can be exported for sharing without sending a full deck.</p>
+
+  <h2>Editing cards</h2>
+  <ul>
+    <li><strong>Card &gt; Add</strong> appends a new blank card.</li>
+    <li><strong>Card &gt; Duplicate</strong> copies the current card.</li>
+    <li><strong>Card &gt; Delete</strong> removes the current card and makes it available to undelete.</li>
+    <li><strong>Edit &gt; Undo</strong> restores the previous deck edit when available.</li>
+    <li><strong>Edit &gt; Smart Paste</strong> can paste tabular clipboard text into consecutive fields/cards.</li>
+  </ul>
+
+  <h2>Searching, replacing, and indexing</h2>
+  <p><strong>Search &gt; Find</strong> supports field scope, whole-word matching, case sensitivity, phonetic matching, and combined criteria. <strong>Search &gt; Replace</strong> uses the same match controls and can replace the current match or all matches.</p>
+  <p><strong>Configure &gt; Change Deck Index</strong> chooses up to three sort/index levels. Each level can sort ascending or descending. Sorting is a deck edit and can be saved with the deck.</p>
+
+  <h2>Import, export, and merge</h2>
+  <p><strong>File &gt; Open</strong> opens modern CardStack packages and imports supported legacy/interchange files. Password-protected legacy data prompts for a password when required.</p>
+  <ul>
+    <li><strong>Merge</strong> imports cards from another deck into the active deck using field mappings.</li>
+    <li><strong>Export</strong> writes selected fields/cards to modern interchange formats such as CSV or tab-separated text.</li>
+    <li><strong>Template packages</strong> share layout/schema designs.</li>
+    <li><strong>Report packages</strong> share report definitions independently of a deck.</li>
+  </ul>
+
+  <h2>Reports and printing</h2>
+  <p>Reports are visual print designs stored with a deck or shared as report packages. Use <strong>File &gt; New Report</strong> or the report manager to create and modify reports.</p>
+  <ul>
+    <li>Add text frames, data frames, system boxes, lines, and boxes.</li>
+    <li>Use form settings to configure card, label, report, or custom page layouts. New page reports default to half-inch margins; imported legacy reports keep their stored margins exactly.</li>
+    <li>Use preview before printing to inspect pagination and rendering.</li>
+    <li>Save report designs back into the deck or export them as reusable report packages.</li>
+  </ul>
+
+  <h2>Dialog reference</h2>
+  <h3>Find</h3>
+  <p>The Find dialog searches without changing card data. Choose the text to search for, optionally limit the search to one data box, select the match type, and use whole-word, case-sensitive, or sounds-like matching when needed. A second criterion can be combined with And or Or.</p>
+
+  <h3>Replace</h3>
+  <p>Replace uses the same matching controls as Find, then updates either the current match or every match in the deck. Replacement text is still constrained by the destination data box length.</p>
+
+  <h3>Change Deck Index</h3>
+  <p>Change Deck Index sorts the deck by up to three data boxes. Each level can be reversed for descending order. The selected index is saved with the deck.</p>
+
+  <h3>Merge Mapping</h3>
+  <p>Merge copies cards from another deck into the active deck. Map each source data box to a destination data box; unmapped destination boxes remain empty on merged cards.</p>
+
+  <h3>Export</h3>
+  <p>Export writes cards and selected fields to an interchange file such as CSV or tab-separated text. Use the field lists to choose export order and scope.</p>
+
+  <h3>Print</h3>
+  <p>The Print dialog selects the report design and card scope. Print Preview uses the same renderer as printing so page breaks, margins, and frame placement can be reviewed before sending output to a printer.</p>
+
+  <h3>Available Reports and Save Report Design</h3>
+  <p>Available Reports manages report designs stored in the active deck. Save Report Design names the current report and can replace an existing design or save a new one.</p>
+
+  <h3>Report Form and Define Custom Form</h3>
+  <p>Report Form chooses between card, label, page report, and custom form types. Define Custom Form edits page size, orientation, rows, columns, margins, and gutters. Page-report defaults use half-inch margins; card and label forms default to zero internal margins because their form size is already the printable cell.</p>
+
+  <h3>Add System Box</h3>
+  <p>System boxes insert generated values such as dates, page numbers, deck names, report names, or card counts. Alignment and text style options affect the generated text frame.</p>
+
+  <h3>Colors</h3>
+  <p>The Colors dialog changes deck color roles. On Windows, system palette mode follows desktop control colors; other platforms use the normal Qt palette.</p>
+
+  <h3>Security prompts</h3>
+  <p>Legacy password prompts use the old import-compatible eight-character uppercase rules only when reading protected legacy files. Modern deck security is separate and can use stronger rules.</p>
+
+  <h3>User name</h3>
+  <p>User name prompts collect display metadata for workflows that need an operator or author name.</p>
+
+  <h2>Security and passwords</h2>
+  <p>Legacy password handling is used only for importing protected legacy decks. Modern CardStack security is separate from those legacy limits and should use contemporary password expectations. Add or remove modern deck security from the Configure menu.</p>
+
+  <h2>Phone dialing</h2>
+  <p><strong>Phone &gt; Dial</strong> copies the chosen number and asks the operating system to open a <code>tel:</code> link. This works with whatever phone/calling application is registered on the platform.</p>
+
+  <h2>Window management</h2>
+  <p>CardStack uses an MDI workspace. Use the Window menu to cascade, tile, arrange, activate, or close deck/report/template windows.</p>
+
+  <h2>Keyboard and toolbar use</h2>
+  <p>Menus expose keyboard accelerators where available. The toolbar mirrors common actions such as new/open/save, print, find/replace, card operations, navigation, and designer frame tools. Toolbar actions enable or disable according to the active window.</p>
+
+  <h2>Manual visual review</h2>
+  <p class="small">Automated tests cover command routing, decoded dialogs, help buttons, core deck editing, import/export persistence, and designer APIs. Visual fidelity for report rendering, print preview, and detailed layout spacing should still be reviewed manually before release.</p>
+</body>
+</html>

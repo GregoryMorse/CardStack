@@ -1,0 +1,67 @@
+# Local build trees and generated binaries
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CardStackDeploy/
+
+# Local dependency/source-build caches
+.deps/
+
+# IDE and editor state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+CMakeUserPresets.json
+
+# Generated CMake/Ninja/MSBuild byproducts
+*.ninja
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.app
+*.dSYM/
+
+# Runtime data and local databases
+*.db
+*.sqlite
+*.sqlite3
+*.cardstack-journal
+*.csdeck-journal
+
+# Python/Node/tool caches
+__pycache__/
+*.py[cod]
+node_modules/
+
+# Local agent/tooling state
+.agents/
+.tools/
+
+# Reverse-engineering and audit workbench material
+docs/audit/
+GhidraDB/
+
+# Root scratch files from local diagnostics/test runs
+*-test-output.txt
+legacy_interchange_failure*.txt
+$zip
+$root/
+export-wordperfect-deck/
+
+# OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store

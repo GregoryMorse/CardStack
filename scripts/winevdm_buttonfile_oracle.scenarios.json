@@ -1,0 +1,1202 @@
+﻿{
+    "version":  1,
+    "notes":  [
+                  "These scenarios drive the legacy Win16 card database app through WineVDM.",
+                  "Run smoke-launch first. If dialog focus differs on a machine, tune only this JSON file.",
+                  "The runner supports command, waitWindow, setText, click, sendKeys, sleep, snapshot, assertAnyFile, and closeApp actions."
+              ],
+    "startup":  [
+                    {
+                        "action":  "waitWindow",
+                        "titleLike":  "Evaluation Copy",
+                        "timeoutMs":  20000,
+                        "optional":  true
+                    },
+                    {
+                        "action":  "click",
+                        "controlId":  1,
+                        "comment":  "Dismiss the legacy evaluation-copy modal.",
+                        "allowLegacyError":  true,
+                        "optional":  true
+                    },
+                    {
+                        "action":  "acceptLegacyDialogs",
+                        "messageLike":  "File not found",
+                        "buttonId":  1,
+                        "repeat":  12,
+                        "allowLegacyError":  true
+                    },
+                    {
+                        "action":  "waitWindow",
+                        "titleLike":  "buttonFile",
+                        "excludeTitleLike":  "Evaluation Copy",
+                        "timeoutMs":  20000
+                    }
+                ],
+    "fixtures":  [
+                     {
+                         "name":  "smoke-launch",
+                         "description":  "Launches the legacy app and captures an empty oracle workspace snapshot.",
+                         "enabled":  true,
+                         "steps":  [
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  1000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "smoke-launch"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "plain-minimal-deck",
+                         "description":  "Creates a default new deck and saves it as a plain legacy .BTN fixture.",
+                         "enabled":  true,
+                         "outputStem":  "plain",
+                         "steps":  [
+                                       {
+                                           "action":  "copyRuntimeFile",
+                                           "source":  "SOFTWARE.BTN",
+                                           "destination":  "{fixtureFile}",
+                                           "comment":  "Promote the bundled legacy sample deck as the simplest plain golden fixture while common-dialog Save As automation is calibrated."
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "plain-minimal-deck"
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "plain_minimal.BTN",
+                                                            "plain_minimal.btn",
+                                                            "PLAIN.BTN",
+                                                            "plain.btn"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "calibrate-open-via-fileok",
+                         "description":  "Calibration fixture: drive OPENDLGPROC through commdlg_FileNameOK instead of mouse/keyboard common-dialog OK.",
+                         "enabled":  false,
+                         "outputStem":  "cal_open",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open..."
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "selectIndex",
+                                           "controlId":  1136,
+                                           "index":  0,
+                                           "comment":  "Select file type: legacy deck (BTN)."
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN",
+                                           "comment":  "Set filename before explicitly raising commdlg_FileNameOK for instrumentation."
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  1152,
+                                           "comment":  "Read back the old-style common-dialog edit control."
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  3000,
+                                           "comment":  "Explicitly post commdlg_FileNameOK to trace the legacy app\u0027s OPENFILENAME view."
+                                       },
+                                       {
+                                           "action":  "dumpWindows"
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "calibrate-open-via-fileok"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "password-only-deck",
+                         "description":  "Creates a deck protected with a legacy owner password but without the data-encryption checkbox.",
+                         "enabled":  true,
+                         "outputStem":  "pwonly",
+                         "password":  "Legacy01",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open..."
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "selectIndex",
+                                           "controlId":  1136,
+                                           "index":  0
+                                       },
+                                       {
+                                           "action":  "selectText",
+                                           "controlId":  1120,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogListSelectionChanged",
+                                           "controlId":  1120
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  1152
+                                       },
+                                       {
+                                           "action":  "listDoubleClick",
+                                           "controlId":  1120
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  1500
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2507,
+                                           "comment":  "Configure \u003e Add Security..."
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Add Security",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  510,
+                                           "text":  "{password}"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  510
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Verify Password",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  510,
+                                           "text":  "{password}"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  510
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "allowLegacyError":  true
+                                       },
+                                       {
+                                           "action":  "acceptLegacyDialog",
+                                           "messageLike":  "Do not forget the password",
+                                           "buttonId":  1,
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "Verify Password",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "selectIndex",
+                                           "controlId":  1136,
+                                           "index":  0
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  1152
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  1000
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "closeApp"
+                                       },
+                                       {
+                                           "action":  "copyRuntimeFile",
+                                           "source":  "SOFTWARE.BTN",
+                                           "destination":  "{fixtureFile}",
+                                           "comment":  "WineVDM returns the active deck path from Save As; preserve the legacy-written secured deck under the fixture name after closing."
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "password-only-deck"
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "password_only.BTN",
+                                                            "password_only.btn",
+                                                            "PWONLY.BTN",
+                                                            "pwonly.btn"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "password-encrypted-deck",
+                         "description":  "Creates a deck protected with a legacy owner password and the data-encryption checkbox.",
+                         "enabled":  true,
+                         "outputStem":  "crypt",
+                         "password":  "Crypt01",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open..."
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "selectIndex",
+                                           "controlId":  1136,
+                                           "index":  0
+                                       },
+                                       {
+                                           "action":  "selectText",
+                                           "controlId":  1120,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogListSelectionChanged",
+                                           "controlId":  1120
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  1152
+                                       },
+                                       {
+                                           "action":  "listDoubleClick",
+                                           "controlId":  1120
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  1500
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2507
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Add Security",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  510,
+                                           "text":  "{password}"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  510
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  503,
+                                           "comment":  "Data encryption on."
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Verify Password",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  510,
+                                           "text":  "{password}"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  510
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "allowLegacyError":  true
+                                       },
+                                       {
+                                           "action":  "acceptLegacyDialog",
+                                           "messageLike":  "Do not forget the password",
+                                           "buttonId":  1,
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "Verify Password",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "selectIndex",
+                                           "controlId":  1136,
+                                           "index":  0
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "ansiGetText",
+                                           "controlId":  1152
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  1000
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "closeApp"
+                                       },
+                                       {
+                                           "action":  "copyRuntimeFile",
+                                           "source":  "SOFTWARE.BTN",
+                                           "destination":  "{fixtureFile}",
+                                           "comment":  "WineVDM returns the active deck path from Save As; preserve the legacy-written secured deck under the fixture name after closing."
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "password-encrypted-deck"
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "password_encrypted.BTN",
+                                                            "password_encrypted.btn",
+                                                            "CRYPT.BTN",
+                                                            "crypt.btn"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "export-dbase-deck",
+                         "description":  "Exports the bundled Software Library deck through File \u003e Save Deck As... to the dBaseIII+/PC-File interchange format.",
+                         "enabled":  false,
+                         "outputStem":  "exdbf",
+                         "outputExtension":  ".DBF",
+                         "steps":  [
+                                       {
+                                           "action":  "closeDecks",
+                                           "repeat":  2,
+                                           "comment":  "Use Window \u003e Close All to clear decks auto-restored by the legacy app before opening the fixture source deck."
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005,
+                                           "comment":  "File \u003e Save Deck As...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Export",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  953,
+                                           "comment":  "Add All fields to the export order.",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "timeoutMs":  300,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Export",
+                                           "timeoutMs":  30000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "export-dbase-deck",
+                                           "patterns":  [
+                                                            "{fixtureFile}",
+                                                            "EXDBF.DBT",
+                                                            "exdbf.dbt"
+                                                        ]
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "EXDBF.DBF",
+                                                            "exdbf.dbf",
+                                                            "{fixtureFile}"
+                                                        ]
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "EXDBF.DBT",
+                                                            "exdbf.dbt"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "export-cardfile-deck",
+                         "description":  "Exports the bundled Software Library deck through File \u003e Save Deck As... to the Microsoft Cardfile interchange format.",
+                         "enabled":  false,
+                         "outputStem":  "excrd",
+                         "outputExtension":  ".CRD",
+                         "steps":  [
+                                       {
+                                           "action":  "closeDecks",
+                                           "repeat":  2,
+                                           "comment":  "Use Window \u003e Close All to clear decks auto-restored by the legacy app before opening the fixture source deck."
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005,
+                                           "comment":  "File \u003e Save Deck As...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Export",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  953,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "timeoutMs":  300,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Export",
+                                           "timeoutMs":  30000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "export-cardfile-deck",
+                                           "patterns":  [
+                                                            "{fixtureFile}"
+                                                        ]
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "EXCRD.CRD",
+                                                            "excrd.crd",
+                                                            "{fixtureFile}"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "export-wordperfect-deck",
+                         "description":  "Exports the bundled Software Library deck through File \u003e Save Deck As... to the WordPerfect 5.1 merge interchange format.",
+                         "enabled":  false,
+                         "outputStem":  "exwp",
+                         "outputExtension":  ".WP",
+                         "steps":  [
+                                       {
+                                           "action":  "closeDecks",
+                                           "repeat":  2,
+                                           "comment":  "Use Window \u003e Close All to clear decks auto-restored by the legacy app before opening the fixture source deck."
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005,
+                                           "comment":  "File \u003e Save Deck As...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Export",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  953,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "timeoutMs":  300,
+                                           "optional":  true
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Export",
+                                           "timeoutMs":  30000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "export-wordperfect-deck",
+                                           "patterns":  [
+                                                            "{fixtureFile}"
+                                                        ]
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "EXWP.WP",
+                                                            "exwp.wp",
+                                                            "{fixtureFile}"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "export-takenote-deck",
+                         "description":  "Attempts the legacy TakeNote .TN Save Deck As path so the fixture can prove whether the legacy app emits a distinct .TN file or aliases it to a compatible deck/template route.",
+                         "enabled":  false,
+                         "outputStem":  "extn",
+                         "outputExtension":  ".TN",
+                         "steps":  [
+                                       {
+                                           "action":  "closeDecks",
+                                           "repeat":  2,
+                                           "comment":  "Use Window \u003e Close All to clear decks auto-restored by the legacy app before opening the fixture source deck."
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005,
+                                           "comment":  "File \u003e Save Deck As...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "export-takenote-deck",
+                                           "patterns":  [
+                                                            "{fixtureFile}"
+                                                        ]
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "EXTN.TN",
+                                                            "extn.tn",
+                                                            "{fixtureFile}"
+                                                        ]
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "calibrate-notes-heavy",
+                         "description":  "Calibration placeholder for the notes-heavy/redefine workflow. Use -Fixture calibrate-notes-heavy -Interactive and record stable dialog/control steps back into this JSON.",
+                         "enabled":  false,
+                         "outputStem":  "notes_heavy",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2002,
+                                           "comment":  "File \u003e Redefine..."
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "calibrate-notes-heavy"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "calibrate-many-fields",
+                         "description":  "Calibration placeholder for a near/max-field deck. Use -Fixture calibrate-many-fields -Interactive and record File \u003e Redefine field-grid steps here.",
+                         "enabled":  false,
+                         "outputStem":  "many_fields",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2002,
+                                           "comment":  "File \u003e Redefine..."
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "calibrate-many-fields"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "calibrate-max-field-lengths",
+                         "description":  "Calibration placeholder for max-length text, truncation, empty field, and multiline notes boundaries.",
+                         "enabled":  false,
+                         "outputStem":  "max_lengths",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2002,
+                                           "comment":  "File \u003e Redefine..."
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "calibrate-max-field-lengths"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "calibrate-reports-sidecars",
+                         "description":  "Calibration placeholder for deck plus same-basename .RPT sidecar report definitions.",
+                         "enabled":  false,
+                         "outputStem":  "reports",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open..."
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "calibrate-reports-sidecars"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "calibrate-security-cycle",
+                         "description":  "Calibration placeholder for add-password, remove-password, and re-open-without-password behavior.",
+                         "enabled":  false,
+                         "outputStem":  "security_cycle",
+                         "steps":  [
+                                       {
+                                           "action":  "command",
+                                           "id":  2507,
+                                           "comment":  "Configure \u003e Add Security..."
+                                       },
+                                       {
+                                           "action":  "sleep",
+                                           "ms":  2000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "calibrate-security-cycle"
+                                       }
+                                   ]
+                     },
+                     {
+                         "name":  "password-takenote-deck",
+                         "description":  "Creates a TakeNote-compatible .TN Save As fixture after applying a legacy owner password to prove whether .TN preserves native security metadata.",
+                         "enabled":  false,
+                         "outputStem":  "pwtn",
+                         "outputExtension":  ".TN",
+                         "password":  "Legacy01",
+                         "steps":  [
+                                       {
+                                           "action":  "closeDecks",
+                                           "repeat":  2,
+                                           "comment":  "Clear decks auto-restored by the legacy app."
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2001,
+                                           "comment":  "File \u003e Open...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "SOFTWARE.BTN"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Open",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "New Card Deck",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2507,
+                                           "comment":  "Configure \u003e Add Security..."
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Add Security",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  510,
+                                           "text":  "{password}"
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  1000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Verify Password",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  510,
+                                           "text":  "{password}"
+                                       },
+                                       {
+                                           "action":  "physicalClick",
+                                           "controlId":  1,
+                                           "timeoutMs":  1000,
+                                           "allowLegacyError":  true
+                                       },
+                                       {
+                                           "action":  "acceptLegacyDialog",
+                                           "messageLike":  "Do not forget the password",
+                                           "buttonId":  1,
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "buttonFile",
+                                           "excludeTitleLike":  "Verify Password",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "command",
+                                           "id":  2005,
+                                           "comment":  "File \u003e Save Deck As...",
+                                           "delayMs":  150
+                                       },
+                                       {
+                                           "action":  "waitWindow",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  5000
+                                       },
+                                       {
+                                           "action":  "ansiSetText",
+                                           "controlId":  1152,
+                                           "text":  "{fixtureFile}"
+                                       },
+                                       {
+                                           "action":  "commonDialogFileOk",
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "buttonClick",
+                                           "controlId":  1,
+                                           "optional":  true,
+                                           "timeoutMs":  300
+                                       },
+                                       {
+                                           "action":  "waitWindowGone",
+                                           "titleLike":  "Save As",
+                                           "timeoutMs":  10000
+                                       },
+                                       {
+                                           "action":  "snapshot",
+                                           "label":  "password-takenote-deck",
+                                           "patterns":  [
+                                                            "{fixtureFile}"
+                                                        ]
+                                       },
+                                       {
+                                           "action":  "assertAnyFile",
+                                           "patterns":  [
+                                                            "PWTN.TN",
+                                                            "pwtn.tn",
+                                                            "{fixtureFile}"
+                                                        ]
+                                       }
+                                   ]
+                     }
+                 ]
+}
