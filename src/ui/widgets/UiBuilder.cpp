@@ -2802,7 +2802,7 @@ void normalizeSearchClauseSpacing(
         QLabel* result = nullptr;
         int bestDistance = std::numeric_limits<int>::max();
         for (QLabel* label : dialog->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
-            if (label->isHidden() || plainVisibleText(label->text()) != text ||
+            if (plainVisibleText(label->text()) != text ||
                 label->geometry().top() < preceding->geometry().top()) {
                 continue;
             }
