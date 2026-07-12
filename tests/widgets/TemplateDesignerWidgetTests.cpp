@@ -125,6 +125,27 @@ private slots:
         QVERIFY(!designer.canUndo());
     }
 
+    void addingNotesBoxCreatesBackingNotesFieldWhenMissing()
+    {
+        CardTemplateLayout initialLayout;
+        QVector<FieldDefinition> fields = {
+            FieldDefinition(QStringLiteral("Name"), FieldType::Text, 255),
+            FieldDefinition(QStringLiteral("Notes"), FieldType::Text, 255),
+        };
+        TemplateDesignerWidget designer(initialLayout, fields);
+
+        designer.addNotesBoxFrame();
+
+        QCOMPARE(designer.selectedFrameDefinition()->kind, CardTemplateFrameKind::NotesBox);
+        QVERIFY(designer.selectedFieldIndex() >= 0);
+        const FieldDefinition& notesField = designer.fieldDefinitions().at(designer.selectedFieldIndex());
+        QCOMPARE(notesField.name(), QStringLiteral("Notes 2"));
+        QCOMPARE(notesField.type(), FieldType::Notes);
+        QCOMPARE(notesField.maxLength(), 8192);
+        QCOMPARE(designer.selectedFrameDefinition()->fieldIndex, designer.selectedFieldIndex());
+        QCOMPARE(designer.selectedFrameDefinition()->text, notesField.name());
+    }
+
     void closePromptCancelKeepsDesignerOpen()
     {
         CardTemplateLayout initialLayout;

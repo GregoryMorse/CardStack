@@ -77,11 +77,12 @@ set(CARDSTACK_TEST_SUITE_NAMES
 foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
     add_test(
         NAME ${cardstack_test_suite}
-        COMMAND CardStackTests --test ${cardstack_test_suite} -o ${cardstack_test_suite}.txt,txt
+        COMMAND CardStackTests --test ${cardstack_test_suite}
     )
     set_tests_properties(${cardstack_test_suite} PROPERTIES
+        TIMEOUT 60
         ENVIRONMENT
-            "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins"
+            "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins;QTEST_FUNCTION_TIMEOUT=30000"
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;CARDSTACK_WINEVDM_GOLDEN_DIR=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR};CARDSTACK_LEGACY_DECK_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/plain.BTN;CARDSTACK_LEGACY_REPORT_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/reports.RPT"
     )

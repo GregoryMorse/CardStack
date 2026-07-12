@@ -22,11 +22,13 @@
 #include <QTest>
 #include <QTemporaryDir>
 #include <QToolBar>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
 #include <QListWidget>
 #include <QTimer>
+#include <QSpinBox>
 
 #include <algorithm>
 #include <functional>
@@ -213,6 +215,28 @@ void acceptNextDialogByLegacyName(const QString& dialogName)
         }
     };
 
+    QTimer::singleShot(0, qApp, *retry);
+}
+
+void acceptNextImportReviewDialog()
+{
+    auto attemptsRemaining = std::make_shared<int>(200);
+    auto retry = std::make_shared<std::function<void()>>();
+    *retry = [attemptsRemaining, retry]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QDialog*>(widget);
+            if (dialog == nullptr || !dialog->isVisible() ||
+                dialog->objectName() != QStringLiteral("importExamineDialog")) {
+                continue;
+            }
+            dialog->accept();
+            return;
+        }
+        --(*attemptsRemaining);
+        if (*attemptsRemaining > 0) {
+            QTimer::singleShot(10, qApp, *retry);
+        }
+    };
     QTimer::singleShot(0, qApp, *retry);
 }
 
@@ -955,6 +979,7 @@ private slots:
         QVERIFY(openAction->isEnabled());
 
         acceptNextOpenDialogWithFile(filePath);
+        acceptNextImportReviewDialog();
         openAction->trigger();
         QCoreApplication::processEvents();
 
@@ -1113,7 +1138,30 @@ private slots:
         QVERIFY(workspace != nullptr);
         QVERIFY(designer != nullptr);
 
-        designer->addTextFrame();
+        designer->addNotesBoxFrame();
+        QCoreApplication::processEvents();
+        const int editedFieldIndex = designer->selectedFieldIndex();
+        QVERIFY(editedFieldIndex >= 0);
+        auto* propertyToolbar = window.findChild<QWidget*>(QStringLiteral("designerPropertyToolbar"));
+        auto* nameEdit = window.findChild<QLineEdit*>(QStringLiteral("designerFieldNameEdit"));
+        auto* lengthSpin = window.findChild<QSpinBox*>(QStringLiteral("designerFieldLengthSpin"));
+        auto* phoneCheck = window.findChild<QCheckBox*>(QStringLiteral("designerFieldPhoneCheck"));
+        auto* showNameCheck = window.findChild<QCheckBox*>(QStringLiteral("designerFieldShowNameCheck"));
+        QVERIFY(propertyToolbar != nullptr);
+        QVERIFY(nameEdit != nullptr);
+        QVERIFY(lengthSpin != nullptr);
+        QVERIFY(phoneCheck != nullptr);
+        QVERIFY(showNameCheck != nullptr);
+        nameEdit->setText(QStringLiteral("Toolbar Notes"));
+        emit nameEdit->editingFinished();
+        lengthSpin->setValue(9000);
+        phoneCheck->setChecked(true);
+        showNameCheck->setChecked(false);
+        QCoreApplication::processEvents();
+        QCOMPARE(designer->fieldDefinitions().at(editedFieldIndex).name(), QStringLiteral("Toolbar Notes"));
+        QCOMPARE(designer->fieldDefinitions().at(editedFieldIndex).maxLength(), 9000);
+        QVERIFY(designer->fieldDefinitions().at(editedFieldIndex).isPhone());
+        QVERIFY(!designer->fieldDefinitions().at(editedFieldIndex).showName());
         const QString filePath = directory.filePath(QStringLiteral("exported-template.cstemplate"));
 
         auto* saveAsAction = findCommandAction(window.menuBar(), UiIds::Command::FileSaveAs);
@@ -1129,6 +1177,52 @@ private slots:
         QVERIFY2(SQLitePackageStore::loadTemplatePackage(filePath, &loaded, &error), qPrintable(error));
         QCOMPARE(loaded.name(), workspace->deck().name());
         QCOMPARE(loaded.cardTemplateLayout(), designer->layoutDefinition());
+        QCOMPARE(loaded.fieldAt(editedFieldIndex).name(), QStringLiteral("Toolbar Notes"));
+        QCOMPARE(loaded.fieldAt(editedFieldIndex).maxLength(), 9000);
+        QVERIFY(loaded.fieldAt(editedFieldIndex).isPhone());
+        QVERIFY(!loaded.fieldAt(editedFieldIndex).showName());
+    }
+
+    void menuAndToolbarFollowDeckReportFocusTransitions()
+    {
+        MainWindow window(nullptr, true);
+        window.show();
+        QCoreApplication::processEvents();
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(workspace != nullptr);
+        QVERIFY(mdiArea != nullptr);
+
+        auto* newReportAction = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+        QVERIFY(newReportAction != nullptr);
+        acceptNextDialogByLegacyName(QStringLiteral("REPORTFORM"));
+        newReportAction->trigger();
+        QCoreApplication::processEvents();
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+
+        QMdiSubWindow* workspaceWindow = nullptr;
+        QMdiSubWindow* designerWindow = nullptr;
+        for (QMdiSubWindow* subWindow : mdiArea->subWindowList()) {
+            workspaceWindow = subWindow->widget() == workspace ? subWindow : workspaceWindow;
+            designerWindow = subWindow->widget() == designer ? subWindow : designerWindow;
+        }
+        QVERIFY(workspaceWindow != nullptr);
+        QVERIFY(designerWindow != nullptr);
+        auto* toolBar = window.findChild<QToolBar*>(QStringLiteral("buttonBar"));
+        QVERIFY(toolBar != nullptr);
+
+        mdiArea->setActiveSubWindow(workspaceWindow);
+        QCoreApplication::processEvents();
+        QVERIFY(commandIdsFromMenuBar(window.menuBar()).contains(UiIds::Command::CardAdd));
+        QVERIFY(!commandIdsFromMenuBar(window.menuBar()).contains(UiIds::Command::ToolAddSystemData));
+        QVERIFY(commandIdsFromToolBar(toolBar).contains(UiIds::Command::CardAdd));
+
+        mdiArea->setActiveSubWindow(designerWindow);
+        QCoreApplication::processEvents();
+        QVERIFY(commandIdsFromMenuBar(window.menuBar()).contains(UiIds::Command::ToolAddSystemData));
+        QVERIFY(!commandIdsFromMenuBar(window.menuBar()).contains(UiIds::Command::CardAdd));
+        QVERIFY(commandIdsFromToolBar(toolBar).contains(UiIds::Command::ToolAddSystemData));
     }
 
     void newReportUsesSafePageMargins()
@@ -1309,6 +1403,27 @@ private slots:
         auto* designer = window.findChild<ReportDesignerWidget*>();
         QTRY_VERIFY(designer != nullptr);
 
+        designer->addLineBoxFrameShape(ReportLineBoxShape::Box, 0, 0, 0);
+        QCoreApplication::processEvents();
+        auto* shapeCombo = window.findChild<QComboBox*>(QStringLiteral("designerReportShapeCombo"));
+        auto* lineStyleCombo = window.findChild<QComboBox*>(QStringLiteral("designerReportLineStyleCombo"));
+        auto* fillCombo = window.findChild<QComboBox*>(QStringLiteral("designerReportFillPatternCombo"));
+        auto* radiusSpin = window.findChild<QSpinBox*>(QStringLiteral("designerReportCornerRadiusSpin"));
+        QVERIFY(shapeCombo != nullptr);
+        QVERIFY(lineStyleCombo != nullptr);
+        QVERIFY(fillCombo != nullptr);
+        QVERIFY(radiusSpin != nullptr);
+        shapeCombo->setCurrentIndex(std::min(1, shapeCombo->count() - 1));
+        lineStyleCombo->setCurrentIndex(std::min(2, lineStyleCombo->count() - 1));
+        fillCombo->setCurrentIndex(std::min(3, fillCombo->count() - 1));
+        radiusSpin->setValue(7);
+        QCoreApplication::processEvents();
+        const ReportFrameDefinition toolbarFrame = *designer->selectedFrameDefinition();
+        QCOMPARE(toolbarFrame.kind, ReportFrameKind::LineOrBox);
+        QCOMPARE(toolbarFrame.lineStyle, std::min(2, lineStyleCombo->count() - 1));
+        QCOMPARE(toolbarFrame.fillPattern, std::min(3, fillCombo->count() - 1));
+        QCOMPARE(toolbarFrame.cornerRadius, 7);
+
         const QString filePath = directory.filePath(QStringLiteral("exported-report.csreport"));
         auto* saveAsAction = findCommandAction(window.menuBar(), UiIds::Command::FileSaveAs);
         QVERIFY(saveAsAction != nullptr);
@@ -1325,6 +1440,11 @@ private slots:
         QCOMPARE(reports.size(), 1);
         QCOMPARE(packageName, reports.first().name);
         QCOMPARE(reports.first().marginLeft, 500);
+        const ReportFrameDefinition persistedToolbarFrame = reports.first().frames.last();
+        QCOMPARE(persistedToolbarFrame.kind, ReportFrameKind::LineOrBox);
+        QCOMPARE(persistedToolbarFrame.lineStyle, toolbarFrame.lineStyle);
+        QCOMPARE(persistedToolbarFrame.fillPattern, toolbarFrame.fillPattern);
+        QCOMPARE(persistedToolbarFrame.cornerRadius, toolbarFrame.cornerRadius);
         QCOMPARE(reports.first().marginTop, 500);
         QCOMPARE(reports.first().marginRight, 500);
         QCOMPARE(reports.first().marginBottom, 500);
@@ -1433,7 +1553,27 @@ private slots:
             newAction->trigger();
             QCoreApplication::processEvents();
             QTRY_VERIFY(window.findChild<TemplateDesignerWidget*>() != nullptr);
+            auto* designer = window.findChild<TemplateDesignerWidget*>();
+            while (designer->selectedFrameIndex() >= 0) {
+                designer->deleteSelectedFrame();
+            }
+            QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar.png")));
+            designer->addTextFrameWithText(QStringLiteral("Heading"));
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_text.png")));
+            designer->deleteSelectedFrame();
+            designer->addDataBoxFrameForField(designer->fieldNames().value(0));
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_data.png")));
+            designer->deleteSelectedFrame();
+            designer->addNotesBoxFrame();
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_notes.png")));
+            designer->deleteSelectedFrame();
+            designer->addLineBoxFrameShape(CardTemplateLineBoxShape::Box, 0, 0, 0);
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_linebox.png")));
         }
 
         {
@@ -1446,7 +1586,27 @@ private slots:
             newReportAction->trigger();
             QCoreApplication::processEvents();
             QTRY_VERIFY(window.findChild<ReportDesignerWidget*>() != nullptr);
+            auto* designer = window.findChild<ReportDesignerWidget*>();
+            while (designer->selectedFrameIndex() >= 0) {
+                designer->deleteSelectedFrame();
+            }
+            QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar.png")));
+            designer->addTextFrameWithText(QStringLiteral("Heading"), 0);
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_text.png")));
+            designer->deleteSelectedFrame();
+            designer->addDataFrameForField(designer->fieldNames().value(0), 0, true);
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_data.png")));
+            designer->deleteSelectedFrame();
+            designer->addSystemFrameWithText(QStringLiteral("Page Number"), 0);
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_system.png")));
+            designer->deleteSelectedFrame();
+            designer->addLineBoxFrameShape(ReportLineBoxShape::Box, 0, 0, 0);
+            QCoreApplication::processEvents();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_linebox.png")));
         }
 
         {

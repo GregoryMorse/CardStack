@@ -5,6 +5,8 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QComboBox>
+#include <QStyle>
+#include <QStyleOptionComboBox>
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDir>
@@ -340,6 +342,19 @@ int effectiveComboPopupWidth(const QComboBox* comboBox)
     return std::max(
         comboBox->width(),
         view == nullptr ? 0 : std::max(view->minimumWidth(), view->sizeHint().width()));
+}
+
+int closedComboTextAreaWidth(const QComboBox* comboBox)
+{
+    QStyleOptionComboBox option;
+    option.initFrom(comboBox);
+    option.editable = comboBox->isEditable();
+    option.currentText = comboBox->currentText();
+    return comboBox->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &option,
+        QStyle::SC_ComboBoxEditField,
+        comboBox).width();
 }
 
 QString safeImageStem(QString text)
@@ -940,6 +955,53 @@ private slots:
                         .arg(dialogName, widgetDebugName(comboBox))
                         .arg(comboBox->count())
                         .arg(comboBox->maxVisibleItems())));
+                if (!comboBox->isEditable()) {
+                    int widestIndex = 0;
+                    for (int index = 1; index < comboBox->count(); ++index) {
+                        if (comboBox->fontMetrics().horizontalAdvance(comboBox->itemText(index)) >
+                            comboBox->fontMetrics().horizontalAdvance(comboBox->itemText(widestIndex))) {
+                            widestIndex = index;
+                        }
+                    }
+                    comboBox->setCurrentIndex(widestIndex);
+                    const int requiredTextWidth = comboBox->fontMetrics().horizontalAdvance(comboBox->currentText());
+                    QVERIFY2(
+                        closedComboTextAreaWidth(comboBox) >= requiredTextWidth,
+                        qPrintable(QStringLiteral("%1 clips its widest closed combobox selection after reserving the arrow: %2 required=%3 available=%4")
+                            .arg(dialogName, widgetDebugName(comboBox))
+                            .arg(requiredTextWidth)
+                            .arg(closedComboTextAreaWidth(comboBox))));
+                }
+            }
+        }
+    }
+
+    void findAndReplaceSearchLabelsHaveComfortableClearance()
+    {
+        const UiBuilder::DialogContext context = populatedContext();
+        for (const QString& dialogName : {QStringLiteral("SEARCH"), QStringLiteral("REPLACE")}) {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(dialogName, nullptr, context);
+            QVERIFY2(dialog != nullptr, qPrintable(dialogName));
+            for (QLabel* label : dialog->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
+                if (plainVisibleText(label->text()) != QStringLiteral("Search in data box...")) {
+                    continue;
+                }
+                QComboBox* nearestAbove = nullptr;
+                int nearestBottom = -1;
+                for (QComboBox* comboBox : dialog->findChildren<QComboBox*>(QString(), Qt::FindDirectChildrenOnly)) {
+                    if (comboBox->geometry().bottom() >= label->geometry().top() ||
+                        comboBox->geometry().right() < label->geometry().left() ||
+                        comboBox->geometry().left() > label->geometry().right()) {
+                        continue;
+                    }
+                    if (comboBox->geometry().bottom() > nearestBottom) {
+                        nearestAbove = comboBox;
+                        nearestBottom = comboBox->geometry().bottom();
+                    }
+                }
+                QVERIFY2(nearestAbove != nullptr, qPrintable(QStringLiteral("%1 search label has no preceding combo").arg(dialogName)));
+                const int clearance = label->geometry().top() - nearestAbove->geometry().bottom() - 1;
+                QVERIFY2(clearance >= 5, qPrintable(QStringLiteral("%1 search label clearance is only %2 px").arg(dialogName).arg(clearance)));
             }
         }
     }
@@ -1164,8 +1226,11 @@ private slots:
         const UiBuilder::DialogContext context = populatedContext();
         int written = 0;
         for (const QString& dialogName : UiBuilder::dialogNames()) {
+            if (isToolbarResourceName(dialogName)) {
+                continue;
+            }
             const QString stem = QStringLiteral("%1%2")
-                .arg(isToolbarResourceName(dialogName) ? QStringLiteral("toolbar_") : QString())
+                .arg(QString())
                 .arg(safeImageStem(dialogName));
             std::unique_ptr<QDialog> initialDialog = UiBuilder::createDialog(dialogName, nullptr, context);
             QVERIFY2(initialDialog != nullptr, qPrintable(dialogName));

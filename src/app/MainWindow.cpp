@@ -1508,6 +1508,7 @@ void MainWindow::configureToolBarForMenu(int menuId)
         addUiToolAction(Command::ToolAddLineOrBox, QStringLiteral("tool-line-box"), tr("Add template line or box"));
         addSeparator();
         m_designerPropertyToolbar = new QWidget(m_buttonBar);
+        m_designerPropertyToolbar->setObjectName(QStringLiteral("designerPropertyToolbar"));
         m_buttonBar->addWidget(m_designerPropertyToolbar);
         rebuildDesignerPropertyToolbar();
         return;
@@ -1523,6 +1524,7 @@ void MainWindow::configureToolBarForMenu(int menuId)
         addUiToolAction(Command::ToolChangeForm, QStringLiteral("tool-form"), tr("Change report form"));
         addSeparator();
         m_designerPropertyToolbar = new QWidget(m_buttonBar);
+        m_designerPropertyToolbar->setObjectName(QStringLiteral("designerPropertyToolbar"));
         m_buttonBar->addWidget(m_designerPropertyToolbar);
         rebuildDesignerPropertyToolbar();
         return;
@@ -1594,17 +1596,21 @@ void MainWindow::rebuildDesignerPropertyToolbar()
             const FieldDefinition field = designer->fieldDefinitions().at(fieldIndex);
             addLabel(tr("Name:"));
             auto* nameEdit = new QLineEdit(field.name(), m_designerPropertyToolbar);
+            nameEdit->setObjectName(QStringLiteral("designerFieldNameEdit"));
             nameEdit->setMinimumWidth(150);
             layout->addWidget(nameEdit);
             addLabel(tr("Length:"));
             auto* lengthSpin = new QSpinBox(m_designerPropertyToolbar);
+            lengthSpin->setObjectName(QStringLiteral("designerFieldLengthSpin"));
             lengthSpin->setRange(1, 32767);
             lengthSpin->setValue(field.maxLength());
             layout->addWidget(lengthSpin);
             auto* phone = new QCheckBox(tr("Phone"), m_designerPropertyToolbar);
+            phone->setObjectName(QStringLiteral("designerFieldPhoneCheck"));
             phone->setChecked(field.isPhone());
             layout->addWidget(phone);
             auto* showName = new QCheckBox(tr("Show name"), m_designerPropertyToolbar);
+            showName->setObjectName(QStringLiteral("designerFieldShowNameCheck"));
             showName->setChecked(field.showName());
             layout->addWidget(showName);
             const auto apply = [designer, nameEdit, lengthSpin, phone, showName]() {
@@ -1618,6 +1624,7 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         } else if (frame->kind == CardTemplateFrameKind::Text) {
             addLabel(tr("Text:"));
             auto* textEdit = new QLineEdit(frame->text, m_designerPropertyToolbar);
+            textEdit->setObjectName(QStringLiteral("designerTemplateTextEdit"));
             textEdit->setMinimumWidth(220);
             layout->addWidget(textEdit);
             auto* left = addToggle(tr("Left"), (frame->styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight)) == 0);
@@ -1642,6 +1649,7 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         } else {
             addLabel(tr("Shape:"));
             auto* shape = new QComboBox(m_designerPropertyToolbar);
+            shape->setObjectName(QStringLiteral("designerTemplateShapeCombo"));
             shape->addItem(tr("Box"), static_cast<int>(CardTemplateLineBoxShape::Box));
             shape->addItem(tr("Horizontal"), static_cast<int>(CardTemplateLineBoxShape::HorizontalLine));
             shape->addItem(tr("Vertical"), static_cast<int>(CardTemplateLineBoxShape::VerticalLine));
@@ -1672,6 +1680,7 @@ void MainWindow::rebuildDesignerPropertyToolbar()
     if (frame->kind == ReportFrameKind::LineOrBox) {
         addLabel(tr("Shape:"));
         auto* shape = new QComboBox(m_designerPropertyToolbar);
+        shape->setObjectName(QStringLiteral("designerReportShapeCombo"));
         shape->addItem(tr("Box"), ReportLineShapeBox);
         shape->addItem(tr("Horizontal"), ReportLineShapeHorizontal);
         shape->addItem(tr("Vertical"), ReportLineShapeVertical);
@@ -1679,16 +1688,19 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         layout->addWidget(shape);
         addLabel(tr("Line style:"));
         auto* lineStyle = new QComboBox(m_designerPropertyToolbar);
+        lineStyle->setObjectName(QStringLiteral("designerReportLineStyleCombo"));
         lineStyle->addItems(ReportStyleCatalog::lineStyleNames());
         lineStyle->setCurrentIndex(std::clamp(frame->lineStyle, 0, lineStyle->count() - 1));
         layout->addWidget(lineStyle);
         addLabel(tr("Fill pattern:"));
         auto* fill = new QComboBox(m_designerPropertyToolbar);
+        fill->setObjectName(QStringLiteral("designerReportFillPatternCombo"));
         fill->addItems(ReportStyleCatalog::fillPatternNames());
         fill->setCurrentIndex(std::clamp(frame->fillPattern, 0, fill->count() - 1));
         layout->addWidget(fill);
         addLabel(tr("Corner radius:"));
         auto* radius = new QSpinBox(m_designerPropertyToolbar);
+        radius->setObjectName(QStringLiteral("designerReportCornerRadiusSpin"));
         radius->setRange(0, 10000);
         radius->setValue(frame->cornerRadius);
         layout->addWidget(radius);
@@ -1706,12 +1718,14 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         QComboBox* fieldCombo = nullptr;
         if (frame->kind == ReportFrameKind::Data) {
             fieldCombo = new QComboBox(m_designerPropertyToolbar);
+            fieldCombo->setObjectName(QStringLiteral("designerReportFieldCombo"));
             fieldCombo->addItems(designer->fieldNames());
             const QString selectedField = frame->fieldPlaceholders.isEmpty() ? QString() : frame->fieldPlaceholders.first();
             fieldCombo->setCurrentIndex(std::max(0, fieldCombo->findText(selectedField)));
             layout->addWidget(fieldCombo);
         } else {
             textEdit = new QLineEdit(frame->text, m_designerPropertyToolbar);
+            textEdit->setObjectName(QStringLiteral("designerReportTextEdit"));
             textEdit->setMinimumWidth(200);
             layout->addWidget(textEdit);
         }
@@ -1722,6 +1736,7 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         auto* center = addToggle(tr("Center"), (frame->styleFlags & ReportStyleFlagAlignCenter) != 0);
         auto* right = addToggle(tr("Right"), (frame->styleFlags & ReportStyleFlagAlignRight) != 0);
         auto* printEntire = new QCheckBox(tr("Print Entire"), m_designerPropertyToolbar);
+        printEntire->setObjectName(QStringLiteral("designerReportPrintEntireCheck"));
         printEntire->setChecked(frame->printEntireContentsFlag != 0);
         printEntire->setVisible(frame->kind == ReportFrameKind::Data);
         layout->addWidget(printEntire);
@@ -4596,6 +4611,7 @@ bool MainWindow::exportTemplatePackageFromDesigner(TemplateDesignerWidget* desig
     }
 
     Deck templateDeck = owner->deck();
+    templateDeck.setFields(designer->fieldDefinitions());
     templateDeck.setCardTemplateLayout(designer->layoutDefinition());
 
     QString error;

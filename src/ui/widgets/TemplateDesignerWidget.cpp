@@ -126,7 +126,7 @@ protected:
         painter.setPen(QPen(palette().mid().color(), 12));
         painter.drawRect(indexHeader.adjusted(6, 6, -6, -6));
         QFont indexFont = painter.font();
-        indexFont.setPixelSize(170);
+        indexFont.setPixelSize(30);
         indexFont.setWeight(QFont::Medium);
         painter.setFont(indexFont);
         painter.setPen(palette().text().color());
@@ -427,7 +427,27 @@ void TemplateDesignerWidget::addDataBoxFrameForField(const QString& fieldName, q
 void TemplateDesignerWidget::addNotesBoxFrame()
 {
     pushUndoState();
-    m_layout.frames.append(defaultFrame(CardTemplateFrameKind::NotesBox));
+    CardTemplateFrame frame = defaultFrame(CardTemplateFrameKind::NotesBox);
+    if (frame.fieldIndex < 0) {
+        const QString baseName = tr("Notes");
+        QString fieldName = baseName;
+        int suffix = 2;
+        const auto fieldNameExists = [this](const QString& candidate) {
+            return std::any_of(m_fields.cbegin(), m_fields.cend(), [&candidate](const FieldDefinition& field) {
+                return field.name().compare(candidate, Qt::CaseInsensitive) == 0;
+            });
+        };
+        while (fieldNameExists(fieldName)) {
+            fieldName = tr("%1 %2").arg(baseName).arg(suffix++);
+        }
+        m_fields.append(FieldDefinition(fieldName, FieldType::Notes, 8192));
+        frame.fieldIndex = m_fields.size() - 1;
+        frame.text = fieldName;
+        if (m_fieldCombo != nullptr) {
+            m_fieldCombo->addItem(fieldName);
+        }
+    }
+    m_layout.frames.append(frame);
     refreshFrameTable();
     selectFrame(m_layout.frames.size() - 1);
     markDirty();
@@ -939,8 +959,10 @@ CardTemplateFrame TemplateDesignerWidget::defaultFrame(CardTemplateFrameKind kin
 {
     CardTemplateFrame frame;
     frame.kind = kind;
-    const int offset = 300 + m_layout.frames.size() * 180;
-    frame.bounds = QRect(offset, offset, 1800, kind == CardTemplateFrameKind::NotesBox ? 900 : 260);
+    const int frameIndex = m_layout.frames.size();
+    const int left = 1400 + (frameIndex % 3) * 180;
+    const int top = 500 + frameIndex * 320;
+    frame.bounds = QRect(left, top, 1800, kind == CardTemplateFrameKind::NotesBox ? 900 : 260);
     switch (kind) {
     case CardTemplateFrameKind::Text:
         frame.text = tr("Template Text");
@@ -961,7 +983,7 @@ CardTemplateFrame TemplateDesignerWidget::defaultFrame(CardTemplateFrameKind kin
     case CardTemplateFrameKind::LineOrBox:
         frame.text.clear();
         frame.lineBoxShape = CardTemplateLineBoxShape::Box;
-        frame.bounds = QRect(offset, offset, 1800, 700);
+        frame.bounds = QRect(left, top, 1800, 700);
         break;
     }
     return frame;

@@ -248,6 +248,11 @@ private slots:
         if (samplePath.isEmpty() || !QFileInfo::exists(samplePath)) {
             QSKIP("Set CARDSTACK_LEGACY_DECK_SAMPLE to a legacy .BTN file to run the real legacy import check.");
         }
+        const QString goldenDirectory = qEnvironmentVariable("CARDSTACK_WINEVDM_GOLDEN_DIR");
+        if (!goldenDirectory.isEmpty() &&
+            QFileInfo(samplePath).canonicalFilePath() == QFileInfo(QDir(goldenDirectory).filePath(QStringLiteral("plain.BTN"))).canonicalFilePath()) {
+            QSKIP("The canonical plain.BTN sample is covered by importsWineVdmGoldenFixturesWhenConfigured.");
+        }
 
         const LegacyDeckReader reader;
         const LegacyDeckReader::Result result = reader.readDeck(samplePath);
