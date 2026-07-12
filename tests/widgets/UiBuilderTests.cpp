@@ -1001,7 +1001,19 @@ private slots:
                 }
                 QVERIFY2(nearestAbove != nullptr, qPrintable(QStringLiteral("%1 search label has no preceding combo").arg(dialogName)));
                 const int clearance = label->geometry().top() - nearestAbove->geometry().bottom() - 1;
-                QVERIFY2(clearance >= 5, qPrintable(QStringLiteral("%1 search label clearance is only %2 px").arg(dialogName).arg(clearance)));
+                QVERIFY2(
+                    clearance >= 5,
+                    qPrintable(QStringLiteral("%1 search label clearance is only %2 px; label=%3,%4 %5x%6; combo=%7,%8 %9x%10")
+                            .arg(dialogName)
+                            .arg(clearance)
+                            .arg(label->x())
+                            .arg(label->y())
+                            .arg(label->width())
+                            .arg(label->height())
+                            .arg(nearestAbove->x())
+                            .arg(nearestAbove->y())
+                            .arg(nearestAbove->width())
+                            .arg(nearestAbove->height())));
             }
         }
     }
