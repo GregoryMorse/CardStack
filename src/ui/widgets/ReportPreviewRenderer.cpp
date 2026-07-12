@@ -3,6 +3,7 @@
 #include <QBrush>
 #include <QColor>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QPen>
@@ -12,9 +13,11 @@
 namespace CardStack {
 namespace {
 
-constexpr qreal LegacyFontScaleMultiplier = 70.0;
+constexpr qreal LegacyFontHeightToPixelScale = 6.0;
 constexpr qreal MinimumReportFontPixels = 7.0;
 constexpr qreal MaximumReportFontPixels = 96.0;
+constexpr qreal MaximumSingleLineFontToFrameRatio = 0.72;
+constexpr qreal MaximumWrappedFontToFrameRatio = 0.42;
 constexpr qreal LogicalFramePadding = 35.0;
 constexpr qreal MinimumFramePadding = 1.5;
 constexpr qreal MaximumFramePadding = 6.0;
@@ -23,6 +26,33 @@ constexpr qreal MinimumFrameLineWidth = 0.75;
 constexpr qreal MaximumFrameLineWidth = 2.0;
 constexpr qreal MinimumLineFrameThreshold = 2.0;
 constexpr qreal LogicalLineFrameThreshold = 30.0;
+
+QString availableSansSerifFamily(const QString& requestedFamily)
+{
+    const QFontDatabase database;
+    const QStringList families = database.families();
+    const auto hasFamily = [&families](const QString& family) {
+        return families.contains(family, Qt::CaseInsensitive);
+    };
+
+    if (!requestedFamily.isEmpty() && hasFamily(requestedFamily)) {
+        return requestedFamily;
+    }
+
+    for (const QString& fallback : {
+             QStringLiteral("Arial"),
+             QStringLiteral("Helvetica"),
+             QStringLiteral("Liberation Sans"),
+             QStringLiteral("DejaVu Sans"),
+             QStringLiteral("Noto Sans"),
+             QStringLiteral("Sans Serif")}) {
+        if (hasFamily(fallback)) {
+            return fallback;
+        }
+    }
+
+    return QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+}
 
 QString replaceDelimitedToken(QString text, QChar open, QChar close, const QMap<QString, QString>& values)
 {
@@ -79,19 +109,28 @@ qreal logicalScale(const ReportDefinition& report, const QRectF& target)
     return std::min(target.width() / width, target.height() / height);
 }
 
-QFont frameFont(const QPainter* painter, const ReportDefinition& report, const ReportFrameDefinition& frame, qreal scale)
+QFont frameFont(
+    const QPainter* painter,
+    const ReportDefinition& report,
+    const ReportFrameDefinition& frame,
+    qreal scale,
+    const QRectF& textRect)
 {
     QFont font = painter->font();
     const ReportFontDefinition& reportFont = frame.kind == ReportFrameKind::Data ? report.dataFont : report.textFont;
     const QString faceName = reportFont.faceName.isEmpty() ? report.textFont.faceName : reportFont.faceName;
-    if (!faceName.isEmpty()) {
-        font.setFamily(faceName);
-    }
+    font.setFamily(availableSansSerifFamily(faceName));
+    font.setStyleHint(QFont::SansSerif);
     if (reportFont.legacyHeight != 0) {
-        const qreal pixelSize = std::clamp(
-            std::abs(reportFont.legacyHeight) * std::max<qreal>(1.0, scale * LegacyFontScaleMultiplier),
+        const qreal maximumForFrame = std::max(
             MinimumReportFontPixels,
-            MaximumReportFontPixels);
+            textRect.height() * (frame.printEntireContentsFlag != 0
+                ? MaximumWrappedFontToFrameRatio
+                : MaximumSingleLineFontToFrameRatio));
+        const qreal pixelSize = std::clamp(
+            std::abs(reportFont.legacyHeight) * scale * LegacyFontHeightToPixelScale,
+            MinimumReportFontPixels,
+            std::min(MaximumReportFontPixels, maximumForFrame));
         font.setPixelSize(qRound(pixelSize));
     }
 
@@ -292,11 +331,11 @@ void ReportPreviewRenderer::render(QPainter* painter, const ReportDefinition& re
         }
 
         painter->save();
-        painter->setClipRect(frameRect);
-        painter->setFont(frameFont(painter, report, frame, scale));
-        painter->setPen(Qt::black);
         const qreal padding = framePadding(scale);
         const QRectF textRect = frameRect.adjusted(padding, padding, -padding, -padding);
+        painter->setClipRect(frameRect);
+        painter->setFont(frameFont(painter, report, frame, scale, textRect));
+        painter->setPen(Qt::black);
         const int flags = static_cast<int>(textAlignment(frame))
             | (frame.printEntireContentsFlag != 0 ? Qt::TextWordWrap : Qt::TextSingleLine);
         painter->drawText(

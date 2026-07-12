@@ -119,7 +119,9 @@ bool hasInk(const QImage& image)
         }
     }
     return false;
-}QString safeFileStem(QString text)
+}
+
+QString safeFileStem(QString text)
 {
     text = text.trimmed();
     QString result;
@@ -156,12 +158,36 @@ bool writePreviewImage(const ReportDefinition& report, const ReportPreviewData& 
     QImage image(ManualPreviewImageWidth, ManualPreviewImageHeight, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::white);
 
+    const int recordCount =
+        report.formType == ReportFormType::Card || report.formType == ReportFormType::Label
+        ? std::max(1, report.rows * report.columns)
+        : 1;
+    QVector<ReportPreviewData> records;
+    records.reserve(recordCount);
+    for (int index = 0; index < recordCount; ++index) {
+        ReportPreviewData record = data;
+        for (auto iterator = record.fieldValues.begin(); iterator != record.fieldValues.end(); ++iterator) {
+            iterator.value() = QStringLiteral("%1 %2").arg(iterator.value()).arg(index + 1);
+        }
+        records.append(record);
+    }
+    const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+
     QPainter painter(&image);
-    ReportPreviewRenderer::render(
-        &painter,
-        report,
-        QRectF(20, 20, image.width() - 40, image.height() - 40),
-        data);
+    if (!pages.isEmpty()) {
+        ReportPrintEngine::renderPage(
+            &painter,
+            report,
+            records,
+            pages.first(),
+            QRectF(20, 20, image.width() - 40, image.height() - 40));
+    } else {
+        ReportPreviewRenderer::render(
+            &painter,
+            report,
+            QRectF(20, 20, image.width() - 40, image.height() - 40),
+            data);
+    }
     painter.end();
 
     return hasInk(image) && image.save(filePath);
@@ -240,6 +266,22 @@ private slots:
         QCOMPARE(pages.at(1).cells.size(), 1);
         QCOMPARE(pages.at(0).cells.at(0).target, QRectF(0.0, 0.0, 0.5, 0.5));
         QCOMPARE(pages.at(0).cells.at(3).target, QRectF(0.5, 0.5, 0.5, 0.5));
+    }
+
+    void paginatesLegacyAcrossThenDownLabelGrids()
+    {
+        ReportDefinition report = makeReport();
+        report.formType = ReportFormType::Label;
+        report.rows = 2;
+        report.columns = 10;
+
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, 20);
+        QCOMPARE(pages.size(), 1);
+        QCOMPARE(pages.first().cells.size(), 20);
+        QCOMPARE(pages.first().cells.at(0).target, QRectF(0.0, 0.0, 0.5, 0.1));
+        QCOMPARE(pages.first().cells.at(1).target, QRectF(0.5, 0.0, 0.5, 0.1));
+        QCOMPARE(pages.first().cells.at(2).target, QRectF(0.0, 0.1, 0.5, 0.1));
+        QCOMPARE(pages.first().cells.at(19).target, QRectF(0.5, 0.9, 0.5, 0.1));
     }
 
     void renderPageClipsToTargetAndDrawsCells()

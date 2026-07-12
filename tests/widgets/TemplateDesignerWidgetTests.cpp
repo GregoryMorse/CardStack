@@ -24,6 +24,29 @@ class TemplateDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void preservesExactImportedFrameBounds()
+    {
+        CardTemplateLayout importedLayout;
+        importedLayout.canvasWidth = 6400;
+        importedLayout.canvasHeight = 4800;
+        importedLayout.frames = {
+            {CardTemplateFrameKind::Text, QRect(117, 203, 941, 211), QStringLiteral("Title"), -1},
+            {CardTemplateFrameKind::DataBox, QRect(44, 612, 1777, 321), {}, 0},
+            {CardTemplateFrameKind::NotesBox, QRect(2010, 999, 2444, 1555), {}, 1},
+            {CardTemplateFrameKind::LineOrBox, QRect(300, 3700, 5100, 48), {}, -1},
+        };
+
+        TemplateDesignerWidget designer(importedLayout, makeFields());
+
+        QCOMPARE(designer.layoutDefinition().canvasWidth, importedLayout.canvasWidth);
+        QCOMPARE(designer.layoutDefinition().canvasHeight, importedLayout.canvasHeight);
+        QCOMPARE(designer.layoutDefinition().frames.size(), importedLayout.frames.size());
+        for (int index = 0; index < importedLayout.frames.size(); ++index) {
+            QCOMPARE(designer.layoutDefinition().frames.at(index).bounds, importedLayout.frames.at(index).bounds);
+            QCOMPARE(designer.layoutDefinition().frames.at(index).kind, importedLayout.frames.at(index).kind);
+        }
+    }
+
     void addsAndSavesTemplateFrames()
     {
         CardTemplateLayout initialLayout;

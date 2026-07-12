@@ -12,7 +12,8 @@ namespace {
 int safeRows(const ReportDefinition& report)
 {
     if (report.formType == ReportFormType::Card || report.formType == ReportFormType::Label) {
-        return std::max(1, report.rows);
+        // Legacy card/label reports store the across count first and the down count second.
+        return std::max(1, report.columns);
     }
     return 1;
 }
@@ -20,7 +21,7 @@ int safeRows(const ReportDefinition& report)
 int safeColumns(const ReportDefinition& report)
 {
     if (report.formType == ReportFormType::Card || report.formType == ReportFormType::Label) {
-        return std::max(1, report.columns);
+        return std::max(1, report.rows);
     }
     return 1;
 }

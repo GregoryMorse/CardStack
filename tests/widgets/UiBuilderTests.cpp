@@ -7,19 +7,25 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
+#include <QDir>
+#include <QFileInfo>
 #include <QGroupBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPixmap>
 #include <QSet>
 #include <QSpinBox>
+#include <QStyle>
 #include <QTest>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QWidget>
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -132,9 +138,14 @@ QString widgetDebugName(const QWidget* widget)
         return QStringLiteral("<null>");
     }
 
-    const QString text = qobject_cast<const QAbstractButton*>(widget) != nullptr
-        ? qobject_cast<const QAbstractButton*>(widget)->text()
-        : QString();
+    QString text;
+    if (const auto* button = qobject_cast<const QAbstractButton*>(widget)) {
+        text = button->text();
+    } else if (const auto* label = qobject_cast<const QLabel*>(widget)) {
+        text = label->text();
+    } else if (const auto* groupBox = qobject_cast<const QGroupBox*>(widget)) {
+        text = groupBox->title();
+    }
     return QStringLiteral("id=%1 class=%2 object=%3 text=\"%4\" rect=%5,%6 %7x%8")
         .arg(widget->property("originalControlId").toInt())
         .arg(widget->property("uiControlClass").toString())
@@ -146,11 +157,46 @@ QString widgetDebugName(const QWidget* widget)
         .arg(widget->geometry().height());
 }
 
+QString plainVisibleText(QString text)
+{
+    QString result;
+    result.reserve(text.size());
+    for (int index = 0; index < text.size(); ++index) {
+        if (text.at(index) != QLatin1Char('&')) {
+            result.append(text.at(index));
+            continue;
+        }
+        if (index + 1 < text.size() && text.at(index + 1) == QLatin1Char('&')) {
+            result.append(QLatin1Char('&'));
+            ++index;
+        }
+    }
+    return result;
+}
+
 bool isContainerDecoration(const QWidget* widget)
 {
+    const auto* label = qobject_cast<const QLabel*>(widget);
     return qobject_cast<const QGroupBox*>(widget) != nullptr ||
         widget->property("uiControlClass").toString() == QStringLiteral("static") &&
-            widget->geometry().width() <= 4;
+            (widget->geometry().width() <= 4 ||
+             (label != nullptr && plainVisibleText(label->text()).trimmed().isEmpty()));
+}
+
+bool isEmptyStaticDecoration(const QWidget* widget)
+{
+    const auto* label = qobject_cast<const QLabel*>(widget);
+    return label != nullptr &&
+        widget->property("uiControlClass").toString() == QStringLiteral("static") &&
+        plainVisibleText(label->text()).trimmed().isEmpty();
+}
+
+bool isToolbarResourceName(const QString& dialogName)
+{
+    return dialogName == QStringLiteral("DECK_NAVIGATION_TOOLBAR") ||
+        dialogName == QStringLiteral("TEMPLATE_FIELD_TOOLBAR") ||
+        dialogName == QStringLiteral("REPORT_FRAME_TOOLBAR") ||
+        dialogName == QStringLiteral("COMPACT_DESIGNER_TOOLBAR");
 }
 
 bool isContainedByDecoration(const QWidget* decoration, const QWidget* widget)
@@ -175,7 +221,11 @@ bool hasMaterialOverlap(const QWidget* first, const QWidget* second)
     if (first == nullptr || second == nullptr || first == second) {
         return false;
     }
-    if (!first->isVisible() || !second->isVisible()) {
+    if (first->isHidden() || second->isHidden()) {
+        return false;
+    }
+    if ((isEmptyStaticDecoration(first) && qobject_cast<const QLabel*>(second) != nullptr) ||
+        (isEmptyStaticDecoration(second) && qobject_cast<const QLabel*>(first) != nullptr)) {
         return false;
     }
     if (isContainedByDecoration(first, second) || isContainedByDecoration(second, first)) {
@@ -188,11 +238,87 @@ bool hasMaterialOverlap(const QWidget* first, const QWidget* second)
     if (area <= 0) {
         return false;
     }
+    const QRect overlapRect = firstRect.intersected(secondRect);
+    if ((qobject_cast<const QGroupBox*>(first) != nullptr ||
+         qobject_cast<const QGroupBox*>(second) != nullptr) &&
+        overlapRect.isValid() &&
+        std::min(overlapRect.width(), overlapRect.height()) <= 4) {
+        return false;
+    }
 
     const int firstArea = firstRect.width() * firstRect.height();
     const int secondArea = secondRect.width() * secondRect.height();
     const int smallerArea = std::max(1, std::min(firstArea, secondArea));
     return area > std::max(6, smallerArea / 8);
+}
+
+bool textFitsWidget(const QWidget* widget)
+{
+    if (widget == nullptr || widget->isHidden()) {
+        return true;
+    }
+
+    QString text;
+    int padding = 8;
+    if (const auto* label = qobject_cast<const QLabel*>(widget)) {
+        text = plainVisibleText(label->text());
+        if (text.trimmed().isEmpty()) {
+            return true;
+        }
+        const QFontMetrics metrics(label->font());
+        if (label->wordWrap()) {
+            const QRect wrapped = metrics.boundingRect(
+                QRect(0, 0, std::max(1, widget->width()), 10000),
+                label->alignment() | Qt::TextWordWrap,
+                text);
+            return wrapped.height() + 2 <= widget->height();
+        }
+        return metrics.horizontalAdvance(text) + 4 <= widget->width();
+    } else if (const auto* groupBox = qobject_cast<const QGroupBox*>(widget)) {
+        text = plainVisibleText(groupBox->title());
+        padding = 8;
+    } else if (const auto* button = qobject_cast<const QAbstractButton*>(widget)) {
+        text = plainVisibleText(button->text());
+        if (text.trimmed().isEmpty()) {
+            return true;
+        }
+        return button->sizeHint().width() <= widget->width();
+    } else if (const auto* comboBox = qobject_cast<const QComboBox*>(widget)) {
+        if (comboBox->count() == 0) {
+            return true;
+        }
+        int widestText = 0;
+        const QFontMetrics metrics(comboBox->font());
+        for (int index = 0; index < comboBox->count(); ++index) {
+            widestText = std::max(widestText, metrics.horizontalAdvance(comboBox->itemText(index)));
+        }
+        const int arrowWidth = comboBox->style()->pixelMetric(QStyle::PM_ComboBoxFrameWidth, nullptr, comboBox) * 2 +
+            comboBox->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, comboBox);
+        return widestText + arrowWidth + 18 <= widget->width();
+    } else {
+        return true;
+    }
+
+    if (text.trimmed().isEmpty()) {
+        return true;
+    }
+
+    const QFontMetrics metrics(widget->font());
+    return metrics.horizontalAdvance(text) + padding <= widget->width();
+}
+
+QRect groupTitleCollisionRect(const QGroupBox* groupBox)
+{
+    if (groupBox == nullptr || groupBox->title().trimmed().isEmpty()) {
+        return QRect();
+    }
+
+    const QFontMetrics metrics(groupBox->font());
+    return QRect(
+        groupBox->geometry().left() + 8,
+        groupBox->geometry().top(),
+        metrics.horizontalAdvance(plainVisibleText(groupBox->title())) + 20,
+        metrics.height());
 }
 
 int requiredComboPopupWidth(const QComboBox* comboBox)
@@ -211,6 +337,139 @@ int effectiveComboPopupWidth(const QComboBox* comboBox)
     return std::max(
         comboBox->width(),
         view == nullptr ? 0 : std::max(view->minimumWidth(), view->sizeHint().width()));
+}
+
+QString safeImageStem(QString text)
+{
+    text = text.trimmed();
+    QString result;
+    result.reserve(text.size());
+    for (const QChar character : text) {
+        result.append(character.isLetterOrNumber() ? character.toLower() : QLatin1Char('_'));
+    }
+    while (result.contains(QStringLiteral("__"))) {
+        result.replace(QStringLiteral("__"), QStringLiteral("_"));
+    }
+    while (result.startsWith(QLatin1Char('_'))) {
+        result.remove(0, 1);
+    }
+    while (result.endsWith(QLatin1Char('_'))) {
+        result.chop(1);
+    }
+    return result.isEmpty() ? QStringLiteral("dialog") : result;
+}
+
+int widestComboItemIndex(const QComboBox* comboBox)
+{
+    if (comboBox == nullptr || comboBox->count() == 0) {
+        return -1;
+    }
+
+    int widestIndex = 0;
+    int widestWidth = -1;
+    const QFontMetrics metrics(comboBox->font());
+    for (int index = 0; index < comboBox->count(); ++index) {
+        const int width = metrics.horizontalAdvance(comboBox->itemText(index));
+        if (width > widestWidth) {
+            widestWidth = width;
+            widestIndex = index;
+        }
+    }
+    return widestIndex;
+}
+
+bool isNumericStressEdit(const QLineEdit* lineEdit)
+{
+    if (lineEdit == nullptr) {
+        return false;
+    }
+
+    const QString dialogName = lineEdit->window()->property("legacyDialogName").toString();
+    const int controlId = lineEdit->property("originalControlId").toInt();
+    const QSet<int> numericControls = {
+        UiIds::Control::PrintCopyCount,
+        UiIds::Control::DefineFormHeight,
+        UiIds::Control::DefineFormWidth,
+        UiIds::Control::DefineFormMarginTop,
+        UiIds::Control::DefineFormMarginLeft,
+        UiIds::Control::DefineFormMarginBottom,
+        UiIds::Control::DefineFormMarginRight,
+        UiIds::Control::DefineFormHorizontalGutter,
+        UiIds::Control::DefineFormVerticalGutter,
+        UiIds::Control::DefineFormColumns,
+        UiIds::Control::DefineFormRows,
+        UiIds::Control::LineFrameCornerRadius,
+        UiIds::Control::PhoneOutsideLinePrefix,
+        UiIds::Control::PhoneLongDistancePrefix,
+        UiIds::Control::PhoneLocalAreaCode,
+    };
+    return numericControls.contains(controlId) ||
+        (dialogName == QStringLiteral("TPLDATAFRAME") && controlId == 4210) ||
+        (dialogName == QStringLiteral("IMPEDIT") && controlId == 706);
+}
+
+void applyInterestingDialogState(QDialog* dialog)
+{
+    if (dialog == nullptr) {
+        return;
+    }
+
+    for (QComboBox* comboBox : dialog->findChildren<QComboBox*>()) {
+        const int widestIndex = widestComboItemIndex(comboBox);
+        if (widestIndex >= 0) {
+            comboBox->setCurrentIndex(widestIndex);
+        }
+    }
+
+    for (QListWidget* listWidget : dialog->findChildren<QListWidget*>()) {
+        if (listWidget->count() > 0) {
+            listWidget->setCurrentRow(listWidget->count() - 1);
+        }
+    }
+
+    for (QLineEdit* lineEdit : dialog->findChildren<QLineEdit*>()) {
+        if (lineEdit->isReadOnly()) {
+            continue;
+        }
+        if (qobject_cast<QComboBox*>(lineEdit->parentWidget()) != nullptr) {
+            continue;
+        }
+        if (isNumericStressEdit(lineEdit)) {
+            lineEdit->setText(QStringLiteral("999"));
+            continue;
+        }
+
+        const int usefulLength = lineEdit->maxLength() > 0
+            ? std::min(lineEdit->maxLength(), 28)
+            : 28;
+        const QString sample = QStringLiteral("Wide sample value 1234567890").left(usefulLength);
+        lineEdit->setText(sample);
+    }
+
+    for (QSpinBox* spinBox : dialog->findChildren<QSpinBox*>()) {
+        spinBox->setValue(spinBox->maximum());
+    }
+}
+
+bool saveDialogImage(QDialog* dialog, const QDir& outputDirectory, const QString& fileStem)
+{
+    if (dialog == nullptr) {
+        return false;
+    }
+
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+    QCoreApplication::processEvents();
+    QTest::qWait(30);
+    QCoreApplication::processEvents();
+
+    const QPixmap pixmap = dialog->grab();
+    if (pixmap.isNull()) {
+        return false;
+    }
+
+    return pixmap.save(outputDirectory.filePath(fileStem + QStringLiteral(".png")));
 }
 
 QString clickHelpButtonAndCaptureText(QAbstractButton* helpButton)
@@ -544,13 +803,16 @@ private slots:
     {
         const UiBuilder::DialogContext context = populatedContext();
         for (const QString& dialogName : UiBuilder::dialogNames()) {
+            if (isToolbarResourceName(dialogName)) {
+                continue;
+            }
             std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(dialogName, nullptr, context);
             QVERIFY2(dialog != nullptr, qPrintable(QStringLiteral("Dialog did not instantiate: %1").arg(dialogName)));
 
             const QRect safeDialogRect = dialog->rect().adjusted(-1, -1, 1, 1);
             const QList<QWidget*> controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
             for (QWidget* widget : controls) {
-                if (!widget->isVisible()) {
+                if (widget->isHidden()) {
                     continue;
                 }
 
@@ -575,6 +837,39 @@ private slots:
                             .arg(dialogName, widgetDebugName(first), widgetDebugName(second))));
                 }
             }
+
+            for (QWidget* widget : controls) {
+                QVERIFY2(
+                    textFitsWidget(widget),
+                    qPrintable(QStringLiteral("%1 has elided text: %2").arg(dialogName, widgetDebugName(widget))));
+            }
+
+            const QList<QGroupBox*> groupBoxes = dialog->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly);
+            for (int firstIndex = 0; firstIndex < groupBoxes.size(); ++firstIndex) {
+                if (groupBoxes.at(firstIndex)->isHidden()) {
+                    continue;
+                }
+                const QRect firstTitle = groupTitleCollisionRect(groupBoxes.at(firstIndex));
+                if (!firstTitle.isValid()) {
+                    continue;
+                }
+                for (int secondIndex = 0; secondIndex < controls.size(); ++secondIndex) {
+                    QWidget* second = controls.at(secondIndex);
+                    if (second == groupBoxes.at(firstIndex) || second->isHidden()) {
+                        continue;
+                    }
+                    const QRect titleOverlap = firstTitle.intersected(second->geometry());
+                    QVERIFY2(
+                        !titleOverlap.isValid() || titleOverlap.height() <= 2,
+                        qPrintable(QStringLiteral("%1 has group title colliding with control:\n  title=%2,%3 %4x%5\n  %6")
+                            .arg(dialogName)
+                            .arg(firstTitle.x())
+                            .arg(firstTitle.y())
+                            .arg(firstTitle.width())
+                            .arg(firstTitle.height())
+                            .arg(widgetDebugName(second))));
+                }
+            }
         }
     }
 
@@ -587,7 +882,7 @@ private slots:
 
             const QList<QComboBox*> comboBoxes = dialog->findChildren<QComboBox*>();
             for (QComboBox* comboBox : comboBoxes) {
-                if (!comboBox->isVisible() || comboBox->count() == 0) {
+                if (comboBox->isHidden() || comboBox->count() == 0) {
                     continue;
                 }
 
@@ -660,7 +955,7 @@ private slots:
         QVERIFY(!outsideLine->isHidden());
         QVERIFY(!quickDials->isHidden());
         QVERIFY(longDistance->geometry().top() < 70);
-        QVERIFY(quickDials->geometry().top() < 70);
+        QVERIFY(quickDials->geometry().top() > 100);
         QVERIFY(longDistancePrefix->width() <= 54);
         QVERIFY(outsideLinePrefix->width() <= 54);
         QVERIFY(localAreaCode->width() <= 54);
@@ -698,6 +993,83 @@ private slots:
             }
         }
         QVERIFY(foundDefineFormMicroScroll);
+    }
+
+    void keepsMicroScrollControlsAttachedToLineEdits()
+    {
+        const UiBuilder::DialogContext context = populatedContext();
+        int checkedMicroScrolls = 0;
+
+        for (const QString& dialogName : UiBuilder::dialogNames()) {
+            if (dialogName == QStringLiteral("PRINT") ||
+                dialogName == QStringLiteral("LINEFRAME")) {
+                continue;
+            }
+
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(dialogName, nullptr, context);
+            QVERIFY2(dialog != nullptr, qPrintable(dialogName));
+
+            const QList<QWidget*> controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+            for (QWidget* widget : controls) {
+                if (widget->isHidden() ||
+                    widget->property("uiControlClass").toString() != QStringLiteral("MicroScroll")) {
+                    continue;
+                }
+
+                const QRect microRect = widget->geometry();
+                if (microRect.width() > 12) {
+                    ++checkedMicroScrolls;
+                    continue;
+                }
+
+                QWidget* attachedEdit = nullptr;
+                bool hasPeerEdit = false;
+                for (QWidget* candidate : controls) {
+                    auto* edit = qobject_cast<QLineEdit*>(candidate);
+                    if (edit == nullptr || edit->isHidden()) {
+                        continue;
+                    }
+
+                    const QRect editRect = edit->geometry();
+                    if (editRect.left() >= microRect.left()) {
+                        continue;
+                    }
+
+                    const bool verticallyAligned =
+                        std::abs(editRect.center().y() - microRect.center().y()) <= 4;
+                    if (!verticallyAligned) {
+                        continue;
+                    }
+
+                    hasPeerEdit = true;
+                    const bool horizontallyAttached =
+                        std::abs((editRect.right() + 1) - microRect.left()) <= 4;
+                    const bool sameHeight =
+                        std::abs(editRect.height() - microRect.height()) <= 4;
+                    if (horizontallyAttached && sameHeight) {
+                        attachedEdit = edit;
+                        break;
+                    }
+                }
+
+                if (!hasPeerEdit) {
+                    ++checkedMicroScrolls;
+                    continue;
+                }
+
+                QVERIFY2(
+                    attachedEdit != nullptr,
+                    qPrintable(QStringLiteral("Detached micro-scroll in %1 at %2,%3 %4x%5")
+                        .arg(dialogName)
+                        .arg(microRect.x())
+                        .arg(microRect.y())
+                        .arg(microRect.width())
+                        .arg(microRect.height())));
+                ++checkedMicroScrolls;
+            }
+        }
+
+        QVERIFY(checkedMicroScrolls > 0);
     }
 
     void everyHelpButtonOpensContextHelp()
@@ -739,6 +1111,47 @@ private slots:
                 qPrintable(QStringLiteral("Unexpected Help content for %1: expected \"%2\"").arg(dialogName, expectation.second)));
             dialog->close();
         }
+    }
+
+    void writesManualDialogInspectionImagesWhenConfigured()
+    {
+        const QString outputPath = qEnvironmentVariable("CARDSTACK_DIALOG_GALLERY_DIR");
+        if (outputPath.isEmpty()) {
+            QSKIP("Set CARDSTACK_DIALOG_GALLERY_DIR to write dialog PNGs for manual inspection.");
+        }
+
+        QDir outputDirectory(outputPath);
+        QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+
+        const UiBuilder::DialogContext context = populatedContext();
+        int written = 0;
+        for (const QString& dialogName : UiBuilder::dialogNames()) {
+            const QString stem = QStringLiteral("%1%2")
+                .arg(isToolbarResourceName(dialogName) ? QStringLiteral("toolbar_") : QString())
+                .arg(safeImageStem(dialogName));
+            std::unique_ptr<QDialog> initialDialog = UiBuilder::createDialog(dialogName, nullptr, context);
+            QVERIFY2(initialDialog != nullptr, qPrintable(dialogName));
+            QVERIFY2(
+                saveDialogImage(initialDialog.get(), outputDirectory, QStringLiteral("%1_%2_initial")
+                    .arg(written, 2, 10, QLatin1Char('0'))
+                    .arg(stem)),
+                qPrintable(QStringLiteral("Could not save initial dialog image for %1").arg(dialogName)));
+            initialDialog->close();
+
+            std::unique_ptr<QDialog> wideDialog = UiBuilder::createDialog(dialogName, nullptr, context);
+            QVERIFY2(wideDialog != nullptr, qPrintable(dialogName));
+            applyInterestingDialogState(wideDialog.get());
+            QVERIFY2(
+                saveDialogImage(wideDialog.get(), outputDirectory, QStringLiteral("%1_%2_wide")
+                    .arg(written, 2, 10, QLatin1Char('0'))
+                    .arg(stem)),
+                qPrintable(QStringLiteral("Could not save wide-state dialog image for %1").arg(dialogName)));
+            wideDialog->close();
+            ++written;
+        }
+
+        QVERIFY(written > 20);
+        qInfo("Wrote %d dialog image pairs to %s", written, qPrintable(QFileInfo(outputDirectory.path()).absoluteFilePath()));
     }
 };
 

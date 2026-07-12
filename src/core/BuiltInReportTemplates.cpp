@@ -12,6 +12,7 @@ namespace {
 constexpr int LegacyReportHeaderSize = 0x3f5;
 constexpr int LegacyReportFrameSize = 0x9b;
 constexpr quint16 LegacyReportFrameSignature = 0xabcd;
+constexpr int BuiltInReportFrameCoordinateScale = 10;
 constexpr int StandardReportPageWidthMils = 8500;
 constexpr int StandardReportPageHeightMils = 11000;
 constexpr int StandardReportMarginMils = 500;
@@ -202,6 +203,15 @@ QVector<QString> texts(std::initializer_list<const char*> values)
     return result;
 }
 
+QRect scaledReportFrameBounds(QRect bounds, int scale)
+{
+    return QRect(
+        bounds.left() * scale,
+        bounds.top() * scale,
+        bounds.width() * scale,
+        bounds.height() * scale);
+}
+
 ReportFontDefinition font(const char* faceName, int legacyHeight)
 {
     ReportFontDefinition result;
@@ -280,6 +290,9 @@ ReportDefinition report(
     result.columns = columns;
     result.dataFont = std::move(dataFont);
     result.textFont = std::move(textFont);
+    for (ReportFrameDefinition& frame : frames) {
+        frame.bounds = scaledReportFrameBounds(frame.bounds, BuiltInReportFrameCoordinateScale);
+    }
     result.frames = std::move(frames);
     return result;
 }
@@ -2443,61 +2456,61 @@ QVector<ReportDefinition> reports107()
             font("Arial", 34),
             {
                 frame(
-                    969, 0xabcd, LineSolid, OldReportLineOrder30, 0,
+                    969, 0xabcd, 0x0000, OldReportLineOrder30, 0,
                     QRect(24, 24, 156, 21),
-                    "",
+                    "[First Name]",
+                    texts({"First Name"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineSolid, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    1124, 0xabcd, LineDash, OldReportLineOrder30, 1,
+                    1124, 0xabcd, 0x0001, OldReportLineOrder30, 1,
                     QRect(180, 24, 147, 21),
-                    "",
+                    "[Last Name]",
+                    texts({"Last Name"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineDash, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    1279, 0xabcd, LineDot, OldReportLineOrder50, 2,
+                    1279, 0xabcd, 0x0002, OldReportLineOrder50, 2,
                     QRect(24, 45, 303, 21),
-                    "",
+                    "[Address 1]",
+                    texts({"Address 1"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineDot, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    1434, 0xabcd, LineDashDot, OldReportLineOrder50, 3,
+                    1434, 0xabcd, 0x0003, OldReportLineOrder50, 3,
                     QRect(24, 66, 303, 21),
-                    "",
+                    "[Address 2]",
+                    texts({"Address 2"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineDashDot, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    1589, 0xabcd, LineDashDotDot, OldReportLineOrder25, 4,
+                    1589, 0xabcd, 0x0004, OldReportLineOrder25, 4,
                     QRect(24, 87, 123, 21),
-                    "",
+                    "[City]",
+                    texts({"City"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineDashDotDot, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    1744, 0xabcd, LineThickSolid, OldReportLineOrder2, 5,
+                    1744, 0xabcd, 0x0005, OldReportLineOrder2, 5,
                     QRect(174, 87, 15, 21),
-                    "",
+                    "[State:]",
+                    texts({"State:"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineThickSolid, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    1899, 0xabcd, LineThickDash, OldReportLineOrder10, 6,
+                    1899, 0xabcd, 0x0006, OldReportLineOrder10, 6,
                     QRect(189, 87, 69, 21),
-                    "",
+                    "[Zip + 4]",
+                    texts({"Zip + 4"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineThickDash, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2054, 0xabcd, 0xffff, 25, 7,
                     QRect(147, 87, 27, 21),
@@ -2507,13 +2520,13 @@ QVector<ReportDefinition> reports107()
                     ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextPlain,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
-                    2209, 0xabcd, LineNoOutline, OldReportLineOrder25, 8,
+                    2209, 0xabcd, 0x0009, OldReportLineOrder25, 8,
                     QRect(264, 87, 126, 21),
-                    "",
+                    "[Country]",
+                    texts({"Country"}),
                     texts({}),
-                    texts({}),
-                    ReportFrameKind::LineOrBox, PrintNormal, NoValidationFlags, TextPlain,
-                    LegacyLineShape, LineNoOutline, FillClear, NoCornerRadius),
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
+                    NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
 }

@@ -45,6 +45,32 @@ Deck createConstrainedEditorDeck()
     return deck;
 }
 
+Deck createTemplateLayoutDeck()
+{
+    Deck deck(QStringLiteral("Template Layout Test"));
+    deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 255));
+    deck.addField(FieldDefinition(QStringLiteral("Notes"), FieldType::Notes, 1024));
+    deck.addCard(CardRecord({QStringLiteral("Alpha"), QStringLiteral("Memo")}));
+
+    CardTemplateLayout layout;
+    layout.canvasWidth = 6400;
+    layout.canvasHeight = 4800;
+    CardTemplateFrame nameFrame;
+    nameFrame.kind = CardTemplateFrameKind::DataBox;
+    nameFrame.fieldIndex = 0;
+    nameFrame.bounds = QRect(100, 200, 1000, 240);
+    layout.frames.append(nameFrame);
+
+    CardTemplateFrame notesFrame;
+    notesFrame.kind = CardTemplateFrameKind::NotesBox;
+    notesFrame.fieldIndex = 1;
+    notesFrame.bounds = QRect(500, 800, 1200, 600);
+    layout.frames.append(notesFrame);
+
+    deck.setCardTemplateLayout(layout);
+    return deck;
+}
+
 Deck createMergeSourceDeck()
 {
     Deck deck(QStringLiteral("Merge Source"));
@@ -72,6 +98,18 @@ class DeckWorkspaceTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void cardEditorUsesExactTemplateFrameGeometry()
+    {
+        DeckWorkspace workspace(createTemplateLayoutDeck());
+        auto* nameEditor = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        auto* notesEditor = workspace.findChild<QPlainTextEdit*>(QStringLiteral("fieldValue_1"));
+
+        QVERIFY(nameEditor != nullptr);
+        QVERIFY(notesEditor != nullptr);
+        QCOMPARE(nameEditor->geometry(), QRect(22, 32, 100, 24));
+        QCOMPARE(notesEditor->geometry(), QRect(62, 92, 120, 60));
+    }
+
     void deleteUndoRestoresCardAndUndeleteState()
     {
         DeckWorkspace workspace(createTwoCardDeck());

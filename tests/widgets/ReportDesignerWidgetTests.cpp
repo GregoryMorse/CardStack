@@ -26,6 +26,44 @@ class ReportDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void preservesExactImportedFrameBounds()
+    {
+        ReportDefinition importedReport = makeReport();
+        importedReport.frames = {
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::Text;
+                frame.bounds = QRect(101, 207, 933, 177);
+                frame.text = QStringLiteral("Heading");
+                return frame;
+            }(),
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::Data;
+                frame.bounds = QRect(44, 622, 1803, 333);
+                frame.fieldPlaceholders = {QStringLiteral("Product")};
+                return frame;
+            }(),
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::LineOrBox;
+                frame.bounds = QRect(300, 2400, 4100, 55);
+                frame.lineBoxShape = ReportLineShapeHorizontal;
+                return frame;
+            }(),
+        };
+
+        ReportDesignerWidget designer(importedReport, {QStringLiteral("Product")});
+
+        QCOMPARE(designer.report().formWidth, importedReport.formWidth);
+        QCOMPARE(designer.report().formHeight, importedReport.formHeight);
+        QCOMPARE(designer.report().frames.size(), importedReport.frames.size());
+        for (int index = 0; index < importedReport.frames.size(); ++index) {
+            QCOMPARE(designer.report().frames.at(index).bounds, importedReport.frames.at(index).bounds);
+            QCOMPARE(designer.report().frames.at(index).kind, importedReport.frames.at(index).kind);
+        }
+    }
+
     void addsSelectsAndSavesFrames()
     {
         ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});

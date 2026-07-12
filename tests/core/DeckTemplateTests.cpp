@@ -97,6 +97,14 @@ private slots:
         QCOMPARE(businessCardsTemplate->legacyFields.at(11).dialableMarker, quint16(1));
         QCOMPARE(businessCardsTemplate->legacyTextFrames.size(), 2);
         QCOMPARE(businessCardsTemplate->legacyTextFrames.at(0).text, QStringLiteral("Name"));
+
+        const std::optional<DeckTemplate> mailingListTemplate = findBuiltInDeckTemplate(QStringLiteral("Mailing List"));
+        QVERIFY(mailingListTemplate.has_value());
+        QVERIFY(!mailingListTemplate->reports.isEmpty());
+        QCOMPARE(mailingListTemplate->reports.first().formatMagic, QStringLiteral("RPT@#$A"));
+        QCOMPARE(mailingListTemplate->reports.first().frames.first().kind, ReportFrameKind::Data);
+        QCOMPARE(mailingListTemplate->reports.first().frames.first().fieldPlaceholders, QVector<QString>{QStringLiteral("First Name")});
+        QCOMPARE(mailingListTemplate->reports.first().frames.first().bounds, QRect(240, 240, 1560, 210));
     }
 
     void supportsScratchAndPatternedDeckCreation()

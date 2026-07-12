@@ -11,6 +11,7 @@
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QRegularExpression>
@@ -709,6 +710,8 @@ void DeckWorkspace::setCardTemplateLayout(const CardTemplateLayout& layout)
 
     pushUndoSnapshot();
     m_deck.setCardTemplateLayout(layout);
+    rebuildCardEditor();
+    refreshCardEditor();
     markDirty();
 }
 
@@ -810,13 +813,6 @@ QWidget* DeckWorkspace::createCardPage()
     scrollArea->setObjectName(QStringLiteral("cardEditorScrollArea"));
 
     m_cardEditorContent = new QWidget(scrollArea);
-    auto* contentLayout = new QVBoxLayout(m_cardEditorContent);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-
-    m_cardForm = new QFormLayout;
-    m_cardForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    contentLayout->addLayout(m_cardForm);
-    contentLayout->addStretch(1);
 
     scrollArea->setWidget(m_cardEditorContent);
     m_cardDetailPanel->bodyLayout()->addWidget(scrollArea);
@@ -863,19 +859,20 @@ void DeckWorkspace::attachCardDetailPanelToTablePage()
 
 void DeckWorkspace::rebuildCardEditor()
 {
-    while (m_cardForm->rowCount() > 0) {
-        m_cardForm->removeRow(0);
+    if (QLayout* existingLayout = m_cardEditorContent->layout()) {
+        delete existingLayout;
     }
-    m_valueEditors.clear();
+    const QList<QWidget*> existingChildren = m_cardEditorContent->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+    qDeleteAll(existingChildren);
 
-    for (int fieldIndex = 0; fieldIndex < m_deck.fieldCount(); ++fieldIndex) {
+    m_cardForm = nullptr;
+    m_valueEditors = QVector<QWidget*>(m_deck.fieldCount(), nullptr);
+
+    auto makeEditor = [this](int fieldIndex, QWidget* parent) -> QWidget* {
         const FieldDefinition& field = m_deck.fieldAt(fieldIndex);
-        auto* label = new QLabel(field.name(), m_cardEditorContent);
-        label->setObjectName(QStringLiteral("fieldName_%1").arg(fieldIndex));
-
         QWidget* editor = nullptr;
         if (field.isNotes()) {
-            auto* textEdit = new QPlainTextEdit(m_cardEditorContent);
+            auto* textEdit = new QPlainTextEdit(parent);
             textEdit->setMinimumHeight(90);
             textEdit->setProperty("maxLength", field.maxLength());
             QObject::connect(textEdit, &QPlainTextEdit::textChanged, textEdit, [this, textEdit, fieldIndex]() {
@@ -893,7 +890,7 @@ void DeckWorkspace::rebuildCardEditor()
             });
             editor = textEdit;
         } else {
-            auto* lineEdit = new QLineEdit(m_cardEditorContent);
+            auto* lineEdit = new QLineEdit(parent);
             if (field.maxLength() > 0) {
                 lineEdit->setMaxLength(field.maxLength());
             }
@@ -908,7 +905,94 @@ void DeckWorkspace::rebuildCardEditor()
 
         editor->setProperty("fieldIndex", fieldIndex);
         editor->setObjectName(QStringLiteral("fieldValue_%1").arg(fieldIndex));
-        m_valueEditors.append(editor);
+        m_valueEditors[fieldIndex] = editor;
+        return editor;
+    };
+
+    const CardTemplateLayout& cardLayout = m_deck.cardTemplateLayout();
+    if (!cardLayout.frames.isEmpty()) {
+        constexpr int TemplateCoordinateScale = 10;
+        const int canvasWidth = std::max(1, cardLayout.canvasWidth / TemplateCoordinateScale);
+        const int canvasHeight = std::max(1, cardLayout.canvasHeight / TemplateCoordinateScale);
+        m_cardEditorContent->setMinimumSize(canvasWidth + 24, canvasHeight + 24);
+
+        auto scaledBounds = [](const QRect& bounds) {
+            constexpr int Scale = 10;
+            return QRect(
+                bounds.left() / Scale + 12,
+                bounds.top() / Scale + 12,
+                std::max(1, bounds.width() / Scale),
+                std::max(1, bounds.height() / Scale));
+        };
+
+        for (const CardTemplateFrame& frame : cardLayout.frames) {
+            const QRect rect = scaledBounds(frame.bounds);
+            if (frame.kind == CardTemplateFrameKind::Text) {
+                auto* label = new QLabel(frame.text, m_cardEditorContent);
+                label->setObjectName(QStringLiteral("templateTextFrame"));
+                label->setGeometry(rect);
+                label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                label->show();
+            } else if (frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox) {
+                const int fieldIndex = frame.fieldIndex;
+                if (fieldIndex < 0 || fieldIndex >= m_deck.fieldCount()) {
+                    continue;
+                }
+                QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
+                editor->setMinimumSize(0, 0);
+                editor->setMaximumSize(rect.size());
+                editor->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+                editor->setGeometry(rect);
+                editor->show();
+            } else if (frame.kind == CardTemplateFrameKind::LineOrBox) {
+                auto* line = new QFrame(m_cardEditorContent);
+                line->setObjectName(QStringLiteral("templateLineBoxFrame"));
+                if (frame.lineBoxShape == CardTemplateLineBoxShape::HorizontalLine) {
+                    line->setFrameShape(QFrame::HLine);
+                } else if (frame.lineBoxShape == CardTemplateLineBoxShape::VerticalLine) {
+                    line->setFrameShape(QFrame::VLine);
+                } else {
+                    line->setFrameShape(QFrame::Box);
+                }
+                line->setGeometry(rect);
+                line->show();
+            }
+        }
+
+        int fallbackTop = canvasHeight + 28;
+        for (int fieldIndex = 0; fieldIndex < m_valueEditors.size(); ++fieldIndex) {
+            if (m_valueEditors[fieldIndex] != nullptr) {
+                continue;
+            }
+            const FieldDefinition& field = m_deck.fieldAt(fieldIndex);
+            auto* label = new QLabel(field.name(), m_cardEditorContent);
+            label->setObjectName(QStringLiteral("fieldName_%1").arg(fieldIndex));
+            label->setGeometry(12, fallbackTop + 4, 140, 22);
+            label->show();
+
+            QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
+            editor->setGeometry(160, fallbackTop, 360, field.isNotes() ? 90 : 26);
+            editor->show();
+            fallbackTop += field.isNotes() ? 104 : 34;
+        }
+        m_cardEditorContent->setMinimumHeight(std::max(m_cardEditorContent->minimumHeight(), fallbackTop + 12));
+        return;
+    }
+
+    auto* contentLayout = new QVBoxLayout(m_cardEditorContent);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_cardForm = new QFormLayout;
+    m_cardForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    contentLayout->addLayout(m_cardForm);
+    contentLayout->addStretch(1);
+
+    for (int fieldIndex = 0; fieldIndex < m_deck.fieldCount(); ++fieldIndex) {
+        const FieldDefinition& field = m_deck.fieldAt(fieldIndex);
+        auto* label = new QLabel(field.name(), m_cardEditorContent);
+        label->setObjectName(QStringLiteral("fieldName_%1").arg(fieldIndex));
+
+        QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
         m_cardForm->addRow(label, editor);
     }
 }

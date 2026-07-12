@@ -602,13 +602,13 @@ const UiControl dialog_controls_ABOUT[] = {
     {"BTN_pict", "", 2100, Style::Child | Style::Visible, 8, 10, 230, 59},
     {"button", "&OK", 1, Style::Child | Style::Visible | Style::Group | Style::TabStop | Style::Button::DefaultPushButton, 25, 211, 40, 16},
     {"ALIGNED_pict", "", 2101, Style::Child | Style::Visible, 38, 87, 170, 29},
-    {"button", "At the touch of a button", 2102, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 48, 120, 150, 16},
+    {"button", "CardStack", 2102, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 48, 120, 150, 16},
     {"static", "", 2103, Style::Child | Style::Visible | Style::Static::BlackFrame, 8, 80, 230, 63},
     {"static", "", 65535, Style::Child | Style::Visible | Style::Group | Style::Static::Right, 11, 165, 50, 10},
     {"static", "", 100, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 78, 165, 131, 10},
     {"static", "", 101, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 78, 178, 131, 10},
     {"static", "Compile Date:", 102, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 11, 192, 209, 10},
-    {"static", "©Copyright 1993, CardStack Incorporated", 103, Style::Child | Style::Visible | Style::Group | Style::Static::Right, 90, 147, 149, 10},
+    {"static", "Open source card database", 103, Style::Child | Style::Visible | Style::Group | Style::Static::Right, 90, 147, 149, 10},
 };
 const UiControl dialog_controls_QUICKDIAL[] = {
     {"static", "Description:", 65535, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 6, 10, 50, 8},
@@ -874,7 +874,7 @@ const UiControl dialog_controls_STARTUP[] = {
     {"static", "", 65535, Style::Child | Style::Visible | Style::Group | Style::Static::Right, 10, 97, 50, 10},
     {"static", "", 100, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 77, 97, 131, 10},
     {"static", "", 101, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 77, 110, 131, 10},
-    {"static", "©Copyright 1993, CardStack Incorporated", 103, Style::Child | Style::Visible | Style::Group | Style::Static::Right, 89, 79, 149, 10},
+    {"static", "Open source card database", 103, Style::Child | Style::Visible | Style::Group | Style::Static::Right, 89, 79, 149, 10},
 };
 const UiControl dialog_controls_REMOVELOCKS[] = {
     {"static", "Curren&t Users", 65535, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 10, 16, 70, 8},
@@ -891,7 +891,7 @@ const UiControl dialog_controls_GETUSERNAME[] = {
     {"edit", "", 510, Style::Child | Style::Visible | Style::Border | Style::TabStop | Style::Edit::Left | Style::Edit::AutoHScroll, 65, 32, 97, 12},
     {"static", "User Name:", 511, Style::Child | Style::Visible | Style::Static::Left, 19, 34, 43, 9},
     {"static", "To use the network version of CardStack, a user name is required.  Please Enter your name. ", 65535, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 16, 4, 140, 26},
-    {"button", "Store User Name in BUTTON.INI", 512, Style::Child | Style::Visible | Style::TabStop | Style::Button::AutoCheckBox, 22, 51, 120, 12},
+    {"button", "Store user name locally", 512, Style::Child | Style::Visible | Style::TabStop | Style::Button::AutoCheckBox, 22, 51, 120, 12},
     {"button", "&OK", 1, Style::Child | Style::Visible | Style::Group | Style::TabStop | Style::Button::DefaultPushButton, 16, 72, 40, 16},
     {"button", "&Cancel", 2, Style::Child | Style::Visible | Style::Group | Style::TabStop | Style::Button::PushButton, 65, 72, 40, 16},
     {"button", "&Help", 9999, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 120, 72, 40, 16},
@@ -1060,7 +1060,7 @@ const UiDialog kDialogs[] = {
     {"DIAL", "", 126, 61, 109, 71, "Helv", 8, dialog_controls_DIAL, std::size(dialog_controls_DIAL)},
     {"PHNDEF", "Phone  Dialer  Configuration", 11, 24, 259, 237, "Helv", 8, dialog_controls_PHNDEF, std::size(dialog_controls_PHNDEF)},
     {"ABORTIMPEXP", "", 20, 20, 185, 81, "Helv", 8, dialog_controls_ABORTIMPEXP, std::size(dialog_controls_ABORTIMPEXP)},
-    {"1300", "About CardStack", 19, 65518, 249, 236, "Helv", 8, dialog_controls_ABOUT, std::size(dialog_controls_ABOUT)},
+    {"ABOUT", "About CardStack", 19, 65518, 249, 236, "Helv", 8, dialog_controls_ABOUT, std::size(dialog_controls_ABOUT)},
     {"QUICKDIAL", "Add Quick Dial", 18, 18, 150, 63, "", 8, dialog_controls_QUICKDIAL, std::size(dialog_controls_QUICKDIAL)},
     {"IMPEXAMINE", "Import - Examine", 25, 22, 247, 228, "Helv", 8, dialog_controls_IMPEXAMINE, std::size(dialog_controls_IMPEXAMINE)},
     {"IMPEDIT", "Edit Data Box Structure", 23, 23, 141, 79, "", 8, dialog_controls_IMPEDIT, std::size(dialog_controls_IMPEDIT)},
@@ -1084,10 +1084,10 @@ const UiDialog kDialogs[] = {
     {"SETADMINPASS", "Set Administration Password", 31, 28, 156, 79, "Helv", 8, dialog_controls_SETADMINPASS, std::size(dialog_controls_SETADMINPASS)},
     {"VERIFYADMINPASS", "Verify Administration Password", 37, 49, 182, 67, "Helv", 8, dialog_controls_VERIFYADMINPASS, std::size(dialog_controls_VERIFYADMINPASS)},
     {"GETADMINPASS", "Enter Administration Password", 53, 17, 169, 88, "Helv", 8, dialog_controls_GETADMINPASS, std::size(dialog_controls_GETADMINPASS)},
-    {"5013", "", 0, 0, 362, 18, "HELV", 11, dialog_controls_COMPACT_DESIGNER_TOOLBAR, std::size(dialog_controls_COMPACT_DESIGNER_TOOLBAR)},
-    {"5010", "", 0, 0, 362, 24, "HELV", 11, dialog_controls_DECK_NAVIGATION_TOOLBAR, std::size(dialog_controls_DECK_NAVIGATION_TOOLBAR)},
-    {"5011", "", 0, 30, 362, 21, "HELV", 11, dialog_controls_TEMPLATE_FIELD_TOOLBAR, std::size(dialog_controls_TEMPLATE_FIELD_TOOLBAR)},
-    {"5012", "", 65534, 30, 362, 30, "HELV", 11, dialog_controls_REPORT_FRAME_TOOLBAR, std::size(dialog_controls_REPORT_FRAME_TOOLBAR)},
+    {"COMPACT_DESIGNER_TOOLBAR", "", 0, 0, 362, 18, "HELV", 11, dialog_controls_COMPACT_DESIGNER_TOOLBAR, std::size(dialog_controls_COMPACT_DESIGNER_TOOLBAR)},
+    {"DECK_NAVIGATION_TOOLBAR", "", 0, 0, 362, 24, "HELV", 11, dialog_controls_DECK_NAVIGATION_TOOLBAR, std::size(dialog_controls_DECK_NAVIGATION_TOOLBAR)},
+    {"TEMPLATE_FIELD_TOOLBAR", "", 0, 30, 362, 21, "HELV", 11, dialog_controls_TEMPLATE_FIELD_TOOLBAR, std::size(dialog_controls_TEMPLATE_FIELD_TOOLBAR)},
+    {"REPORT_FRAME_TOOLBAR", "", 65534, 30, 362, 30, "HELV", 11, dialog_controls_REPORT_FRAME_TOOLBAR, std::size(dialog_controls_REPORT_FRAME_TOOLBAR)},
 };
 
 const UiString kStrings[] = {
@@ -1382,7 +1382,7 @@ const UiString kStrings[] = {
     {902, "CardStack (BTN)|*.btn|"},
     {903, "The uncomplicated solution to"},
     {904, "your personal database needs..."},
-    {150, "button.ini"},
+    {150, "CardStack settings"},
     {151, "CardStackSettings"},
     {152, "PhLog"},
     {153, "PhLong"},

@@ -32,6 +32,7 @@ constexpr int FrameValidationFlagsOffset = 0x8c;
 constexpr int FrameLineBoxShapeOffset = 0x8e;
 constexpr int FrameStyleFlagsOffset = 0x97;
 constexpr int FrameCornerRadiusOffset = 0x99;
+constexpr int LegacyFrameCoordinateScale = 10;
 
 quint16 readU16(const QByteArray& bytes, int offset)
 {
@@ -150,7 +151,7 @@ int normalizedFillPattern(int value)
     return value >= 0 && value < ReportFillPatternCount ? value : ReportFillPatternClear;
 }
 
-ReportFrameDefinition readFrame(const QByteArray& bytes, int offset)
+ReportFrameDefinition readFrame(const QByteArray& bytes, int offset, int coordinateScale)
 {
     ReportFrameDefinition frame;
     frame.legacyOffset = offset;
@@ -159,10 +160,10 @@ ReportFrameDefinition readFrame(const QByteArray& bytes, int offset)
     frame.order = readU16(bytes, offset + 0x04);
     frame.band = readU16(bytes, offset + 0x06);
 
-    const int left = readU16(bytes, offset + 0x08);
-    const int top = readU16(bytes, offset + 0x0a);
-    const int right = readU16(bytes, offset + 0x0c);
-    const int bottom = readU16(bytes, offset + 0x0e);
+    const int left = readU16(bytes, offset + 0x08) * coordinateScale;
+    const int top = readU16(bytes, offset + 0x0a) * coordinateScale;
+    const int right = readU16(bytes, offset + 0x0c) * coordinateScale;
+    const int bottom = readU16(bytes, offset + 0x0e) * coordinateScale;
     frame.bounds = QRect(left, top, std::max(0, right - left), std::max(0, bottom - top));
 
     frame.text = readNullTerminatedAscii(bytes, offset + FrameTextOffset, FrameTextLength);
@@ -215,6 +216,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         }
 
         const int headerSize = currentFormat ? CurrentHeaderSize : OldHeaderSize;
+        const int coordinateScale = LegacyFrameCoordinateScale;
         if (offset + headerSize > bytes.size()) {
             result.errorMessage = QStringLiteral("Truncated LegacyDeck report header at offset 0x%1.")
                                       .arg(offset, 0, 16);
@@ -248,7 +250,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         const int frameBase = offset + headerSize;
         report.frames.reserve(frameCount);
         for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-            report.frames.append(readFrame(bytes, frameBase + frameIndex * FrameRecordSize));
+            report.frames.append(readFrame(bytes, frameBase + frameIndex * FrameRecordSize, coordinateScale));
         }
 
         result.reports.append(report);

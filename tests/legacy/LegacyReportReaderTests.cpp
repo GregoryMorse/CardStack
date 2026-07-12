@@ -109,6 +109,7 @@ private slots:
         QCOMPARE(report.frames.size(), 2);
         QCOMPARE(report.frames.at(0).signature, 0xabcd);
         QCOMPARE(report.frames.at(0).kind, ReportFrameKind::Data);
+        QCOMPARE(report.frames.at(0).bounds, QRect(200, 300, 3000, 400));
         QCOMPARE(report.frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
         QCOMPARE(report.frames.at(1).kind, ReportFrameKind::SystemText);
         QCOMPARE(report.frames.at(1).systemTokens, (QVector<QString>{QStringLiteral("reportname"), QStringLiteral("page")}));
@@ -165,6 +166,7 @@ private slots:
         QCOMPARE(frame.lineStyle, ReportLineStyleDash);
         QCOMPARE(frame.order, 50);
         QCOMPARE(frame.fillPattern, ReportFillPatternClear);
+        QCOMPARE(frame.bounds, QRect(200, 300, 3000, 40));
     }
 };
 
