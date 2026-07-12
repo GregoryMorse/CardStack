@@ -1,5 +1,8 @@
 #include "DeckWorkspace.h"
 
+#include <QFont>
+#include <QPalette>
+
 #include "CardDetailPanel.h"
 #include "CardTableModel.h"
 #include "PhoneticSearch.h"
@@ -110,7 +113,9 @@ bool fieldDefinitionsEqual(const QVector<FieldDefinition>& left, const QVector<F
     for (int index = 0; index < left.size(); ++index) {
         if (left[index].name() != right[index].name()
             || left[index].type() != right[index].type()
-            || left[index].maxLength() != right[index].maxLength()) {
+            || left[index].maxLength() != right[index].maxLength()
+            || left[index].showName() != right[index].showName()
+            || left[index].isPhone() != right[index].isPhone()) {
             return false;
         }
     }
@@ -270,6 +275,7 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
 
     m_stack->addWidget(m_cardPage);
     m_stack->addWidget(m_tablePage);
+    applyStoredAppearance();
     showCardView();
     setCurrentCardIndex(0);
 }
@@ -603,24 +609,129 @@ bool DeckWorkspace::undeleteCard()
 
 void DeckWorkspace::applyDataFont(const QFont& font)
 {
+    pushUndoSnapshot();
+    DeckAppearance appearance = m_deck.appearance();
+    appearance.dataFont = font.toString();
+    m_deck.setAppearance(std::move(appearance));
     for (QWidget* editor : m_valueEditors) {
         editor->setFont(font);
     }
     m_tableView->setFont(font);
+    markDirty();
 }
 
 void DeckWorkspace::applyNameFont(const QFont& font)
 {
-    const QList<QLabel*> labels = m_cardPage->findChildren<QLabel*>();
-    for (QLabel* label : labels) {
+    pushUndoSnapshot();
+    DeckAppearance appearance = m_deck.appearance();
+    appearance.nameFont = font.toString();
+    m_deck.setAppearance(std::move(appearance));
+    for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
+        if (label->objectName().startsWith(QStringLiteral("fieldCaption_"))
+            || label->objectName().startsWith(QStringLiteral("fieldName_"))) {
+            label->setFont(font);
+        }
+    }
+    markDirty();
+}
+
+void DeckWorkspace::applyTextFont(const QFont& font)
+{
+    pushUndoSnapshot();
+    DeckAppearance appearance = m_deck.appearance();
+    appearance.textFont = font.toString();
+    m_deck.setAppearance(std::move(appearance));
+    for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>(QStringLiteral("templateTextFrame"))) {
         label->setFont(font);
     }
+    markDirty();
 }
 
 void DeckWorkspace::applyIndexFont(const QFont& font)
 {
+    pushUndoSnapshot();
+    DeckAppearance appearance = m_deck.appearance();
+    appearance.indexFont = font.toString();
+    m_deck.setAppearance(std::move(appearance));
     m_tableView->horizontalHeader()->setFont(font);
     m_tableView->verticalHeader()->setFont(font);
+    markDirty();
+}
+
+void DeckWorkspace::applyAppearance(DeckAppearance appearance)
+{
+    pushUndoSnapshot();
+    m_deck.setAppearance(std::move(appearance));
+    applyStoredAppearance();
+    markDirty();
+}
+
+void DeckWorkspace::applyStoredAppearance()
+{
+    const DeckAppearance& appearance = m_deck.appearance();
+    QFont storedFont;
+    if (storedFont.fromString(appearance.dataFont)) {
+        for (QWidget* editor : m_valueEditors) {
+            editor->setFont(storedFont);
+        }
+        m_tableView->setFont(storedFont);
+    }
+    if (storedFont.fromString(appearance.nameFont)) {
+        for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
+            if (label->objectName().startsWith(QStringLiteral("fieldCaption_"))
+                || label->objectName().startsWith(QStringLiteral("fieldName_"))) {
+                label->setFont(storedFont);
+            }
+        }
+    }
+    if (storedFont.fromString(appearance.textFont)) {
+        for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>(QStringLiteral("templateTextFrame"))) {
+            label->setFont(storedFont);
+        }
+    }
+    if (storedFont.fromString(appearance.indexFont)) {
+        m_tableView->horizontalHeader()->setFont(storedFont);
+        m_tableView->verticalHeader()->setFont(storedFont);
+    }
+
+    const QPalette systemPalette = QApplication::palette();
+    auto roleColor = [&appearance, &systemPalette](DeckColorRole role, QPalette::ColorRole systemRole) {
+        if (appearance.useSystemColors) {
+            return systemPalette.color(systemRole);
+        }
+        const int index = static_cast<int>(role);
+        if (index >= 0 && index < appearance.customColors.size()) {
+            const QColor customColor(appearance.customColors.at(index));
+            if (customColor.isValid()) {
+                return customColor;
+            }
+        }
+        return systemPalette.color(systemRole);
+    };
+
+    QPalette tablePalette = m_tableView->palette();
+    tablePalette.setColor(QPalette::Text, roleColor(DeckColorRole::IndexForeground, QPalette::Text));
+    tablePalette.setColor(QPalette::Base, roleColor(DeckColorRole::IndexBackground, QPalette::Base));
+    m_tableView->setPalette(tablePalette);
+    for (QWidget* editor : m_valueEditors) {
+        QPalette editorPalette = editor->palette();
+        editorPalette.setColor(QPalette::Text, roleColor(DeckColorRole::DataForeground, QPalette::Text));
+        editorPalette.setColor(QPalette::Base, roleColor(DeckColorRole::DataBackground, QPalette::Base));
+        editor->setPalette(editorPalette);
+    }
+    for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
+        QPalette labelPalette = label->palette();
+        const bool isName = label->objectName().startsWith(QStringLiteral("fieldCaption_"))
+            || label->objectName().startsWith(QStringLiteral("fieldName_"));
+        labelPalette.setColor(
+            QPalette::WindowText,
+            roleColor(isName ? DeckColorRole::NameForeground : DeckColorRole::TextForeground, QPalette::WindowText));
+        label->setPalette(labelPalette);
+    }
+    QPalette cardPalette = m_cardEditorContent->palette();
+    cardPalette.setColor(QPalette::Window, roleColor(DeckColorRole::CardBackground, QPalette::Window));
+    m_cardEditorContent->setAutoFillBackground(true);
+    m_cardEditorContent->setPalette(cardPalette);
 }
 
 void DeckWorkspace::commitPendingEdits()
@@ -932,7 +1043,11 @@ void DeckWorkspace::rebuildCardEditor()
                 auto* label = new QLabel(frame.text, m_cardEditorContent);
                 label->setObjectName(QStringLiteral("templateTextFrame"));
                 label->setGeometry(rect);
-                label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                label->setAlignment(
+                    ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
+                            ? Qt::AlignRight
+                            : ((frame.styleFlags & CardTemplateStyleFlagAlignCenter) != 0 ? Qt::AlignHCenter : Qt::AlignLeft))
+                        | Qt::AlignVCenter);
                 label->show();
                 templateLabels.append(label);
             } else if (frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox) {
@@ -942,10 +1057,47 @@ void DeckWorkspace::rebuildCardEditor()
                 }
 
                 QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
+                const FieldDefinition& field = m_deck.fieldAt(fieldIndex);
+                const QString fieldCaption = frame.text.trimmed().isEmpty()
+                    ? field.name()
+                    : frame.text;
+                const bool hasSeparateCaption = std::any_of(
+                    cardLayout.frames.cbegin(),
+                    cardLayout.frames.cend(),
+                    [&fieldCaption, &frame](const CardTemplateFrame& candidate) {
+                        if (candidate.kind != CardTemplateFrameKind::Text) {
+                            return false;
+                        }
+                        const bool matchingText = candidate.text.compare(fieldCaption, Qt::CaseInsensitive) == 0;
+                        const bool adjacentCaption = candidate.bounds.left() < frame.bounds.right()
+                            && candidate.bounds.right() > frame.bounds.left()
+                            && candidate.bounds.bottom() <= frame.bounds.top()
+                            && frame.bounds.top() - candidate.bounds.bottom() <= 300;
+                        return matchingText || adjacentCaption;
+                    });
+                QRect editorRect = rect;
+                if (auto* lineEdit = qobject_cast<QLineEdit*>(editor)) {
+                    lineEdit->setPlaceholderText(field.showName() ? QString() : fieldCaption);
+                    lineEdit->setToolTip(fieldCaption);
+                } else if (auto* textEdit = qobject_cast<QPlainTextEdit*>(editor)) {
+                    textEdit->setPlaceholderText(field.showName() ? QString() : fieldCaption);
+                    textEdit->setToolTip(fieldCaption);
+                }
+                if (field.showName() && !hasSeparateCaption) {
+                    auto* caption = new QLabel(fieldCaption, m_cardEditorContent);
+                    caption->setObjectName(QStringLiteral("fieldCaption_%1").arg(fieldIndex));
+                    caption->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                    caption->setAutoFillBackground(false);
+                    const int availableWidth = std::max(0, rect.left() - 18);
+                    const int captionWidth = std::min(caption->sizeHint().width() + 4, availableWidth);
+                    caption->setGeometry(rect.left() - captionWidth - 6, rect.top(), captionWidth, rect.height());
+                    caption->show();
+                    templateLabels.append(caption);
+                }
                 editor->setMinimumSize(0, 0);
-                editor->setMaximumSize(rect.size());
+                editor->setMaximumSize(editorRect.size());
                 editor->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-                editor->setGeometry(rect);
+                editor->setGeometry(editorRect);
                 editor->show();
             } else if (frame.kind == CardTemplateFrameKind::LineOrBox) {
                 auto* line = new QFrame(m_cardEditorContent);
@@ -983,6 +1135,7 @@ void DeckWorkspace::rebuildCardEditor()
         for (QWidget* label : templateLabels) {
             label->raise();
         }
+        applyStoredAppearance();
         return;
     }
 
@@ -1002,6 +1155,7 @@ void DeckWorkspace::rebuildCardEditor()
         QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
         m_cardForm->addRow(label, editor);
     }
+    applyStoredAppearance();
 }
 
 void DeckWorkspace::refreshCardStack()

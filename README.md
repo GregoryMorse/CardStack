@@ -92,6 +92,16 @@ The deployed executable is written beside the build output, for example:
 build\vs2022\Debug\CardStackDeploy\CardStack.exe
 ```
 
+## Regenerate the Windows visual galleries
+
+Gallery generation is intentionally opt-in and is not part of the normal build or CI. The wrapper builds and deploys the application, builds the gallery test harness, discovers the Qt runtime from the build's CMake cache, and regenerates the app, deck, designer, dialog, and report-preview galleries:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\generate-visual-galleries-windows.ps1
+```
+
+Use `-SkipBuild` to recapture from an existing build, or pass `-BuildDir`, `-Config`, `-QtRoot`, and `-OutputRoot` when using a non-default local setup.
+
 ## CI and release packages
 
 GitHub Actions builds and tests CardStack on Windows, Linux, and macOS using

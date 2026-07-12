@@ -1,4 +1,5 @@
 #include "LegacyReportReader.h"
+#include "LegacyOemCodec.h"
 
 #include <QFile>
 
@@ -57,7 +58,7 @@ QString readNullTerminatedAscii(const QByteArray& bytes, int offset, int maxLeng
         ++length;
     }
 
-    return QString::fromLatin1(bytes.constData() + offset, length).trimmed();
+    return LegacyOemCodec::decode(QByteArrayView(bytes).sliced(offset, length)).trimmed();
 }
 
 bool remainingBytesAreZero(const QByteArray& bytes, int offset)
@@ -155,6 +156,7 @@ ReportFrameDefinition readFrame(const QByteArray& bytes, int offset, int coordin
 {
     ReportFrameDefinition frame;
     frame.legacyOffset = offset;
+    frame.legacyDescriptor = bytes.mid(offset, FrameRecordSize);
     frame.signature = readU16(bytes, offset);
     frame.sourceId = readU16(bytes, offset + 0x02);
     frame.order = readU16(bytes, offset + 0x04);
@@ -200,6 +202,16 @@ LegacyReportReader::Result LegacyReportReader::readFile(const QString& filePath)
 
 LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes) const
 {
+    constexpr int PaperStyleIdOffset = 0x00bf;
+    constexpr int MarginBottomOffset = 0x00c1;
+    constexpr int MarginTopOffset = 0x00c3;
+    constexpr int MarginLeftOffset = 0x00c5;
+    constexpr int MarginRightOffset = 0x00c7;
+    constexpr int PageWidthOffset = 0x00c9;
+    constexpr int PageHeightOffset = 0x00cb;
+    constexpr int OrientationOffset = 0x00cd;
+    constexpr int HorizontalGutterOffset = 0x03c9;
+    constexpr int VerticalGutterOffset = 0x03cb;
     Result result;
     int offset = 0;
     while (offset < bytes.size()) {
@@ -237,6 +249,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         report.formatMagic = QString::fromLatin1(bytes.constData() + offset, 7);
         report.entrySize = entrySize;
         report.headerSize = headerSize;
+        report.legacyHeader = bytes.mid(offset, headerSize);
         report.declaredFrameCount = frameCount;
         report.name = readNullTerminatedAscii(bytes, offset + ReportNameOffset, ReportNameLength);
         report.formWidth = readU16(bytes, offset + FormWidthOffset);
@@ -244,6 +257,18 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         report.rows = readU16(bytes, offset + RowsOffset);
         report.columns = readU16(bytes, offset + ColumnsOffset);
         report.formType = formTypeFromLegacyValue(readU16(bytes, offset + FormTypeOffset));
+        report.paperStyleId = readU16(bytes, offset + PaperStyleIdOffset);
+        report.marginBottom = readU16(bytes, offset + MarginBottomOffset);
+        report.marginTop = readU16(bytes, offset + MarginTopOffset);
+        report.marginLeft = readU16(bytes, offset + MarginLeftOffset);
+        report.marginRight = readU16(bytes, offset + MarginRightOffset);
+        report.pageWidth = readU16(bytes, offset + PageWidthOffset);
+        report.pageHeight = readU16(bytes, offset + PageHeightOffset);
+        report.orientation = readU16(bytes, offset + OrientationOffset);
+        if (currentFormat) {
+            report.horizontalGutter = readU16(bytes, offset + HorizontalGutterOffset);
+            report.verticalGutter = readU16(bytes, offset + VerticalGutterOffset);
+        }
         report.dataFont = readFontDefinition(bytes, offset + DataFontOffset);
         report.textFont = readFontDefinition(bytes, offset + TextFontOffset);
 

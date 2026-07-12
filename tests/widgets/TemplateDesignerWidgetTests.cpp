@@ -100,6 +100,31 @@ private slots:
         QVERIFY(!designer.isDirty());
     }
 
+    void undoRestoresTemplateFieldsAndFramesTogether()
+    {
+        CardTemplateLayout initialLayout;
+        TemplateDesignerWidget designer(initialLayout, makeFields());
+        QVERIFY(!designer.canUndo());
+
+        designer.addDataBoxFrameForField(QStringLiteral("Name"), 0);
+        QVERIFY(designer.canUndo());
+        QCOMPARE(designer.layoutDefinition().frames.size(), 1);
+        QCOMPARE(designer.fieldDefinitions().first().name(), QStringLiteral("Name"));
+
+        designer.updateSelectedFieldDefinition(QStringLiteral("Display Name"), 80, true, true);
+        QCOMPARE(designer.fieldDefinitions().first().name(), QStringLiteral("Display Name"));
+        QCOMPARE(designer.layoutDefinition().frames.first().text, QStringLiteral("Display Name"));
+
+        designer.undo();
+        QCOMPARE(designer.fieldDefinitions().first().name(), QStringLiteral("Name"));
+        QCOMPARE(designer.layoutDefinition().frames.first().text, QStringLiteral("Name"));
+
+        designer.undo();
+        QVERIFY(designer.layoutDefinition().frames.isEmpty());
+        QCOMPARE(designer.selectedFrameIndex(), -1);
+        QVERIFY(!designer.canUndo());
+    }
+
     void closePromptCancelKeepsDesignerOpen()
     {
         CardTemplateLayout initialLayout;

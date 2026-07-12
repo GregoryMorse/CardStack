@@ -4,6 +4,8 @@
 #include <QFileInfo>
 #include <QTest>
 
+#include "DeckTemplate.h"
+
 using namespace CardStack;
 
 namespace {
@@ -127,6 +129,24 @@ private slots:
         QVERIFY2(result.ok(), qPrintable(result.errorMessage));
 
         QCOMPARE(result.reports.size(), 3);
+        const Deck expected = createDeckFromTemplateName(QStringLiteral("Software Library"));
+        QCOMPARE(expected.reportCount(), result.reports.size());
+        for (int reportIndex = 0; reportIndex < result.reports.size(); ++reportIndex) {
+            const ReportDefinition& actual = result.reports.at(reportIndex);
+            const ReportDefinition& oracle = expected.reportAt(reportIndex);
+            QCOMPARE(actual.name, oracle.name);
+            QCOMPARE(actual.formType, oracle.formType);
+            QCOMPARE(actual.formWidth, oracle.formWidth);
+            QCOMPARE(actual.formHeight, oracle.formHeight);
+            QCOMPARE(actual.frames.size(), oracle.frames.size());
+            QCOMPARE(actual.legacyHeader.size(), actual.headerSize);
+            for (int frameIndex = 0; frameIndex < actual.frames.size(); ++frameIndex) {
+                QCOMPARE(actual.frames.at(frameIndex).text, oracle.frames.at(frameIndex).text);
+                QCOMPARE(actual.frames.at(frameIndex).bounds, oracle.frames.at(frameIndex).bounds);
+                QCOMPARE(actual.frames.at(frameIndex).kind, oracle.frames.at(frameIndex).kind);
+                QCOMPARE(actual.frames.at(frameIndex).legacyDescriptor.size(), 0x9b);
+            }
+        }
         QCOMPARE(result.reports.at(0).legacyOffset, 0);
         QCOMPARE(result.reports.at(0).entrySize, 0x0a9e);
         QCOMPARE(result.reports.at(0).name, QStringLiteral("Index Card (3 x 5 - laser)"));

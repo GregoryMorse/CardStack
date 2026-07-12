@@ -25,6 +25,9 @@ public:
     bool saveSortKeys(const Deck& deck, QString* errorMessage = nullptr);
     bool loadSortKeys(Deck* deck, QString* errorMessage = nullptr);
 
+    bool saveAppearance(const Deck& deck, QString* errorMessage = nullptr);
+    bool loadAppearance(Deck* deck, QString* errorMessage = nullptr);
+
     bool saveImportExportProfiles(const Deck& deck, QString* errorMessage = nullptr);
     bool loadImportExportProfiles(Deck* deck, QString* errorMessage = nullptr);
 

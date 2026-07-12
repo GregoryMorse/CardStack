@@ -93,6 +93,16 @@ const CardTemplateLayout& Deck::cardTemplateLayout() const
     return m_cardTemplateLayout;
 }
 
+const QByteArray& Deck::legacyControlRecord() const
+{
+    return m_legacyControlRecord;
+}
+
+const DeckAppearance& Deck::appearance() const
+{
+    return m_appearance;
+}
+
 bool Deck::hasSecurity() const
 {
     return !m_securityPassword.isEmpty();
@@ -145,9 +155,19 @@ void Deck::addField(FieldDefinition field)
     m_fields.append(std::move(field));
 }
 
+void Deck::setFields(QVector<FieldDefinition> fields)
+{
+    m_fields = std::move(fields);
+}
+
 void Deck::addCard(CardRecord card)
 {
     m_cards.append(std::move(card));
+}
+
+void Deck::setCards(QVector<CardRecord> cards)
+{
+    m_cards = std::move(cards);
 }
 
 void Deck::addReport(ReportDefinition report)
@@ -191,6 +211,16 @@ void Deck::setCardTemplateLayout(CardTemplateLayout layout)
     m_cardTemplateLayout = std::move(layout);
 }
 
+void Deck::setLegacyControlRecord(QByteArray record)
+{
+    m_legacyControlRecord = std::move(record);
+}
+
+void Deck::setAppearance(DeckAppearance appearance)
+{
+    m_appearance = std::move(appearance);
+}
+
 void Deck::setSecurity(QString password, bool encrypted)
 {
     m_securityPassword = std::move(password);
@@ -229,6 +259,8 @@ void Deck::clear()
     m_importExportProfiles.clear();
     m_reports.clear();
     m_cardTemplateLayout = {};
+    m_legacyControlRecord.clear();
+    m_appearance = {};
     clearSecurity();
 }
 

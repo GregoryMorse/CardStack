@@ -116,7 +116,7 @@ std::unique_ptr<QDialog> ReportPreviewDialog::create(
     }
 
     auto currentPageIndex = std::make_shared<int>(0);
-    const QVector<ReportPrintPage> safePages = pages.isEmpty() ? ReportPrintEngine::paginate(report, records.size()) : pages;
+    const QVector<ReportPrintPage> safePages = pages.isEmpty() ? ReportPrintEngine::paginate(report, records) : pages;
 
     ReportPreviewCanvas* canvas = nullptr;
     QWidget* placeholder = UiBuilder::controlById(dialog.get(), Control::PreviewCanvas);
@@ -188,7 +188,7 @@ std::unique_ptr<QDialog> ReportPreviewDialog::create(
     const ReportPreviewData& data)
 {
     QVector<ReportPreviewData> records = {data};
-    return create(parent, context, report, records, ReportPrintEngine::paginate(report, records.size()));
+    return create(parent, context, report, records, ReportPrintEngine::paginate(report, records));
 }
 
 int ReportPreviewDialog::exec(
@@ -198,7 +198,7 @@ int ReportPreviewDialog::exec(
     const ReportPreviewData& data)
 {
     QVector<ReportPreviewData> records = {data};
-    return exec(parent, context, report, records, ReportPrintEngine::paginate(report, records.size()));
+    return exec(parent, context, report, records, ReportPrintEngine::paginate(report, records));
 }
 
 } // namespace CardStack

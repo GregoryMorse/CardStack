@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QRect>
 #include <QString>
 #include <QVector>
@@ -20,6 +21,12 @@ enum class CardTemplateLineBoxShape {
     VerticalLine
 };
 
+inline constexpr quint8 CardTemplateStyleFlagBold = 0x01;
+inline constexpr quint8 CardTemplateStyleFlagItalic = 0x02;
+inline constexpr quint8 CardTemplateStyleFlagUnderline = 0x04;
+inline constexpr quint8 CardTemplateStyleFlagAlignCenter = 0x10;
+inline constexpr quint8 CardTemplateStyleFlagAlignRight = 0x20;
+
 struct CardTemplateFrame {
     CardTemplateFrameKind kind = CardTemplateFrameKind::DataBox;
     QRect bounds;
@@ -30,6 +37,7 @@ struct CardTemplateFrame {
     int lineStyle = 0;
     int fillPattern = 0;
     int cornerRadius = 0;
+    QByteArray legacyDescriptor;
 
     bool operator==(const CardTemplateFrame&) const = default;
 };

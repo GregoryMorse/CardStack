@@ -827,6 +827,14 @@ private slots:
         QCoreApplication::processEvents();
         QCOMPARE(roleCombo->currentIndex(), 1);
         QVERIFY(useSystem->isChecked());
+
+        const QStringList customColors = {
+            QStringLiteral("#010203"), QStringLiteral("#111213"), QStringLiteral("#212223"),
+            QStringLiteral("#313233"), QStringLiteral("#414243"), QStringLiteral("#515253"),
+            QStringLiteral("#616263")};
+        UiBuilder::setColorDialogState(dialog.get(), customColors, false);
+        QCOMPARE(UiBuilder::colorDialogColors(dialog.get()), customColors);
+        QVERIFY(!UiBuilder::colorDialogUsesSystemColors(dialog.get()));
     }
 
     void everyVisibleDialogControlHasSafeGeometry()

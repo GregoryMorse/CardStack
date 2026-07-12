@@ -14,7 +14,9 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
+#include <QDir>
 #include <QFileDialog>
+#include <QFile>
 #include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
@@ -25,7 +27,9 @@
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QPointer>
+#include <QPushButton>
 #include <QTemporaryDir>
+#include <QTableWidget>
 #include <QTimer>
 #include <QtTest/QtTest>
 
@@ -127,6 +131,28 @@ void acceptNextOpenDialogWithFile(const QString& filePath)
         }
     };
 
+    QTimer::singleShot(0, qApp, *retry);
+}
+
+void handleNextImportReview(const std::function<bool(QDialog*)>& handler)
+{
+    auto attemptsRemaining = std::make_shared<int>(200);
+    auto retry = std::make_shared<std::function<void()>>();
+    *retry = [handler, attemptsRemaining, retry]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QDialog*>(widget);
+            if (dialog != nullptr && dialog->isVisible()
+                && dialog->objectName() == QStringLiteral("importExamineDialog")) {
+                if (handler(dialog)) {
+                    return;
+                }
+            }
+        }
+        --(*attemptsRemaining);
+        if (*attemptsRemaining > 0) {
+            QTimer::singleShot(10, qApp, *retry);
+        }
+    };
     QTimer::singleShot(0, qApp, *retry);
 }
 
@@ -424,6 +450,51 @@ private slots:
         QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error));
         QVERIFY(loaded.fieldCount() > 0);
         QVERIFY(loaded.cardCount() > 0);
+    }
+
+    void closeDeckFromReportHonorsDependentDesignerCancel()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(mdiArea != nullptr);
+        DeckWorkspace* workspace = activeWorkspace(window);
+        QVERIFY(workspace != nullptr);
+
+        QAction* newReport = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+        QVERIFY(newReport != nullptr);
+        handleNextLegacyDialog(QStringLiteral("REPORTFORM"), [](QDialog* dialog) {
+            dialog->accept();
+            return true;
+        });
+        newReport->trigger();
+        QCoreApplication::processEvents();
+
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        designer->addTextFrameWithText(QStringLiteral("Unsaved dependent report"), 0);
+        QVERIFY(designer->isDirty());
+        QTRY_COMPARE(mdiArea->subWindowList().size(), 2);
+
+        QAction* closeDeck = findCommandAction(window.menuBar(), UiIds::Command::FileCloseDeck);
+        QVERIFY(closeDeck != nullptr);
+        chooseMessageBoxButtons({QMessageBox::Cancel});
+        closeDeck->trigger();
+        QCoreApplication::processEvents();
+        QCOMPARE(mdiArea->subWindowList().size(), 2);
+        QVERIFY(designer->isVisible());
+
+        chooseMessageBoxButtons({QMessageBox::Discard, QMessageBox::Discard});
+        closeDeck->trigger();
+        QTRY_COMPARE(mdiArea->subWindowList().size(), 0);
     }
 
     void windowArrangementCommandsKeepOpenWindowsReachable()
@@ -1028,6 +1099,76 @@ private slots:
         QVERIFY(designerWindow->close());
         QCoreApplication::processEvents();
         QVERIFY(activeWorkspace(window) == nullptr);
+    }
+
+    void patternAfterLegacyDeckImportsTemplateDefinitionWhenConfigured()
+    {
+        const QString fixtureDir = qEnvironmentVariable("CARDSTACK_WINEVDM_GOLDEN_DIR");
+        const QString filePath = QDir(fixtureDir).filePath(QStringLiteral("plain.BTN"));
+        if (fixtureDir.isEmpty() || !QFileInfo::exists(filePath)) {
+            QSKIP("Set CARDSTACK_WINEVDM_GOLDEN_DIR to exercise legacy template-definition import.");
+        }
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+
+        acceptNextPatternAfterDeckFlow(filePath);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* designer = window.findChild<TemplateDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        QCOMPARE(designer->fieldDefinitions().size(), 11);
+        QVERIFY(designer->fieldNames().contains(QStringLiteral("Product")));
+        QVERIFY(designer->fieldNames().contains(QStringLiteral("Notes")));
+        QVERIFY(!designer->layoutDefinition().frames.isEmpty());
+    }
+
+    void fileOpenImportReviewEditsAndSkipsRecords()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString filePath = directory.filePath(QStringLiteral("review.csv"));
+        QFile file(filePath);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        const QByteArray csv("Name,Notes\r\nAlpha,First\r\nBeta,Second\r\n");
+        QCOMPARE(file.write(csv), static_cast<qint64>(csv.size()));
+        file.close();
+
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+        QAction* openAction = findCommandAction(window.menuBar(), UiIds::Command::FileOpen);
+        QVERIFY(openAction != nullptr);
+
+        acceptNextOpenDialogWithFile(filePath);
+        handleNextImportReview([](QDialog* dialog) {
+            auto* table = dialog->findChild<QTableWidget*>(QStringLiteral("importExamineTable"));
+            if (table == nullptr || table->rowCount() != 2 || table->columnCount() != 3) {
+                return false;
+            }
+            table->item(0, 1)->setText(QStringLiteral("Reviewed Alpha"));
+            table->setCurrentCell(1, 1);
+            auto* skip = dialog->findChild<QPushButton*>(QStringLiteral("importSkipRecordButton"));
+            if (skip == nullptr) {
+                return false;
+            }
+            skip->click();
+            dialog->accept();
+            return true;
+        });
+        openAction->trigger();
+        QCoreApplication::processEvents();
+
+        DeckWorkspace* workspace = activeWorkspace(window);
+        QTRY_VERIFY(workspace != nullptr);
+        QCOMPARE(workspace->deck().cardCount(), 1);
+        QCOMPARE(workspace->deck().cardAt(0).valueAt(0), QStringLiteral("Reviewed Alpha"));
+        QVERIFY(!workspace->deck().importExportProfiles().isEmpty());
+        QVERIFY(workspace->deck().importExportProfiles().last().name.startsWith(QStringLiteral("Reviewed import:")));
     }
 
     void phoneDialerQuickDialFeedsDialDialog()

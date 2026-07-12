@@ -203,6 +203,7 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
         || !repository.saveFields(deck, 1, errorMessage)
         || !saveCardTemplateLayout(deck, 1, errorMessage)
         || !repository.saveSortKeys(deck, errorMessage)
+        || !repository.saveAppearance(deck, errorMessage)
         || !repository.saveImportExportProfiles(deck, errorMessage)
         || !repository.saveCards(deck, errorMessage)) {
         rollback();
@@ -248,6 +249,7 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
     if (!repository.loadFields(templateId, &loaded, errorMessage)
         || !loadCardTemplateLayout(&loaded, templateId, errorMessage)
         || !repository.loadSortKeys(&loaded, errorMessage)
+        || !repository.loadAppearance(&loaded, errorMessage)
         || !repository.loadImportExportProfiles(&loaded, errorMessage)
         || !repository.loadCards(templateId, &loaded, errorMessage)) {
         return false;
@@ -346,6 +348,7 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
             "security_encrypted INTEGER NOT NULL DEFAULT 0,"
             "source_format TEXT NOT NULL DEFAULT 'cardstack-sqlite',"
             "legacy_metadata_json TEXT NOT NULL DEFAULT '{}',"
+            "legacy_control_record BLOB NOT NULL DEFAULT X'',"
             "created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),"
             "updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
             ")"), errorMessage)
@@ -377,6 +380,9 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
             "name TEXT NOT NULL,"
             "type TEXT NOT NULL,"
             "max_length INTEGER NOT NULL,"
+            "show_name INTEGER NOT NULL DEFAULT 1,"
+            "is_phone INTEGER NOT NULL DEFAULT 0,"
+            "legacy_descriptor BLOB NOT NULL DEFAULT X'',"
             "display_width INTEGER NOT NULL DEFAULT 0,"
             "alignment TEXT NOT NULL DEFAULT 'left',"
             "is_required INTEGER NOT NULL DEFAULT 0,"
@@ -385,7 +391,30 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
             "legacy_length INTEGER NOT NULL DEFAULT 0,"
             "metadata_json TEXT NOT NULL DEFAULT '{}',"
             "UNIQUE(template_id, ordinal)"
-            ")"), errorMessage)) {
+            ")"), errorMessage)
+        || !ensureColumn(
+            QStringLiteral("template_fields"),
+            QStringLiteral("show_name"),
+            QStringLiteral("ALTER TABLE template_fields ADD COLUMN show_name INTEGER NOT NULL DEFAULT 1"),
+            errorMessage)
+        || !ensureColumn(
+            QStringLiteral("template_fields"),
+            QStringLiteral("is_phone"),
+            QStringLiteral("ALTER TABLE template_fields ADD COLUMN is_phone INTEGER NOT NULL DEFAULT 0"),
+            errorMessage)) {
+        return false;
+    }
+
+    if (!ensureColumn(
+            QStringLiteral("decks"),
+            QStringLiteral("legacy_control_record"),
+            QStringLiteral("ALTER TABLE decks ADD COLUMN legacy_control_record BLOB NOT NULL DEFAULT X''"),
+            errorMessage)
+        || !ensureColumn(
+            QStringLiteral("template_fields"),
+            QStringLiteral("legacy_descriptor"),
+            QStringLiteral("ALTER TABLE template_fields ADD COLUMN legacy_descriptor BLOB NOT NULL DEFAULT X''"),
+            errorMessage)) {
         return false;
     }
 
@@ -405,8 +434,16 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
         "line_style INTEGER NOT NULL DEFAULT 0,"
         "fill_pattern INTEGER NOT NULL DEFAULT 0,"
         "corner_radius INTEGER NOT NULL DEFAULT 0,"
+        "legacy_descriptor BLOB NOT NULL DEFAULT X'',"
         "PRIMARY KEY(template_id, ordinal)"
         ")"), errorMessage)) {
+        return false;
+    }
+    if (!ensureColumn(
+            QStringLiteral("template_frames"),
+            QStringLiteral("legacy_descriptor"),
+            QStringLiteral("ALTER TABLE template_frames ADD COLUMN legacy_descriptor BLOB NOT NULL DEFAULT X''"),
+            errorMessage)) {
         return false;
     }
 
@@ -480,10 +517,15 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
         "margin_bottom INTEGER NOT NULL DEFAULT 0,"
         "horizontal_gutter INTEGER NOT NULL DEFAULT 0,"
         "vertical_gutter INTEGER NOT NULL DEFAULT 0,"
+        "paper_style_id INTEGER NOT NULL DEFAULT 0,"
+        "page_width INTEGER NOT NULL DEFAULT 0,"
+        "page_height INTEGER NOT NULL DEFAULT 0,"
+        "orientation INTEGER NOT NULL DEFAULT 0,"
         "data_font_face TEXT NOT NULL,"
         "data_font_height INTEGER NOT NULL,"
         "text_font_face TEXT NOT NULL,"
-        "text_font_height INTEGER NOT NULL"
+        "text_font_height INTEGER NOT NULL,"
+        "legacy_header BLOB NOT NULL DEFAULT X''"
         ")"), errorMessage)
         && ensureColumn(
             QStringLiteral("reports"),
@@ -520,6 +562,31 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
             QStringLiteral("vertical_gutter"),
             QStringLiteral("ALTER TABLE reports ADD COLUMN vertical_gutter INTEGER NOT NULL DEFAULT 0"),
             errorMessage)
+        && ensureColumn(
+            QStringLiteral("reports"),
+            QStringLiteral("legacy_header"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN legacy_header BLOB NOT NULL DEFAULT X''"),
+            errorMessage)
+        && ensureColumn(
+            QStringLiteral("reports"),
+            QStringLiteral("paper_style_id"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN paper_style_id INTEGER NOT NULL DEFAULT 0"),
+            errorMessage)
+        && ensureColumn(
+            QStringLiteral("reports"),
+            QStringLiteral("page_width"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN page_width INTEGER NOT NULL DEFAULT 0"),
+            errorMessage)
+        && ensureColumn(
+            QStringLiteral("reports"),
+            QStringLiteral("page_height"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN page_height INTEGER NOT NULL DEFAULT 0"),
+            errorMessage)
+        && ensureColumn(
+            QStringLiteral("reports"),
+            QStringLiteral("orientation"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN orientation INTEGER NOT NULL DEFAULT 0"),
+            errorMessage)
         || !exec(QStringLiteral(
         "CREATE TABLE IF NOT EXISTS report_frames("
         "report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,"
@@ -544,6 +611,7 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
         "corner_radius INTEGER NOT NULL DEFAULT 0,"
         "field_placeholders_json TEXT NOT NULL,"
         "system_tokens_json TEXT NOT NULL,"
+        "legacy_descriptor BLOB NOT NULL DEFAULT X'',"
         "PRIMARY KEY(report_id, ordinal)"
         ")"), errorMessage)
         || !ensureColumn(
@@ -565,6 +633,11 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
             QStringLiteral("report_frames"),
             QStringLiteral("corner_radius"),
             QStringLiteral("ALTER TABLE report_frames ADD COLUMN corner_radius INTEGER NOT NULL DEFAULT 0"),
+            errorMessage)
+        || !ensureColumn(
+            QStringLiteral("report_frames"),
+            QStringLiteral("legacy_descriptor"),
+            QStringLiteral("ALTER TABLE report_frames ADD COLUMN legacy_descriptor BLOB NOT NULL DEFAULT X''"),
             errorMessage)
         || !exec(QStringLiteral(
         "CREATE TABLE IF NOT EXISTS import_export_profiles("
@@ -762,8 +835,8 @@ bool SQLiteDeckStore::saveCardTemplateLayout(const Deck& deck, int templateId, Q
     query.prepare(QStringLiteral(
         "INSERT INTO template_frames("
         "template_id, ordinal, kind, field_index, left_pos, top_pos, width, height,"
-        "text, style_flags, line_box_shape, line_style, fill_pattern, corner_radius"
-        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "text, style_flags, line_box_shape, line_style, fill_pattern, corner_radius, legacy_descriptor"
+        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 
     const CardTemplateLayout& layout = deck.cardTemplateLayout();
     if (!setAppSetting(QStringLiteral("card_template_canvas_width"), QString::number(layout.canvasWidth), errorMessage)
@@ -787,6 +860,7 @@ bool SQLiteDeckStore::saveCardTemplateLayout(const Deck& deck, int templateId, Q
         query.bindValue(11, frame.lineStyle);
         query.bindValue(12, frame.fillPattern);
         query.bindValue(13, frame.cornerRadius);
+        query.bindValue(14, frame.legacyDescriptor.isNull() ? QByteArray("") : frame.legacyDescriptor);
         if (!query.exec()) {
             setError(errorMessage, query.lastError());
             return false;
@@ -801,7 +875,7 @@ bool SQLiteDeckStore::loadCardTemplateLayout(Deck* deck, int templateId, QString
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral(
         "SELECT kind, field_index, left_pos, top_pos, width, height, text, style_flags,"
-        "line_box_shape, line_style, fill_pattern, corner_radius "
+        "line_box_shape, line_style, fill_pattern, corner_radius, legacy_descriptor "
         "FROM template_frames WHERE template_id = ? ORDER BY ordinal"));
     query.bindValue(0, templateId);
     if (!query.exec()) {
@@ -838,6 +912,7 @@ bool SQLiteDeckStore::loadCardTemplateLayout(Deck* deck, int templateId, QString
         frame.lineStyle = query.value(9).toInt();
         frame.fillPattern = query.value(10).toInt();
         frame.cornerRadius = query.value(11).toInt();
+        frame.legacyDescriptor = query.value(12).toByteArray();
         layout.frames.append(frame);
     }
 
@@ -853,9 +928,10 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
         "id, deck_id, ordinal, name, format_magic, legacy_offset, entry_size, header_size, declared_frame_count,"
         "form_type, form_width, form_height, rows, columns,"
         "margin_left, margin_top, margin_right, margin_bottom, horizontal_gutter, vertical_gutter,"
+        "paper_style_id, page_width, page_height, orientation,"
         "data_font_face, data_font_height,"
-        "text_font_face, text_font_height"
-        ") VALUES(?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "text_font_face, text_font_height, legacy_header"
+        ") VALUES(?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 
     QSqlQuery frameQuery(m_database);
     frameQuery.prepare(QStringLiteral(
@@ -863,8 +939,8 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
         "report_id, ordinal, legacy_offset, signature, source_id, frame_order, band,"
         "left_pos, top_pos, width, height, text, kind, print_entire_contents_flag,"
         "validation_flags, style_flags, line_box_shape, line_style, fill_pattern, corner_radius,"
-        "field_placeholders_json, system_tokens_json"
-        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "field_placeholders_json, system_tokens_json, legacy_descriptor"
+        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 
     for (int reportIndex = 0; reportIndex < deck.reportCount(); ++reportIndex) {
         const int reportId = reportIndex + 1;
@@ -889,10 +965,15 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
         reportQuery.bindValue(16, report.marginBottom);
         reportQuery.bindValue(17, report.horizontalGutter);
         reportQuery.bindValue(18, report.verticalGutter);
-        reportQuery.bindValue(19, report.dataFont.faceName.isNull() ? QStringLiteral("") : report.dataFont.faceName);
-        reportQuery.bindValue(20, report.dataFont.legacyHeight);
-        reportQuery.bindValue(21, report.textFont.faceName.isNull() ? QStringLiteral("") : report.textFont.faceName);
-        reportQuery.bindValue(22, report.textFont.legacyHeight);
+        reportQuery.bindValue(19, report.paperStyleId);
+        reportQuery.bindValue(20, report.pageWidth);
+        reportQuery.bindValue(21, report.pageHeight);
+        reportQuery.bindValue(22, report.orientation);
+        reportQuery.bindValue(23, report.dataFont.faceName.isNull() ? QStringLiteral("") : report.dataFont.faceName);
+        reportQuery.bindValue(24, report.dataFont.legacyHeight);
+        reportQuery.bindValue(25, report.textFont.faceName.isNull() ? QStringLiteral("") : report.textFont.faceName);
+        reportQuery.bindValue(26, report.textFont.legacyHeight);
+        reportQuery.bindValue(27, report.legacyHeader.isNull() ? QByteArray("") : report.legacyHeader);
         if (!reportQuery.exec()) {
             setError(errorMessage, reportQuery.lastError());
             return false;
@@ -922,6 +1003,7 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
             frameQuery.bindValue(19, frame.cornerRadius);
             frameQuery.bindValue(20, stringVectorToJson(frame.fieldPlaceholders));
             frameQuery.bindValue(21, stringVectorToJson(frame.systemTokens));
+            frameQuery.bindValue(22, frame.legacyDescriptor.isNull() ? QByteArray("") : frame.legacyDescriptor);
             if (!frameQuery.exec()) {
                 setError(errorMessage, frameQuery.lastError());
                 return false;
@@ -939,8 +1021,9 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
             "SELECT id, name, format_magic, legacy_offset, entry_size, header_size, declared_frame_count,"
             "form_type, form_width, form_height, rows, columns,"
             "margin_left, margin_top, margin_right, margin_bottom, horizontal_gutter, vertical_gutter,"
+            "paper_style_id, page_width, page_height, orientation,"
             "data_font_face, data_font_height,"
-            "text_font_face, text_font_height FROM reports WHERE deck_id = 1 ORDER BY ordinal"))) {
+            "text_font_face, text_font_height, legacy_header FROM reports WHERE deck_id = 1 ORDER BY ordinal"))) {
         setError(errorMessage, reportQuery.lastError());
         return false;
     }
@@ -950,7 +1033,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         "SELECT legacy_offset, signature, source_id, frame_order, band, left_pos, top_pos, width, height,"
         "text, kind, print_entire_contents_flag, validation_flags, style_flags,"
         "line_box_shape, line_style, fill_pattern, corner_radius,"
-        "field_placeholders_json, system_tokens_json "
+        "field_placeholders_json, system_tokens_json, legacy_descriptor "
         "FROM report_frames WHERE report_id = ? ORDER BY ordinal"));
 
     while (reportQuery.next()) {
@@ -973,10 +1056,15 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         report.marginBottom = reportQuery.value(15).toInt();
         report.horizontalGutter = reportQuery.value(16).toInt();
         report.verticalGutter = reportQuery.value(17).toInt();
-        report.dataFont.faceName = reportQuery.value(18).toString();
-        report.dataFont.legacyHeight = reportQuery.value(19).toInt();
-        report.textFont.faceName = reportQuery.value(20).toString();
-        report.textFont.legacyHeight = reportQuery.value(21).toInt();
+        report.paperStyleId = reportQuery.value(18).toInt();
+        report.pageWidth = reportQuery.value(19).toInt();
+        report.pageHeight = reportQuery.value(20).toInt();
+        report.orientation = reportQuery.value(21).toInt();
+        report.dataFont.faceName = reportQuery.value(22).toString();
+        report.dataFont.legacyHeight = reportQuery.value(23).toInt();
+        report.textFont.faceName = reportQuery.value(24).toString();
+        report.textFont.legacyHeight = reportQuery.value(25).toInt();
+        report.legacyHeader = reportQuery.value(26).toByteArray();
 
         frameQuery.bindValue(0, reportId);
         if (!frameQuery.exec()) {
@@ -1007,6 +1095,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
             frame.cornerRadius = frameQuery.value(17).toInt();
             frame.fieldPlaceholders = stringVectorFromJson(frameQuery.value(18).toString());
             frame.systemTokens = stringVectorFromJson(frameQuery.value(19).toString());
+            frame.legacyDescriptor = frameQuery.value(20).toByteArray();
             report.frames.append(std::move(frame));
         }
 

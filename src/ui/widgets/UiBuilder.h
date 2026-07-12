@@ -34,6 +34,9 @@ public:
         QWidget* parent = nullptr,
         const DialogContext& context = {});
     static QWidget* controlById(QWidget* parent, int controlId);
+    static void setColorDialogState(QDialog* dialog, const QStringList& colors, bool useSystemColors);
+    static QStringList colorDialogColors(const QDialog* dialog);
+    static bool colorDialogUsesSystemColors(const QDialog* dialog);
     static QStringList dialogNames();
 };
 

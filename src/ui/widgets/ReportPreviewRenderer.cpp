@@ -9,6 +9,7 @@
 #include <QPen>
 
 #include <algorithm>
+#include <optional>
 
 namespace CardStack {
 namespace {
@@ -75,7 +76,7 @@ QString replaceDelimitedToken(QString text, QChar open, QChar close, const QMap<
     return text;
 }
 
-QRectF scaleBounds(const QRect& bounds, const ReportDefinition& report, const QRectF& target)
+QRectF scaleBounds(const QRect& bounds, const ReportDefinition& report, const QRectF& target, int logicalYOffset)
 {
     const qreal width = std::max(1, report.formWidth);
     const qreal height = std::max(1, report.formHeight);
@@ -83,7 +84,7 @@ QRectF scaleBounds(const QRect& bounds, const ReportDefinition& report, const QR
     const qreal yScale = target.height() / height;
     return QRectF(
         target.left() + bounds.left() * xScale,
-        target.top() + bounds.top() * yScale,
+        target.top() + (bounds.top() + logicalYOffset) * yScale,
         bounds.width() * xScale,
         bounds.height() * yScale);
 }
@@ -285,33 +286,34 @@ void drawLineOrBox(QPainter* painter, const QRectF& frameRect, const ReportFrame
     }
 }
 
-} // namespace
-
-QString ReportPreviewRenderer::resolveFrameText(const ReportFrameDefinition& frame, const ReportPreviewData& data)
-{
-    QString text = frame.text;
-    text = replaceDelimitedToken(text, '[', ']', data.fieldValues);
-    text = replaceDelimitedToken(text, '{', '}', data.systemValues);
-    return text;
-}
-
-void ReportPreviewRenderer::render(QPainter* painter, const ReportDefinition& report, const QRectF& target, const ReportPreviewData& data)
+void renderFrames(
+    QPainter* painter,
+    const ReportDefinition& report,
+    const QRectF& target,
+    const ReportPreviewData& data,
+    const std::optional<quint16>& selectedBand,
+    int logicalYOffset,
+    bool clearBackground)
 {
     if (painter == nullptr || target.isEmpty()) {
         return;
     }
 
     painter->save();
-    painter->fillRect(target, Qt::white);
+    if (clearBackground) {
+        painter->fillRect(target, Qt::white);
+    }
     painter->setClipRect(target);
     painter->setRenderHint(QPainter::Antialiasing, true);
     painter->setRenderHint(QPainter::TextAntialiasing, true);
 
     const qreal scale = logicalScale(report, target);
     const QRectF content = contentTarget(report, target);
-
     for (const ReportFrameDefinition& frame : report.frames) {
-        const QRectF frameRect = scaleBounds(frame.bounds, report, content);
+        if (selectedBand.has_value() && frame.band != selectedBand.value()) {
+            continue;
+        }
+        const QRectF frameRect = scaleBounds(frame.bounds, report, content, logicalYOffset);
         if (frameRect.isEmpty()) {
             continue;
         }
@@ -338,14 +340,36 @@ void ReportPreviewRenderer::render(QPainter* painter, const ReportDefinition& re
         painter->setPen(Qt::black);
         const int flags = static_cast<int>(textAlignment(frame))
             | (frame.printEntireContentsFlag != 0 ? Qt::TextWordWrap : Qt::TextSingleLine);
-        painter->drawText(
-            textRect,
-            flags,
-            resolveFrameText(frame, data));
+        painter->drawText(textRect, flags, ReportPreviewRenderer::resolveFrameText(frame, data));
         painter->restore();
     }
-
     painter->restore();
+}
+
+} // namespace
+
+QString ReportPreviewRenderer::resolveFrameText(const ReportFrameDefinition& frame, const ReportPreviewData& data)
+{
+    QString text = frame.text;
+    text = replaceDelimitedToken(text, '[', ']', data.fieldValues);
+    text = replaceDelimitedToken(text, '{', '}', data.systemValues);
+    return text;
+}
+
+void ReportPreviewRenderer::render(QPainter* painter, const ReportDefinition& report, const QRectF& target, const ReportPreviewData& data)
+{
+    renderFrames(painter, report, target, data, std::nullopt, 0, true);
+}
+
+void ReportPreviewRenderer::renderBand(
+    QPainter* painter,
+    const ReportDefinition& report,
+    const QRectF& target,
+    const ReportPreviewData& data,
+    quint16 band,
+    int logicalYOffset)
+{
+    renderFrames(painter, report, target, data, band, logicalYOffset, false);
 }
 
 } // namespace CardStack

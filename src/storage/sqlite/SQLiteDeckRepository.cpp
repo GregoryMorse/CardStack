@@ -124,12 +124,13 @@ bool SQLiteDeckRepository::saveDeckShell(const Deck& deck, QString* errorMessage
 {
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral(
-        "INSERT INTO decks(id, uuid, name, description, security_password, security_encrypted, source_format, legacy_metadata_json)"
-        " VALUES(1, lower(hex(randomblob(16))), ?, ?, ?, ?, 'cardstack-sqlite', '{}')"));
+        "INSERT INTO decks(id, uuid, name, description, security_password, security_encrypted, source_format, legacy_metadata_json, legacy_control_record)"
+        " VALUES(1, lower(hex(randomblob(16))), ?, ?, ?, ?, 'cardstack-sqlite', '{}', ?)"));
     query.addBindValue(nonNull(deck.name()));
     query.addBindValue(nonNull(deck.description()));
     query.addBindValue(nonNull(deck.securityPassword()));
     query.addBindValue(deck.hasEncryptedSecurity() ? 1 : 0);
+    query.addBindValue(deck.legacyControlRecord().isNull() ? QByteArray("") : deck.legacyControlRecord());
     if (!query.exec()) {
         setError(errorMessage, query.lastError());
         return false;
@@ -146,7 +147,7 @@ bool SQLiteDeckRepository::loadDeckShell(Deck* deck, QString* errorMessage)
     }
 
     QSqlQuery query(m_database);
-    if (!query.exec(QStringLiteral("SELECT name, description, security_password, security_encrypted FROM decks WHERE id = 1"))) {
+    if (!query.exec(QStringLiteral("SELECT name, description, security_password, security_encrypted, legacy_control_record FROM decks WHERE id = 1"))) {
         setError(errorMessage, query.lastError());
         return false;
     }
@@ -160,6 +161,7 @@ bool SQLiteDeckRepository::loadDeckShell(Deck* deck, QString* errorMessage)
         } else {
             deck->setSecurity(securityPassword, query.value(3).toInt() != 0);
         }
+        deck->setLegacyControlRecord(query.value(4).toByteArray());
     }
 
     return true;
@@ -201,8 +203,8 @@ bool SQLiteDeckRepository::saveFields(const Deck& deck, int templateId, QString*
 {
     QSqlQuery fieldQuery(m_database);
     fieldQuery.prepare(QStringLiteral(
-        "INSERT INTO template_fields(id, template_id, ordinal, name, type, max_length)"
-        " VALUES(?, ?, ?, ?, ?, ?)"));
+        "INSERT INTO template_fields(id, template_id, ordinal, name, type, max_length, show_name, is_phone, legacy_descriptor)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 
     bool hasEarlyFieldsTable = false;
     if (!tableExists(QStringLiteral("fields"), &hasEarlyFieldsTable, errorMessage)) {
@@ -223,6 +225,9 @@ bool SQLiteDeckRepository::saveFields(const Deck& deck, int templateId, QString*
         fieldQuery.bindValue(3, nonNull(field.name()));
         fieldQuery.bindValue(4, fieldTypeToString(field.type()));
         fieldQuery.bindValue(5, field.maxLength());
+        fieldQuery.bindValue(6, field.showName() ? 1 : 0);
+        fieldQuery.bindValue(7, field.isPhone() ? 1 : 0);
+        fieldQuery.bindValue(8, field.legacyDescriptor().isNull() ? QByteArray("") : field.legacyDescriptor());
         if (!fieldQuery.exec()) {
             setError(errorMessage, fieldQuery.lastError());
             return false;
@@ -253,7 +258,7 @@ bool SQLiteDeckRepository::loadFields(int templateId, Deck* deck, QString* error
 
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral(
-        "SELECT name, type, max_length FROM template_fields WHERE template_id = ? ORDER BY ordinal"));
+        "SELECT name, type, max_length, show_name, is_phone, legacy_descriptor FROM template_fields WHERE template_id = ? ORDER BY ordinal"));
     query.addBindValue(templateId);
     if (!query.exec()) {
         setError(errorMessage, query.lastError());
@@ -264,7 +269,10 @@ bool SQLiteDeckRepository::loadFields(int templateId, Deck* deck, QString* error
         deck->addField(FieldDefinition(
             query.value(0).toString(),
             fieldTypeFromString(query.value(1).toString()),
-            query.value(2).toInt()));
+            query.value(2).toInt(),
+            query.value(3).toInt() != 0,
+            query.value(4).toInt() != 0,
+            query.value(5).toByteArray()));
     }
 
     return true;
@@ -320,6 +328,91 @@ bool SQLiteDeckRepository::loadSortKeys(Deck* deck, QString* errorMessage)
     }
 
     deck->setSortKeys(std::move(sortKeys));
+    return true;
+}
+
+bool SQLiteDeckRepository::saveAppearance(const Deck& deck, QString* errorMessage)
+{
+    QSqlQuery query(m_database);
+    query.prepare(QStringLiteral(
+        "INSERT INTO deck_formatting(deck_id, scope, target_id, font_family, font_size, foreground_color, background_color, alignment, metadata_json)"
+        " VALUES(1, ?, ?, ?, 0, ?, '', ?, '{}')"));
+
+    const DeckAppearance& appearance = deck.appearance();
+    const QVector<QString> fonts = {appearance.dataFont, appearance.nameFont, appearance.textFont, appearance.indexFont};
+    for (int index = 0; index < fonts.size(); ++index) {
+        query.bindValue(0, QStringLiteral("font"));
+        query.bindValue(1, index);
+        query.bindValue(2, nonNull(fonts.at(index)));
+        query.bindValue(3, QStringLiteral(""));
+        query.bindValue(4, QStringLiteral(""));
+        if (!query.exec()) {
+            setError(errorMessage, query.lastError());
+            return false;
+        }
+    }
+
+    for (int index = 0; index < static_cast<int>(DeckColorRole::Count); ++index) {
+        query.bindValue(0, QStringLiteral("color"));
+        query.bindValue(1, index);
+        query.bindValue(2, QStringLiteral(""));
+        query.bindValue(3, index < appearance.customColors.size() ? nonNull(appearance.customColors.at(index)) : QString());
+        query.bindValue(4, QStringLiteral(""));
+        if (!query.exec()) {
+            setError(errorMessage, query.lastError());
+            return false;
+        }
+    }
+
+    query.bindValue(0, QStringLiteral("color-mode"));
+    query.bindValue(1, 0);
+    query.bindValue(2, QStringLiteral(""));
+    query.bindValue(3, QStringLiteral(""));
+    query.bindValue(4, appearance.useSystemColors ? QStringLiteral("system") : QStringLiteral("custom"));
+    if (!query.exec()) {
+        setError(errorMessage, query.lastError());
+        return false;
+    }
+    return true;
+}
+
+bool SQLiteDeckRepository::loadAppearance(Deck* deck, QString* errorMessage)
+{
+    if (deck == nullptr) {
+        setError(errorMessage, QStringLiteral("Deck output is null."));
+        return false;
+    }
+
+    QSqlQuery query(m_database);
+    if (!query.exec(QStringLiteral(
+            "SELECT scope, target_id, font_family, foreground_color, alignment"
+            " FROM deck_formatting WHERE deck_id = 1 ORDER BY scope, target_id"))) {
+        setError(errorMessage, query.lastError());
+        return false;
+    }
+
+    DeckAppearance appearance;
+    while (query.next()) {
+        const QString scope = query.value(0).toString();
+        const int target = query.value(1).toInt();
+        if (scope == QStringLiteral("font")) {
+            const QString value = query.value(2).toString();
+            switch (target) {
+            case 0: appearance.dataFont = value; break;
+            case 1: appearance.nameFont = value; break;
+            case 2: appearance.textFont = value; break;
+            case 3: appearance.indexFont = value; break;
+            default: break;
+            }
+        } else if (scope == QStringLiteral("color")
+                   && target >= 0
+                   && target < static_cast<int>(DeckColorRole::Count)) {
+            appearance.customColors[target] = query.value(3).toString();
+        } else if (scope == QStringLiteral("color-mode")) {
+            appearance.useSystemColors = query.value(4).toString() != QStringLiteral("custom");
+        }
+    }
+    deck->setAppearance(std::move(appearance));
     return true;
 }
 

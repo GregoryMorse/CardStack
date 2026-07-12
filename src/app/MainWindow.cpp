@@ -60,6 +60,7 @@
 #include <QPointer>
 #include <QPrintDialog>
 #include <QPrinter>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRect>
 #include <QRegularExpression>
@@ -73,6 +74,7 @@
 #include <QTextBrowser>
 #include <QTime>
 #include <QToolBar>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVariant>
@@ -169,7 +171,7 @@ QStringList phoneCandidatesForWorkspace(const DeckWorkspace& workspace)
             continue;
         }
         const QString fieldName = deck.fieldAt(fieldIndex).name();
-        if (fieldNameLooksLikePhone(fieldName) || valueLooksLikePhoneNumber(value)) {
+        if (deck.fieldAt(fieldIndex).isPhone() || fieldNameLooksLikePhone(fieldName) || valueLooksLikePhoneNumber(value)) {
             const QString candidate = fieldName.isEmpty()
                 ? value
                 : QStringLiteral("%1: %2").arg(fieldName, value);
@@ -299,6 +301,28 @@ bool isDeckCommand(int commandId)
         (commandId >= Command::NavigateFirst && commandId <= Command::NavigateLast);
 }
 
+bool dispatchFocusedTextClipboardCommand(int commandId)
+{
+    QWidget* focused = QApplication::focusWidget();
+    const auto dispatch = [commandId](auto* editor) {
+        if (editor == nullptr) {
+            return false;
+        }
+        if (commandId == Command::EditCut) {
+            editor->cut();
+        } else if (commandId == Command::EditCopy) {
+            editor->copy();
+        } else if (commandId == Command::EditPaste) {
+            editor->paste();
+        } else {
+            return false;
+        }
+        return true;
+    };
+    return dispatch(qobject_cast<QLineEdit*>(focused))
+        || dispatch(qobject_cast<QPlainTextEdit*>(focused));
+}
+
 bool isReportDesignerCommand(int commandId)
 {
     return commandId == Command::FileNewReport ||
@@ -329,6 +353,10 @@ bool isTemplateDesignerCommand(int commandId)
     return commandId == Command::FileSave ||
         commandId == Command::FileSaveAs ||
         commandId == Command::FileClose ||
+        commandId == Command::EditUndo ||
+        commandId == Command::EditCut ||
+        commandId == Command::EditCopy ||
+        commandId == Command::EditPaste ||
         commandId == Command::EditClear ||
         commandId == Command::ToolAddText ||
         commandId == Command::ToolAddDataBox ||
@@ -1085,6 +1113,19 @@ void MainWindow::rebuildMenus(int menuId)
         QMessageBox::critical(this, tr("CardStack"), tr("Legacy menu resources could not be loaded."));
         return;
     }
+    if (menuId == Menu::MainDeck && findUiAction(Command::EditSmartPaste) == nullptr) {
+        for (QMenu* menu : menuBar()->findChildren<QMenu*>(QString(), Qt::FindDirectChildrenOnly)) {
+            QString title = menu->title();
+            title.remove(QLatin1Char('&'));
+            if (title.compare(tr("Edit"), Qt::CaseInsensitive) == 0) {
+                QAction* smartPaste = menu->addAction(tr("Smart Paste"));
+                smartPaste->setData(Command::EditSmartPaste);
+                smartPaste->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+                connect(smartPaste, &QAction::triggered, this, &MainWindow::handleUiAction);
+                break;
+            }
+        }
+    }
     m_currentMenuId = menuId;
     updateWindowMenuEntries();
 }
@@ -1124,6 +1165,19 @@ void MainWindow::updateIndexBarVisibility()
 
 void MainWindow::updateToolbarCardPosition()
 {
+    if (m_deckModeLabel != nullptr) {
+        DeckWorkspace* workspace = activeDeckWorkspace();
+        if (workspace == nullptr) {
+            m_deckModeLabel->clear();
+            m_deckModeLabel->setVisible(false);
+        } else {
+            m_deckModeLabel->setVisible(true);
+            m_deckModeLabel->setText(workspace->viewMode() == DeckWorkspace::ViewMode::Table
+                                         ? tr("Table View")
+                                         : tr("Card View"));
+        }
+    }
+
     if (m_cardPositionLabel == nullptr) {
         return;
     }
@@ -1371,8 +1425,13 @@ void MainWindow::configureToolBarForMenu(int menuId)
         return;
     }
 
+    if (m_designerPropertyToolbar != nullptr) {
+        m_designerPropertyToolbar->deleteLater();
+        m_designerPropertyToolbar = nullptr;
+    }
     m_buttonBar->clear();
     m_cardPositionLabel = nullptr;
+    m_deckModeLabel = nullptr;
     m_buttonBar->setProperty("cardstackToolbarMenuId", menuId);
 
     const auto toolbarIcon = [](const QString& iconName) {
@@ -1425,6 +1484,12 @@ void MainWindow::configureToolBarForMenu(int menuId)
         m_cardPositionLabel->setMinimumWidth(120);
         m_cardPositionLabel->setContentsMargins(8, 0, 8, 0);
         m_buttonBar->addWidget(m_cardPositionLabel);
+        m_deckModeLabel = new QLabel(m_buttonBar);
+        m_deckModeLabel->setObjectName(QStringLiteral("toolbarDeckModeLabel"));
+        m_deckModeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_deckModeLabel->setMinimumWidth(88);
+        m_deckModeLabel->setContentsMargins(8, 0, 8, 0);
+        m_buttonBar->addWidget(m_deckModeLabel);
         updateToolbarCardPosition();
     };
 
@@ -1441,6 +1506,10 @@ void MainWindow::configureToolBarForMenu(int menuId)
         addUiToolAction(Command::ToolAddDataBox, QStringLiteral("tool-data-box"), tr("Add template data box"));
         addUiToolAction(Command::ToolAddNotesBox, QStringLiteral("tool-notes-box"), tr("Add template notes box"));
         addUiToolAction(Command::ToolAddLineOrBox, QStringLiteral("tool-line-box"), tr("Add template line or box"));
+        addSeparator();
+        m_designerPropertyToolbar = new QWidget(m_buttonBar);
+        m_buttonBar->addWidget(m_designerPropertyToolbar);
+        rebuildDesignerPropertyToolbar();
         return;
     }
 
@@ -1452,6 +1521,10 @@ void MainWindow::configureToolBarForMenu(int menuId)
         addUiToolAction(Command::ToolAddSystemData, QStringLiteral("tool-system-data"), tr("Add report system data"));
         addUiToolAction(Command::ToolAddLineOrBox, QStringLiteral("tool-line-box"), tr("Add report line or box"));
         addUiToolAction(Command::ToolChangeForm, QStringLiteral("tool-form"), tr("Change report form"));
+        addSeparator();
+        m_designerPropertyToolbar = new QWidget(m_buttonBar);
+        m_buttonBar->addWidget(m_designerPropertyToolbar);
+        rebuildDesignerPropertyToolbar();
         return;
     }
 
@@ -1473,6 +1546,217 @@ void MainWindow::configureToolBarForMenu(int menuId)
     addUiToolAction(Command::FileNewReport, QStringLiteral("report-new"), tr("New report"));
     addUiToolAction(Command::FileOpenReport, QStringLiteral("report-open"), tr("Open report designer"));
     addCardPositionLabel();
+}
+
+void MainWindow::rebuildDesignerPropertyToolbar()
+{
+    if (m_designerPropertyToolbar == nullptr) {
+        return;
+    }
+    if (QLayout* oldLayout = m_designerPropertyToolbar->layout()) {
+        delete oldLayout;
+    }
+    qDeleteAll(m_designerPropertyToolbar->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly));
+
+    auto* layout = new QHBoxLayout(m_designerPropertyToolbar);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+    const auto addLabel = [this, layout](const QString& text) {
+        auto* label = new QLabel(text, m_designerPropertyToolbar);
+        layout->addWidget(label);
+        return label;
+    };
+    const auto addToggle = [this, layout](const QString& text, bool checked) {
+        auto* button = new QToolButton(m_designerPropertyToolbar);
+        button->setText(text);
+        button->setCheckable(true);
+        button->setChecked(checked);
+        button->setAutoRaise(false);
+        layout->addWidget(button);
+        return button;
+    };
+
+    if (TemplateDesignerWidget* designer = activeTemplateDesigner()) {
+        const CardTemplateFrame* frame = designer->selectedFrameDefinition();
+        if (frame == nullptr) {
+            addLabel(tr("Deck width (in): %1").arg(designer->layoutDefinition().canvasWidth / 1000.0, 0, 'f', 2));
+            addLabel(tr("Deck height (in): %1").arg(designer->layoutDefinition().canvasHeight / 1000.0, 0, 'f', 2));
+            layout->addStretch(1);
+            return;
+        }
+
+        if (frame->kind == CardTemplateFrameKind::DataBox || frame->kind == CardTemplateFrameKind::NotesBox) {
+            const int fieldIndex = designer->selectedFieldIndex();
+            if (fieldIndex < 0 || fieldIndex >= designer->fieldDefinitions().size()) {
+                addLabel(tr("No field selected"));
+                return;
+            }
+            const FieldDefinition field = designer->fieldDefinitions().at(fieldIndex);
+            addLabel(tr("Name:"));
+            auto* nameEdit = new QLineEdit(field.name(), m_designerPropertyToolbar);
+            nameEdit->setMinimumWidth(150);
+            layout->addWidget(nameEdit);
+            addLabel(tr("Length:"));
+            auto* lengthSpin = new QSpinBox(m_designerPropertyToolbar);
+            lengthSpin->setRange(1, 32767);
+            lengthSpin->setValue(field.maxLength());
+            layout->addWidget(lengthSpin);
+            auto* phone = new QCheckBox(tr("Phone"), m_designerPropertyToolbar);
+            phone->setChecked(field.isPhone());
+            layout->addWidget(phone);
+            auto* showName = new QCheckBox(tr("Show name"), m_designerPropertyToolbar);
+            showName->setChecked(field.showName());
+            layout->addWidget(showName);
+            const auto apply = [designer, nameEdit, lengthSpin, phone, showName]() {
+                designer->updateSelectedFieldDefinition(
+                    nameEdit->text(), lengthSpin->value(), phone->isChecked(), showName->isChecked());
+            };
+            connect(nameEdit, &QLineEdit::editingFinished, designer, apply);
+            connect(lengthSpin, &QSpinBox::valueChanged, designer, [apply](int) { apply(); });
+            connect(phone, &QCheckBox::toggled, designer, [apply](bool) { apply(); });
+            connect(showName, &QCheckBox::toggled, designer, [apply](bool) { apply(); });
+        } else if (frame->kind == CardTemplateFrameKind::Text) {
+            addLabel(tr("Text:"));
+            auto* textEdit = new QLineEdit(frame->text, m_designerPropertyToolbar);
+            textEdit->setMinimumWidth(220);
+            layout->addWidget(textEdit);
+            auto* left = addToggle(tr("Left"), (frame->styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight)) == 0);
+            auto* center = addToggle(tr("Center"), (frame->styleFlags & CardTemplateStyleFlagAlignCenter) != 0);
+            auto* right = addToggle(tr("Right"), (frame->styleFlags & CardTemplateStyleFlagAlignRight) != 0);
+            const auto apply = [designer, textEdit, left, center, right, style = frame->styleFlags]() {
+                quint8 flags = style & (CardTemplateStyleFlagBold | CardTemplateStyleFlagItalic | CardTemplateStyleFlagUnderline);
+                flags |= right->isChecked() ? CardTemplateStyleFlagAlignRight
+                    : (center->isChecked() ? CardTemplateStyleFlagAlignCenter : 0);
+                designer->updateSelectedFrameFromToolbar(textEdit->text(), flags, CardTemplateLineBoxShape::Box, 0, 0, 0);
+                left->setChecked(!center->isChecked() && !right->isChecked());
+            };
+            connect(textEdit, &QLineEdit::editingFinished, designer, apply);
+            for (QToolButton* button : {left, center, right}) {
+                connect(button, &QToolButton::clicked, designer, [left, center, right, button, apply]() {
+                    left->setChecked(button == left);
+                    center->setChecked(button == center);
+                    right->setChecked(button == right);
+                    apply();
+                });
+            }
+        } else {
+            addLabel(tr("Shape:"));
+            auto* shape = new QComboBox(m_designerPropertyToolbar);
+            shape->addItem(tr("Box"), static_cast<int>(CardTemplateLineBoxShape::Box));
+            shape->addItem(tr("Horizontal"), static_cast<int>(CardTemplateLineBoxShape::HorizontalLine));
+            shape->addItem(tr("Vertical"), static_cast<int>(CardTemplateLineBoxShape::VerticalLine));
+            shape->setCurrentIndex(std::max(0, shape->findData(static_cast<int>(frame->lineBoxShape))));
+            layout->addWidget(shape);
+            connect(shape, &QComboBox::currentIndexChanged, designer, [designer, shape, frame](int) {
+                designer->updateSelectedFrameFromToolbar(
+                    {}, frame->styleFlags, static_cast<CardTemplateLineBoxShape>(shape->currentData().toInt()),
+                    frame->lineStyle, frame->fillPattern, frame->cornerRadius);
+            });
+        }
+        layout->addStretch(1);
+        return;
+    }
+
+    ReportDesignerWidget* designer = activeReportDesigner();
+    if (designer == nullptr) {
+        return;
+    }
+    const ReportFrameDefinition* frame = designer->selectedFrameDefinition();
+    if (frame == nullptr) {
+        addLabel(tr("Report width (in): %1").arg(designer->report().formWidth / 1000.0, 0, 'f', 2));
+        addLabel(tr("Report height (in): %1").arg(designer->report().formHeight / 1000.0, 0, 'f', 2));
+        layout->addStretch(1);
+        return;
+    }
+
+    if (frame->kind == ReportFrameKind::LineOrBox) {
+        addLabel(tr("Shape:"));
+        auto* shape = new QComboBox(m_designerPropertyToolbar);
+        shape->addItem(tr("Box"), ReportLineShapeBox);
+        shape->addItem(tr("Horizontal"), ReportLineShapeHorizontal);
+        shape->addItem(tr("Vertical"), ReportLineShapeVertical);
+        shape->setCurrentIndex(std::max(0, shape->findData(frame->lineBoxShape)));
+        layout->addWidget(shape);
+        addLabel(tr("Line style:"));
+        auto* lineStyle = new QComboBox(m_designerPropertyToolbar);
+        lineStyle->addItems(ReportStyleCatalog::lineStyleNames());
+        lineStyle->setCurrentIndex(std::clamp(frame->lineStyle, 0, lineStyle->count() - 1));
+        layout->addWidget(lineStyle);
+        addLabel(tr("Fill pattern:"));
+        auto* fill = new QComboBox(m_designerPropertyToolbar);
+        fill->addItems(ReportStyleCatalog::fillPatternNames());
+        fill->setCurrentIndex(std::clamp(frame->fillPattern, 0, fill->count() - 1));
+        layout->addWidget(fill);
+        addLabel(tr("Corner radius:"));
+        auto* radius = new QSpinBox(m_designerPropertyToolbar);
+        radius->setRange(0, 10000);
+        radius->setValue(frame->cornerRadius);
+        layout->addWidget(radius);
+        const auto apply = [designer, shape, lineStyle, fill, radius]() {
+            designer->updateSelectedFrameFromToolbar(
+                {}, 0, false, shape->currentData().toInt(), lineStyle->currentIndex(), fill->currentIndex(), radius->value());
+        };
+        connect(shape, &QComboBox::currentIndexChanged, designer, [apply](int) { apply(); });
+        connect(lineStyle, &QComboBox::currentIndexChanged, designer, [apply](int) { apply(); });
+        connect(fill, &QComboBox::currentIndexChanged, designer, [apply](int) { apply(); });
+        connect(radius, &QSpinBox::valueChanged, designer, [apply](int) { apply(); });
+    } else {
+        addLabel(frame->kind == ReportFrameKind::Data ? tr("Field:") : tr("Text:"));
+        QLineEdit* textEdit = nullptr;
+        QComboBox* fieldCombo = nullptr;
+        if (frame->kind == ReportFrameKind::Data) {
+            fieldCombo = new QComboBox(m_designerPropertyToolbar);
+            fieldCombo->addItems(designer->fieldNames());
+            const QString selectedField = frame->fieldPlaceholders.isEmpty() ? QString() : frame->fieldPlaceholders.first();
+            fieldCombo->setCurrentIndex(std::max(0, fieldCombo->findText(selectedField)));
+            layout->addWidget(fieldCombo);
+        } else {
+            textEdit = new QLineEdit(frame->text, m_designerPropertyToolbar);
+            textEdit->setMinimumWidth(200);
+            layout->addWidget(textEdit);
+        }
+        auto* bold = addToggle(tr("B"), (frame->styleFlags & ReportStyleFlagBold) != 0);
+        auto* italic = addToggle(tr("I"), (frame->styleFlags & ReportStyleFlagItalic) != 0);
+        auto* underline = addToggle(tr("U"), (frame->styleFlags & ReportStyleFlagUnderline) != 0);
+        auto* left = addToggle(tr("Left"), (frame->styleFlags & (ReportStyleFlagAlignCenter | ReportStyleFlagAlignRight)) == 0);
+        auto* center = addToggle(tr("Center"), (frame->styleFlags & ReportStyleFlagAlignCenter) != 0);
+        auto* right = addToggle(tr("Right"), (frame->styleFlags & ReportStyleFlagAlignRight) != 0);
+        auto* printEntire = new QCheckBox(tr("Print Entire"), m_designerPropertyToolbar);
+        printEntire->setChecked(frame->printEntireContentsFlag != 0);
+        printEntire->setVisible(frame->kind == ReportFrameKind::Data);
+        layout->addWidget(printEntire);
+        const auto apply = [designer, frameKind = frame->kind, textEdit, fieldCombo, bold, italic, underline, left, center, right, printEntire]() {
+            const QString text = frameKind == ReportFrameKind::Data
+                ? QStringLiteral("[%1]").arg(fieldCombo->currentText())
+                : textEdit->text();
+            quint8 flags = bold->isChecked() ? ReportStyleFlagBold : 0;
+            flags |= italic->isChecked() ? ReportStyleFlagItalic : 0;
+            flags |= underline->isChecked() ? ReportStyleFlagUnderline : 0;
+            flags |= right->isChecked() ? ReportStyleFlagAlignRight
+                : (center->isChecked() ? ReportStyleFlagAlignCenter : 0);
+            designer->updateSelectedFrameFromToolbar(text, flags, printEntire->isChecked(), 0, 0, 0, 0);
+            left->setChecked(!center->isChecked() && !right->isChecked());
+        };
+        if (textEdit != nullptr) {
+            connect(textEdit, &QLineEdit::editingFinished, designer, apply);
+        }
+        if (fieldCombo != nullptr) {
+            connect(fieldCombo, &QComboBox::currentIndexChanged, designer, [apply](int) { apply(); });
+        }
+        for (QToolButton* button : {bold, italic, underline}) {
+            connect(button, &QToolButton::clicked, designer, [apply]() { apply(); });
+        }
+        for (QToolButton* button : {left, center, right}) {
+            connect(button, &QToolButton::clicked, designer, [left, center, right, button, apply]() {
+                left->setChecked(button == left);
+                center->setChecked(button == center);
+                right->setChecked(button == right);
+                apply();
+            });
+        }
+        connect(printEntire, &QCheckBox::toggled, designer, [apply](bool) { apply(); });
+    }
+    layout->addStretch(1);
 }
 
 void MainWindow::handleUiAction()
@@ -1709,7 +1993,7 @@ void MainWindow::handleDeckCommand(int commandId)
         bool accepted = false;
         const QFont font = QFontDialog::getFont(&accepted, workspace->font(), this, tr("Text Font"));
         if (accepted) {
-            workspace->applyDataFont(font);
+            workspace->applyTextFont(font);
         }
         return;
     }
@@ -1721,9 +2005,30 @@ void MainWindow::handleDeckCommand(int commandId)
         }
         return;
     }
-    case Command::ConfigureColors:
-        showUiDialog(QStringLiteral("CHOOSECOLOR"));
+    case Command::ConfigureColors: {
+        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHOOSECOLOR"), this, dialogContext());
+        if (!dialog) {
+            return;
+        }
+        const DeckAppearance current = workspace->deck().appearance();
+        QStringList colors;
+        for (const QString& color : current.customColors) {
+            colors.append(color);
+        }
+        UiBuilder::setColorDialogState(dialog.get(), colors, current.useSystemColors);
+        if (dialog->exec() != QDialog::Accepted) {
+            return;
+        }
+        DeckAppearance updated = current;
+        const QStringList selectedColors = UiBuilder::colorDialogColors(dialog.get());
+        updated.customColors.clear();
+        for (const QString& color : selectedColors) {
+            updated.customColors.append(color);
+        }
+        updated.useSystemColors = UiBuilder::colorDialogUsesSystemColors(dialog.get());
+        workspace->applyAppearance(std::move(updated));
         return;
+    }
     case Command::ConfigureIndex:
         handleSortCommand();
         return;
@@ -2182,7 +2487,7 @@ void MainWindow::handlePrintReportCommand()
 
     const auto previewSelectedScope = [this, printContext, report, buildRecords](const QDialog& dialog) {
         const QVector<ReportPreviewData> records = buildRecords(dialog);
-        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records);
         if (records.isEmpty() || pages.isEmpty()) {
             QMessageBox::information(this, tr("CardStack Reports"), tr("No cards are available for this report."));
             return;
@@ -2219,7 +2524,7 @@ void MainWindow::handlePrintReportCommand()
     }
 
     const QVector<ReportPreviewData> records = buildRecords(*optionsDialog);
-    const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+    const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records);
     if (records.isEmpty() || pages.isEmpty()) {
         QMessageBox::information(this, tr("CardStack Reports"), tr("No cards are available for this report."));
         return;
@@ -2282,8 +2587,25 @@ void MainWindow::handleReportDesignerCommand(int commandId)
     }
     case Command::FileCloseDeck:
         if (owner != nullptr) {
-            if (QWidget* ownerWindow = owner->parentWidget()) {
-                ownerWindow->close();
+            const QList<QMdiSubWindow*> windows = m_mdiArea->subWindowList(QMdiArea::CreationOrder);
+            for (QMdiSubWindow* window : windows) {
+                auto* reportDesigner = window == nullptr ? nullptr : qobject_cast<ReportDesignerWidget*>(window->widget());
+                if (reportDesigner == nullptr
+                    || reportDesigner->property("ownerDeckWorkspace").value<QObject*>() != owner) {
+                    continue;
+                }
+                QPointer<QMdiSubWindow> guard(window);
+                window->close();
+                QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+                if (guard != nullptr && m_mdiArea->subWindowList().contains(guard.data())) {
+                    return;
+                }
+            }
+            for (QMdiSubWindow* window : m_mdiArea->subWindowList()) {
+                if (window != nullptr && window->widget() == owner) {
+                    window->close();
+                    break;
+                }
             }
         }
         return;
@@ -2323,12 +2645,25 @@ void MainWindow::handleReportDesignerCommand(int commandId)
         exportReportPackageFromDesigner(designer);
         return;
     case Command::EditUndo:
-        statusBar()->showMessage(tr("Report-designer undo is deferred; use Save/Close prompts to preserve or discard changes."), StatusMessageTimeoutMs);
+        designer->undo();
         return;
     case Command::EditCut:
+        if (dispatchFocusedTextClipboardCommand(commandId)) {
+            return;
+        }
+        designer->cutSelectedFrame();
+        return;
     case Command::EditCopy:
+        if (dispatchFocusedTextClipboardCommand(commandId)) {
+            return;
+        }
+        designer->copySelectedFrame();
+        return;
     case Command::EditPaste:
-        statusBar()->showMessage(tr("Report frame clipboard editing is deferred; use Add Frame and Delete Frame in the designer."), StatusMessageTimeoutMs);
+        if (dispatchFocusedTextClipboardCommand(commandId)) {
+            return;
+        }
+        designer->pasteFrame();
         return;
     case Command::EditClear:
         designer->deleteSelectedFrame();
@@ -2403,10 +2738,26 @@ void MainWindow::handleReportDesignerCommand(int commandId)
         statusBar()->showMessage(tr("Frame attributes are edited in the report designer side panel."), StatusMessageTimeoutMs);
         return;
     case Command::ConfigureDataFont:
-    case Command::ConfigureTextFont:
+    case Command::ConfigureTextFont: {
+        const bool dataFont = commandId == Command::ConfigureDataFont;
+        const ReportFontDefinition current = dataFont ? designer->report().dataFont : designer->report().textFont;
+        QFont initial(current.faceName);
+        if (current.legacyHeight != 0) {
+            initial.setPointSize(std::max(1, std::abs(current.legacyHeight)));
+        }
+        bool accepted = false;
+        const QFont selected = QFontDialog::getFont(
+            &accepted,
+            initial,
+            this,
+            dataFont ? tr("Report Data Font") : tr("Report Text Font"));
+        if (accepted) {
+            designer->setReportFont(dataFont, {selected.family(), -std::max(1, selected.pointSize())});
+        }
+        return;
+    }
     case Command::ConfigureColors:
-        designer->selectCurrentFrameText();
-        statusBar()->showMessage(tr("Report typography and color attributes are edited in the report designer side panel."), StatusMessageTimeoutMs);
+        statusBar()->showMessage(tr("Report colors are controlled by individual frame attributes."), StatusMessageTimeoutMs);
         return;
     case Command::ToolChangeForm:
     {
@@ -2455,12 +2806,33 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
             subWindow->close();
         }
         return;
+    case Command::EditUndo:
+        designer->undo();
+        return;
+    case Command::EditCut:
+        if (dispatchFocusedTextClipboardCommand(commandId)) {
+            return;
+        }
+        designer->cutSelectedFrame();
+        return;
+    case Command::EditCopy:
+        if (dispatchFocusedTextClipboardCommand(commandId)) {
+            return;
+        }
+        designer->copySelectedFrame();
+        return;
+    case Command::EditPaste:
+        if (dispatchFocusedTextClipboardCommand(commandId)) {
+            return;
+        }
+        designer->pasteFrame();
+        return;
     case Command::EditClear:
         designer->deleteSelectedFrame();
         return;
     case Command::ToolAddText:
     {
-        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("TEXTFRAME"), this, dialogContext());
+        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("TPLTEXTFRAME"), this, dialogContext());
         if (dialog && dialog->exec() != QDialog::Accepted) {
             return;
         }
@@ -2471,7 +2843,10 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
     {
         std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("DATAFRAME"), this, dialogContext());
         if (dialog) {
-            populateComboIfEmpty(*dialog, Control::DataFrameFieldList, designer->fieldNames());
+            if (auto* fieldList = uiControl<QComboBox>(*dialog, Control::DataFrameFieldList)) {
+                fieldList->clear();
+                fieldList->addItems(designer->fieldNames());
+            }
         }
         if (dialog && dialog->exec() != QDialog::Accepted) {
             return;
@@ -2519,10 +2894,55 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
     case Command::ConfigureDataFont:
     case Command::ConfigureNameFont:
     case Command::ConfigureTextFont:
-    case Command::ConfigureIndexFont:
-    case Command::ConfigureColors:
-        statusBar()->showMessage(tr("Template typography and color controls are represented by frame styles in the inspector."), StatusMessageTimeoutMs);
+    case Command::ConfigureIndexFont: {
+        auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
+        if (owner == nullptr) {
+            statusBar()->showMessage(tr("Save the new template as a deck before changing deck-wide fonts."), StatusMessageTimeoutMs);
+            return;
+        }
+        bool accepted = false;
+        const QFont selected = QFontDialog::getFont(&accepted, owner->font(), this, tr("Template Font"));
+        if (!accepted) {
+            return;
+        }
+        if (commandId == Command::ConfigureDataFont) {
+            owner->applyDataFont(selected);
+        } else if (commandId == Command::ConfigureNameFont) {
+            owner->applyNameFont(selected);
+        } else if (commandId == Command::ConfigureTextFont) {
+            owner->applyTextFont(selected);
+        } else {
+            owner->applyIndexFont(selected);
+        }
         return;
+    }
+    case Command::ConfigureColors: {
+        auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
+        if (owner == nullptr) {
+            statusBar()->showMessage(tr("Save the new template as a deck before changing deck-wide colors."), StatusMessageTimeoutMs);
+            return;
+        }
+        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHOOSECOLOR"), this, dialogContext());
+        if (!dialog) {
+            return;
+        }
+        DeckAppearance appearance = owner->deck().appearance();
+        QStringList colors;
+        for (const QString& color : appearance.customColors) {
+            colors.append(color);
+        }
+        UiBuilder::setColorDialogState(dialog.get(), colors, appearance.useSystemColors);
+        if (dialog->exec() != QDialog::Accepted) {
+            return;
+        }
+        appearance.customColors.clear();
+        for (const QString& color : UiBuilder::colorDialogColors(dialog.get())) {
+            appearance.customColors.append(color);
+        }
+        appearance.useSystemColors = UiBuilder::colorDialogUsesSystemColors(dialog.get());
+        owner->applyAppearance(std::move(appearance));
+        return;
+    }
     default:
         showUiCommandStatus(commandId);
         return;
@@ -3616,6 +4036,12 @@ bool MainWindow::openDeckFromPath(const QString& filePath)
         return false;
     }
 
+    if ((isDelimitedTextPath(filePath) || isLegacyInterchangePath(filePath))
+        && !reviewImportedDeck(filePath, &deck)) {
+        statusBar()->showMessage(tr("Import canceled."), StatusMessageTimeoutMs);
+        return false;
+    }
+
     if (deck.name().isEmpty()) {
         deck.setName(QFileInfo(filePath).completeBaseName());
     }
@@ -3627,6 +4053,186 @@ bool MainWindow::openDeckFromPath(const QString& filePath)
 
     openDeckWindow(deck, filePath);
     statusBar()->showMessage(tr("Opened %1").arg(filePath), StatusMessageTimeoutMs);
+    return true;
+}
+
+bool MainWindow::reviewImportedDeck(const QString& filePath, Deck* deck)
+{
+    if (deck == nullptr || deck->fieldCount() <= 0) {
+        return false;
+    }
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("importExamineDialog"));
+    dialog.setWindowTitle(tr("Examine Import - %1").arg(QFileInfo(filePath).fileName()));
+    dialog.resize(920, 560);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* instruction = new QLabel(
+        tr("Review values, edit field definitions, or skip records before importing."), &dialog);
+    instruction->setWordWrap(true);
+    layout->addWidget(instruction);
+
+    QVector<FieldDefinition> reviewedFields = deck->fields();
+    auto* table = new QTableWidget(deck->cardCount(), deck->fieldCount() + 1, &dialog);
+    table->setObjectName(QStringLiteral("importExamineTable"));
+    QStringList headers{tr("Import")};
+    for (const FieldDefinition& field : reviewedFields) {
+        headers.append(field.name());
+    }
+    table->setHorizontalHeaderLabels(headers);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->verticalHeader()->setVisible(false);
+    for (int row = 0; row < deck->cardCount(); ++row) {
+        auto* includeItem = new QTableWidgetItem(QString::number(row + 1));
+        includeItem->setCheckState(Qt::Checked);
+        includeItem->setFlags((includeItem->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsEditable);
+        table->setItem(row, 0, includeItem);
+        for (int fieldIndex = 0; fieldIndex < deck->fieldCount(); ++fieldIndex) {
+            table->setItem(row, fieldIndex + 1, new QTableWidgetItem(deck->cardAt(row).valueAt(fieldIndex)));
+        }
+    }
+    if (table->rowCount() > 0) {
+        table->setCurrentCell(0, std::min(1, table->columnCount() - 1));
+    }
+    layout->addWidget(table, 1);
+
+    auto* progression = new QHBoxLayout;
+    auto* previous = new QPushButton(tr("Previous Record"), &dialog);
+    auto* next = new QPushButton(tr("Next Record"), &dialog);
+    auto* skip = new QPushButton(tr("Skip Record"), &dialog);
+    auto* editField = new QPushButton(tr("Edit Field..."), &dialog);
+    previous->setObjectName(QStringLiteral("importPreviousRecordButton"));
+    next->setObjectName(QStringLiteral("importNextRecordButton"));
+    skip->setObjectName(QStringLiteral("importSkipRecordButton"));
+    editField->setObjectName(QStringLiteral("importEditFieldButton"));
+    progression->addWidget(previous);
+    progression->addWidget(next);
+    progression->addWidget(skip);
+    progression->addStretch(1);
+    progression->addWidget(editField);
+    layout->addLayout(progression);
+
+    const auto selectRow = [table](int requestedRow) {
+        if (table->rowCount() <= 0) {
+            return;
+        }
+        const int row = std::clamp(requestedRow, 0, table->rowCount() - 1);
+        table->setCurrentCell(row, std::clamp(table->currentColumn(), 1, table->columnCount() - 1));
+        table->scrollToItem(table->currentItem());
+    };
+    connect(previous, &QPushButton::clicked, &dialog, [table, selectRow]() { selectRow(table->currentRow() - 1); });
+    connect(next, &QPushButton::clicked, &dialog, [table, selectRow]() { selectRow(table->currentRow() + 1); });
+    connect(skip, &QPushButton::clicked, &dialog, [table, selectRow]() {
+        const int row = table->currentRow();
+        if (row >= 0 && table->item(row, 0) != nullptr) {
+            table->item(row, 0)->setCheckState(Qt::Unchecked);
+            selectRow(row + 1);
+        }
+    });
+
+    connect(editField, &QPushButton::clicked, &dialog, [this, &dialog, table, &reviewedFields]() {
+        const int fieldIndex = table->currentColumn() - 1;
+        if (fieldIndex < 0 || fieldIndex >= reviewedFields.size()) {
+            return;
+        }
+        std::unique_ptr<QDialog> editor = UiBuilder::createDialog(QStringLiteral("IMPEDIT"), &dialog, dialogContext());
+        if (!editor) {
+            return;
+        }
+        const FieldDefinition original = reviewedFields.at(fieldIndex);
+        auto* name = qobject_cast<QLineEdit*>(UiBuilder::controlById(editor.get(), 704));
+        auto* sample = qobject_cast<QLineEdit*>(UiBuilder::controlById(editor.get(), 705));
+        auto* length = qobject_cast<QLineEdit*>(UiBuilder::controlById(editor.get(), 706));
+        auto* notes = qobject_cast<QCheckBox*>(UiBuilder::controlById(editor.get(), 707));
+        if (name != nullptr) {
+            name->setText(original.name());
+        }
+        if (sample != nullptr) {
+            sample->setText(table->currentItem() == nullptr ? QString() : table->currentItem()->text());
+        }
+        if (length != nullptr) {
+            length->setText(QString::number(original.maxLength()));
+        }
+        if (notes != nullptr) {
+            notes->setChecked(original.isNotes());
+        }
+        if (editor->exec() != QDialog::Accepted) {
+            return;
+        }
+
+        const QString revisedName = name == nullptr ? original.name() : name->text().trimmed();
+        if (revisedName.isEmpty()) {
+            return;
+        }
+        const bool revisedNotes = notes != nullptr && notes->isChecked();
+        const int revisedLength = revisedNotes
+            ? std::max(8192, original.maxLength())
+            : std::clamp(length == nullptr ? original.maxLength() : length->text().toInt(), 1, 12192);
+        if (revisedNotes) {
+            for (int index = 0; index < reviewedFields.size(); ++index) {
+                if (index != fieldIndex && reviewedFields.at(index).isNotes()) {
+                    const FieldDefinition other = reviewedFields.at(index);
+                    reviewedFields[index] = FieldDefinition(
+                        other.name(), FieldType::Text, std::min(other.maxLength(), 256),
+                        other.showName(), other.isPhone(), other.legacyDescriptor());
+                }
+            }
+        }
+        reviewedFields[fieldIndex] = FieldDefinition(
+            revisedName, revisedNotes ? FieldType::Notes : FieldType::Text, revisedLength,
+            original.showName(), original.isPhone(), original.legacyDescriptor());
+        table->horizontalHeaderItem(fieldIndex + 1)->setText(revisedName);
+    });
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->setObjectName(QStringLiteral("importReviewButtons"));
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return false;
+    }
+
+    QVector<CardRecord> reviewedCards;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (table->item(row, 0) == nullptr || table->item(row, 0)->checkState() != Qt::Checked) {
+            continue;
+        }
+        CardRecord card;
+        for (int fieldIndex = 0; fieldIndex < reviewedFields.size(); ++fieldIndex) {
+            const QTableWidgetItem* item = table->item(row, fieldIndex + 1);
+            card.appendValue(item == nullptr ? QString() : item->text());
+        }
+        reviewedCards.append(std::move(card));
+    }
+    for (int fieldIndex = 0; fieldIndex < reviewedFields.size(); ++fieldIndex) {
+        const FieldDefinition original = reviewedFields.at(fieldIndex);
+        if (original.isNotes()) {
+            continue;
+        }
+        int requiredLength = original.maxLength();
+        for (const CardRecord& card : reviewedCards) {
+            requiredLength = std::max(requiredLength, static_cast<int>(card.valueAt(fieldIndex).size()));
+        }
+        if (requiredLength != original.maxLength()) {
+            reviewedFields[fieldIndex] = FieldDefinition(
+                original.name(), original.type(), std::min(requiredLength, 12192),
+                original.showName(), original.isPhone(), original.legacyDescriptor());
+        }
+    }
+    deck->setFields(std::move(reviewedFields));
+    deck->setCards(std::move(reviewedCards));
+
+    QVector<ImportExportProfile> profiles = deck->importExportProfiles();
+    ImportExportProfile reviewProfile = delimitedTextProfileForPath(filePath, ImportExportProfileType::Import);
+    reviewProfile.name = tr("Reviewed import: %1").arg(QFileInfo(filePath).fileName());
+    reviewProfile.fieldMappings.clear();
+    for (int fieldIndex = 0; fieldIndex < deck->fieldCount(); ++fieldIndex) {
+        reviewProfile.fieldMappings.append(fieldIndex);
+    }
+    profiles.append(std::move(reviewProfile));
+    deck->setImportExportProfiles(std::move(profiles));
     return true;
 }
 
@@ -4195,7 +4801,7 @@ void MainWindow::updateCommandState()
 
     ReportDesignerWidget* designer = activeReportDesigner();
     TemplateDesignerWidget* templateDesigner = activeTemplateDesigner();
-    const bool hasDeck = activeDeckWorkspace() != nullptr || designer != nullptr || templateDesigner != nullptr;
+    const bool hasDeck = activeDeckWorkspace() != nullptr;
     if (QAction* action = findUiAction(Command::ConfigureAddSecurity)) {
         const DeckWorkspace* workspace = activeDeckWorkspace();
         action->setText(workspace != nullptr && workspace->hasSecurity() ? tr("Remove &Security...") : tr("Add &Security..."));
@@ -4261,6 +4867,35 @@ void MainWindow::updateCommandState()
     }
 
     const DeckWorkspace* workspace = activeDeckWorkspace();
+    const int cardCount = workspace != nullptr ? workspace->deck().cardCount() : 0;
+    const int currentCardIndex = workspace != nullptr ? workspace->currentCardIndex() : -1;
+    const bool hasCards = cardCount > 0;
+    const bool hasPreviousCard = hasCards && currentCardIndex > 0;
+    const bool hasNextCard = hasCards && currentCardIndex + 1 < cardCount;
+
+    for (int commandId : {Command::CardDelete,
+                          Command::CardDuplicate,
+                          Command::SearchFind,
+                          Command::SearchFindNext,
+                          Command::SearchReplace}) {
+        if (QAction* action = findUiAction(commandId)) {
+            action->setEnabled(workspace != nullptr && hasCards);
+        }
+    }
+    for (int commandId : {Command::NavigateFirstCard,
+                          Command::NavigatePreviousWindowful,
+                          Command::NavigatePreviousCard}) {
+        if (QAction* action = findUiAction(commandId)) {
+            action->setEnabled(workspace != nullptr && hasPreviousCard);
+        }
+    }
+    for (int commandId : {Command::NavigateLastCard,
+                          Command::NavigateNextCard,
+                          Command::NavigateNextWindowful}) {
+        if (QAction* action = findUiAction(commandId)) {
+            action->setEnabled(workspace != nullptr && hasNextCard);
+        }
+    }
     if (designer != nullptr) {
         const QList<int> reportDesignerCommandIds = {
             Command::FileNewReport,
@@ -4292,6 +4927,14 @@ void MainWindow::updateCommandState()
         if (QAction* action = findUiAction(Command::EditClear)) {
             action->setEnabled(designer->selectedFrameIndex() >= 0);
         }
+        for (int commandId : {Command::EditCut, Command::EditCopy}) {
+            if (QAction* action = findUiAction(commandId)) {
+                action->setEnabled(designer->canCopyFrame());
+            }
+        }
+        if (QAction* action = findUiAction(Command::EditPaste)) {
+            action->setEnabled(designer->canPasteFrame());
+        }
     }
 
     if (templateDesigner != nullptr) {
@@ -4299,6 +4942,10 @@ void MainWindow::updateCommandState()
             Command::FileSave,
             Command::FileSaveAs,
             Command::FileClose,
+            Command::EditUndo,
+            Command::EditCut,
+            Command::EditCopy,
+            Command::EditPaste,
             Command::ToolAddText,
             Command::ToolAddDataBox,
             Command::ToolAddNotesBox,
@@ -4318,10 +4965,22 @@ void MainWindow::updateCommandState()
         if (QAction* action = findUiAction(Command::EditClear)) {
             action->setEnabled(templateDesigner->selectedFrameIndex() >= 0);
         }
+        for (int commandId : {Command::EditCut, Command::EditCopy}) {
+            if (QAction* action = findUiAction(commandId)) {
+                action->setEnabled(templateDesigner->canCopyFrame());
+            }
+        }
+        if (QAction* action = findUiAction(Command::EditPaste)) {
+            action->setEnabled(templateDesigner->canPasteFrame());
+        }
     }
 
     if (QAction* action = findUiAction(Command::EditUndo)) {
-        action->setEnabled(workspace != nullptr && workspace->canUndo());
+        action->setEnabled(designer != nullptr
+                ? designer->canUndo()
+                : (templateDesigner != nullptr
+                          ? templateDesigner->canUndo()
+                          : (workspace != nullptr && workspace->canUndo())));
     }
     if (QAction* action = findUiAction(Command::CardUndelete)) {
         action->setEnabled(workspace != nullptr && workspace->canUndelete());
@@ -4410,6 +5069,10 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
         subWindow->setWindowTitle(dirty ? QObject::tr("%1 *").arg(name) : name);
         updateWindowMenuEntries();
     });
+    connect(designer, &ReportDesignerWidget::selectedFrameChanged, this, [this]() {
+        rebuildDesignerPropertyToolbar();
+        updateCommandState();
+    });
     connect(designer, &ReportDesignerWidget::saveRequested, this, [this, designer, subWindow](const ReportDefinition& updatedReport) {
         auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
         if (owner == nullptr) {
@@ -4476,6 +5139,10 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
             : QObject::tr("%1 Template Design").arg(deckName));
         updateWindowMenuEntries();
     });
+    connect(designer, &TemplateDesignerWidget::selectedFieldChanged, this, [this]() {
+        rebuildDesignerPropertyToolbar();
+        updateCommandState();
+    });
     connect(designer, &TemplateDesignerWidget::saveRequested, this, [this, designer](const CardTemplateLayout& layout) {
         auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
         if (owner == nullptr) {
@@ -4484,6 +5151,18 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
             return;
         }
 
+        QVector<int> sourceIndexes;
+        sourceIndexes.reserve(designer->fieldDefinitions().size());
+        for (int index = 0; index < designer->fieldDefinitions().size(); ++index) {
+            sourceIndexes.append(index);
+        }
+        QString redefineError;
+        owner->redefineFields(designer->fieldDefinitions(), sourceIndexes, &redefineError);
+        if (!redefineError.isEmpty()) {
+            QMessageBox::warning(this, tr("CardStack Templates"), redefineError);
+            designer->markDirty();
+            return;
+        }
         owner->setCardTemplateLayout(layout);
         const QString filePath = owner->property("cardstackFilePath").toString();
         if (!filePath.isEmpty()) {
@@ -4545,7 +5224,12 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
             : QObject::tr("%1 Template Design").arg(deckName));
         updateWindowMenuEntries();
     });
-    connect(designer, &TemplateDesignerWidget::saveRequested, this, [this, draftDeck](const CardTemplateLayout& layout) {
+    connect(designer, &TemplateDesignerWidget::selectedFieldChanged, this, [this]() {
+        rebuildDesignerPropertyToolbar();
+        updateCommandState();
+    });
+    connect(designer, &TemplateDesignerWidget::saveRequested, this, [this, designer, draftDeck](const CardTemplateLayout& layout) {
+        draftDeck->setFields(designer->fieldDefinitions());
         draftDeck->setCardTemplateLayout(layout);
         statusBar()->showMessage(tr("Template design saved. Close the designer to create a deck from it."), StatusMessageTimeoutMs);
         updateCommandState();

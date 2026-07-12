@@ -372,6 +372,26 @@ public:
         update();
     }
 
+    void setCustomColors(const QStringList& colors)
+    {
+        for (int index = 0; index < m_customColors.size() && index < colors.size(); ++index) {
+            const QColor color(colors.at(index));
+            if (color.isValid()) {
+                m_customColors[index] = color;
+            }
+        }
+        update();
+    }
+
+    QStringList customColors() const
+    {
+        QStringList colors;
+        for (const QColor& color : m_customColors) {
+            colors.append(color.name(QColor::HexRgb));
+        }
+        return colors;
+    }
+
 protected:
     void paintEvent(QPaintEvent*) override
     {
@@ -1931,6 +1951,31 @@ void refineImportEditDialog(QDialog* dialog)
     notesRect.setWidth(std::max(notesRect.width(), notesCheck->sizeHint().width() + 18));
     notesCheck->setGeometry(notesRect);
     dialog->resize(std::max(dialog->width(), notesRect.right() + 24), dialog->height());
+
+    if (auto* fieldNameEdit = qobject_cast<QLineEdit*>(directControlById(dialog, 704))) {
+        fieldNameEdit->setMaxLength(64);
+    }
+    if (auto* sampleEdit = qobject_cast<QLineEdit*>(directControlById(dialog, 705))) {
+        sampleEdit->setMaxLength(64);
+        sampleEdit->setReadOnly(true);
+    }
+    auto* lengthEdit = qobject_cast<QLineEdit*>(sizeEdit);
+    auto* notesBox = qobject_cast<QCheckBox*>(notesCheck);
+    if (lengthEdit != nullptr) {
+        lengthEdit->setMaxLength(5);
+        QObject::connect(lengthEdit, &QLineEdit::editingFinished, dialog, [lengthEdit]() {
+            bool valid = false;
+            const int requestedLength = lengthEdit->text().toInt(&valid);
+            lengthEdit->setText(QString::number(std::clamp(valid ? requestedLength : 1, 1, 12192)));
+        });
+    }
+    if (lengthEdit != nullptr && notesBox != nullptr) {
+        const auto syncNotesState = [lengthEdit](bool notes) {
+            lengthEdit->setEnabled(!notes);
+        };
+        QObject::connect(notesBox, &QCheckBox::toggled, dialog, syncNotesState);
+        syncNotesState(notesBox->isChecked());
+    }
 }
 
 void refineAddSystemBoxDialog(QDialog* dialog)
@@ -2520,11 +2565,14 @@ void refineFindReplaceDialog(QDialog* dialog)
     const int directionLeft = std::max(
         286,
         comparisonGroup == nullptr ? 286 : comparisonGroup->geometry().right() + DialogControlGapPx * 2);
+    constexpr int DirectionGroupHeightPx = 112;
+    constexpr int ComparisonGroupHeightPx = 64;
+    const int directionTop = comparisonTop - (DirectionGroupHeightPx - ComparisonGroupHeightPx);
     const int directionButtonLeft = directionLeft + GroupBoxInnerMarginPx * 2;
     const QVector<std::pair<int, QPoint>> directionButtons = {
-        {Control::SearchDirectionBeginning, QPoint(directionButtonLeft, comparisonTop + 24)},
-        {Control::SearchDirectionForward, QPoint(directionButtonLeft, comparisonTop + 54)},
-        {Control::SearchDirectionBackward, QPoint(directionButtonLeft, comparisonTop + 84)},
+        {Control::SearchDirectionBeginning, QPoint(directionButtonLeft, directionTop + 24)},
+        {Control::SearchDirectionForward, QPoint(directionButtonLeft, directionTop + 54)},
+        {Control::SearchDirectionBackward, QPoint(directionButtonLeft, directionTop + 84)},
     };
     for (const auto& entry : directionButtons) {
         if (QWidget* widget = directControlById(dialog, entry.first)) {
@@ -2535,9 +2583,9 @@ void refineFindReplaceDialog(QDialog* dialog)
     }
     if (directionGroup != nullptr) {
         QRect groupRect = directionGroup->geometry();
-        groupRect.moveTo(directionLeft, comparisonTop);
+        groupRect.moveTo(directionLeft, directionTop);
         groupRect.setWidth(250);
-        groupRect.setHeight(112);
+        groupRect.setHeight(DirectionGroupHeightPx);
         for (const auto& entry : directionButtons) {
             if (QWidget* widget = directControlById(dialog, entry.first)) {
                 groupRect.setRight(std::max(groupRect.right(), widget->geometry().right() + GroupBoxInnerMarginPx));
@@ -2583,6 +2631,9 @@ void refineFindReplaceDialog(QDialog* dialog)
             lowerSearchGroup = groupBox;
             continue;
         }
+        if (groupBox == directionGroup) {
+            continue;
+        }
         comparisonBottom = std::max(comparisonBottom, groupBox->geometry().bottom());
     }
 
@@ -2593,7 +2644,8 @@ void refineFindReplaceDialog(QDialog* dialog)
     QRect lowerRect = lowerSearchGroup->geometry();
     const QRect oldLowerRect = lowerRect;
     lowerRect.moveTop(comparisonBottom + GroupBoxVerticalGapPx);
-        lowerRect.setHeight(154);
+    lowerRect.setWidth(expandedSearchGroupRect.width());
+    lowerRect.setHeight(154);
     lowerSearchGroup->setGeometry(lowerRect);
 
     const int deltaY = lowerRect.top() - oldLowerRect.top();
@@ -2654,7 +2706,7 @@ void refineFindReplaceDialog(QDialog* dialog)
     }
     dialog->resize(
         std::max(dialog->width(), directionGroup == nullptr ? lowerRect.right() + 24 : directionGroup->geometry().right() + 24),
-        std::max(dialog->height(), lowerRect.bottom() + DialogControlGapPx * 3));
+        lowerRect.bottom() + DialogControlGapPx * 3);
 }
 
 void refineLineFrameDialog(QDialog* dialog)
@@ -3694,6 +3746,42 @@ std::unique_ptr<QDialog> UiBuilder::createDialog(
     refineDialogGeometry(dialog.get());
 
     return dialog;
+}
+
+void UiBuilder::setColorDialogState(QDialog* dialog, const QStringList& colors, bool useSystemColors)
+{
+    if (dialog == nullptr) {
+        return;
+    }
+    if (auto* grid = dynamic_cast<ColorSwatchGrid*>(controlById(dialog, Control::ColorCustomGrid))) {
+        grid->setCustomColors(colors);
+        grid->setUseSystemColors(useSystemColors);
+    }
+    if (auto* button = qobject_cast<QAbstractButton*>(controlById(dialog, Control::ColorUseSystem))) {
+        button->setChecked(useSystemColors);
+    }
+}
+
+QStringList UiBuilder::colorDialogColors(const QDialog* dialog)
+{
+    if (dialog == nullptr) {
+        return {};
+    }
+    if (auto* grid = dynamic_cast<ColorSwatchGrid*>(controlById(const_cast<QDialog*>(dialog), Control::ColorCustomGrid))) {
+        return grid->customColors();
+    }
+    return {};
+}
+
+bool UiBuilder::colorDialogUsesSystemColors(const QDialog* dialog)
+{
+    if (dialog == nullptr) {
+        return true;
+    }
+    if (auto* button = qobject_cast<QAbstractButton*>(controlById(const_cast<QDialog*>(dialog), Control::ColorUseSystem))) {
+        return button->isChecked();
+    }
+    return true;
 }
 
 QStringList UiBuilder::dialogNames()

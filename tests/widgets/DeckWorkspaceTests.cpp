@@ -126,7 +126,12 @@ private slots:
         QCOMPARE(label->text(), QStringLiteral("Name label"));
         QCOMPARE(label->geometry(), QRect(22, 20, 100, 12));
         QVERIFY(!label->isHidden());
-        QVERIFY(workspace.findChildren<QLabel*>(QRegularExpression(QStringLiteral("^fieldCaption_"))).isEmpty());
+        const QList<QLabel*> fieldCaptions = workspace.findChildren<QLabel*>(QRegularExpression(QStringLiteral("^fieldCaption_")));
+        QCOMPARE(fieldCaptions.size(), 1);
+        QCOMPARE(fieldCaptions.first()->objectName(), QStringLiteral("fieldCaption_1"));
+        QCOMPARE(fieldCaptions.first()->alignment(), Qt::AlignRight | Qt::AlignVCenter);
+        QVERIFY(!fieldCaptions.first()->autoFillBackground());
+        QVERIFY(fieldCaptions.first()->geometry().right() < notesEditor->geometry().left());
     }
 
     void deleteUndoRestoresCardAndUndeleteState()

@@ -331,6 +331,13 @@ int ReportDesignerWidget::selectedFrameIndex() const
     return m_selectedFrameIndex;
 }
 
+const ReportFrameDefinition* ReportDesignerWidget::selectedFrameDefinition() const
+{
+    return m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_report.frames.size()
+        ? &m_report.frames.at(m_selectedFrameIndex)
+        : nullptr;
+}
+
 QStringList ReportDesignerWidget::fieldNames() const
 {
     return m_fieldNames;
@@ -352,6 +359,7 @@ void ReportDesignerWidget::commitPendingEdits()
 
 void ReportDesignerWidget::setReportName(const QString& name)
 {
+    pushUndoState();
     const QString trimmedName = name.trimmed();
     m_report.name = trimmedName.isEmpty() ? tr("Untitled Report") : trimmedName;
     if (m_nameEdit != nullptr) {
@@ -373,6 +381,7 @@ void ReportDesignerWidget::applyForm(
     int horizontalGutter,
     int verticalGutter)
 {
+    pushUndoState();
     m_report.formType = formType == ReportFormType::Unknown ? ReportFormType::Report : formType;
     m_report.formWidth = std::max(1, formWidth);
     m_report.formHeight = std::max(1, formHeight);
@@ -392,6 +401,7 @@ void ReportDesignerWidget::applyForm(
 
 void ReportDesignerWidget::addTextFrame()
 {
+    pushUndoState();
     m_report.frames.append(defaultFrame(ReportFrameKind::Text));
     refreshFrameTable();
     selectFrame(m_report.frames.size() - 1);
@@ -400,6 +410,7 @@ void ReportDesignerWidget::addTextFrame()
 
 void ReportDesignerWidget::addTextFrameWithText(const QString& text, quint8 styleFlags)
 {
+    pushUndoState();
     ReportFrameDefinition frame = defaultFrame(ReportFrameKind::Text);
     if (!text.trimmed().isEmpty()) {
         frame.text = text.trimmed();
@@ -413,6 +424,7 @@ void ReportDesignerWidget::addTextFrameWithText(const QString& text, quint8 styl
 
 void ReportDesignerWidget::addDataFrame()
 {
+    pushUndoState();
     m_report.frames.append(defaultFrame(ReportFrameKind::Data));
     refreshFrameTable();
     selectFrame(m_report.frames.size() - 1);
@@ -421,6 +433,7 @@ void ReportDesignerWidget::addDataFrame()
 
 void ReportDesignerWidget::addDataFrameForField(const QString& fieldName, quint8 styleFlags, bool printEntireContents)
 {
+    pushUndoState();
     const QString safeFieldName = fieldName.trimmed().isEmpty()
         ? (m_fieldNames.isEmpty() ? tr("Field") : m_fieldNames.first())
         : fieldName.trimmed();
@@ -437,6 +450,7 @@ void ReportDesignerWidget::addDataFrameForField(const QString& fieldName, quint8
 
 void ReportDesignerWidget::addSystemFrame()
 {
+    pushUndoState();
     m_report.frames.append(defaultFrame(ReportFrameKind::SystemText));
     refreshFrameTable();
     selectFrame(m_report.frames.size() - 1);
@@ -445,6 +459,7 @@ void ReportDesignerWidget::addSystemFrame()
 
 void ReportDesignerWidget::addSystemFrameWithText(const QString& text, quint8 styleFlags)
 {
+    pushUndoState();
     QString tokenText = text.trimmed();
     if (tokenText.isEmpty()) {
         tokenText = QStringLiteral("{page}");
@@ -471,6 +486,7 @@ void ReportDesignerWidget::addSystemFrameWithText(const QString& text, quint8 st
 
 void ReportDesignerWidget::addLineBoxFrame()
 {
+    pushUndoState();
     m_report.frames.append(defaultFrame(ReportFrameKind::LineOrBox));
     refreshFrameTable();
     selectFrame(m_report.frames.size() - 1);
@@ -479,6 +495,7 @@ void ReportDesignerWidget::addLineBoxFrame()
 
 void ReportDesignerWidget::addLineBoxFrameShape(ReportLineBoxShape shape, int lineStyle, int fillPattern, int cornerRadius)
 {
+    pushUndoState();
     ReportFrameDefinition frame = defaultFrame(ReportFrameKind::LineOrBox);
     frame.lineBoxShape = lineBoxShapeValue(shape);
     frame.lineStyle = std::clamp(lineStyle, 0, ReportLineStyleCount - 1);
@@ -507,9 +524,40 @@ void ReportDesignerWidget::deleteSelectedFrame()
         return;
     }
 
+    pushUndoState();
     m_report.frames.removeAt(m_selectedFrameIndex);
     refreshFrameTable();
     selectFrame(std::min(m_selectedFrameIndex, static_cast<int>(m_report.frames.size()) - 1));
+    markDirty();
+}
+
+void ReportDesignerWidget::copySelectedFrame()
+{
+    commitPendingEdits();
+    if (m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_report.frames.size()) {
+        m_copiedFrame = m_report.frames.at(m_selectedFrameIndex);
+    }
+}
+
+void ReportDesignerWidget::cutSelectedFrame()
+{
+    copySelectedFrame();
+    if (m_copiedFrame.has_value()) {
+        deleteSelectedFrame();
+    }
+}
+
+void ReportDesignerWidget::pasteFrame()
+{
+    if (!m_copiedFrame.has_value()) {
+        return;
+    }
+    pushUndoState();
+    ReportFrameDefinition frame = *m_copiedFrame;
+    frame.bounds.translate(120, 120);
+    m_report.frames.append(std::move(frame));
+    refreshFrameTable();
+    selectFrame(m_report.frames.size() - 1);
     markDirty();
 }
 
@@ -519,6 +567,61 @@ void ReportDesignerWidget::selectCurrentFrameText()
         m_textEdit->setFocus();
         m_textEdit->selectAll();
     }
+}
+
+void ReportDesignerWidget::updateSelectedFrameFromToolbar(
+    const QString& text,
+    quint8 styleFlags,
+    bool printEntireContents,
+    int lineBoxShape,
+    int lineStyle,
+    int fillPattern,
+    int cornerRadius)
+{
+    if (m_selectedFrameIndex < 0 || m_selectedFrameIndex >= m_report.frames.size()) {
+        return;
+    }
+    pushUndoState();
+    ReportFrameDefinition& frame = m_report.frames[m_selectedFrameIndex];
+    if (frame.kind == ReportFrameKind::LineOrBox) {
+        frame.lineBoxShape = lineBoxShape;
+        frame.lineStyle = std::clamp(lineStyle, 0, ReportLineStyleCount - 1);
+        frame.fillPattern = std::clamp(fillPattern, 0, ReportFillPatternCount - 1);
+        frame.cornerRadius = std::max(0, cornerRadius);
+    } else {
+        frame.text = text;
+        frame.styleFlags = styleFlags;
+        frame.printEntireContentsFlag = printEntireContents ? 1 : 0;
+        frame.fieldPlaceholders.clear();
+        frame.systemTokens.clear();
+        if (frame.kind == ReportFrameKind::Data) {
+            const QRegularExpression pattern(QStringLiteral("\\[([^\\]]+)\\]"));
+            QRegularExpressionMatchIterator matches = pattern.globalMatch(frame.text);
+            while (matches.hasNext()) {
+                frame.fieldPlaceholders.append(matches.next().captured(1));
+            }
+        } else if (frame.kind == ReportFrameKind::SystemText) {
+            const QRegularExpression pattern(QStringLiteral("\\{([^}]+)\\}"));
+            QRegularExpressionMatchIterator matches = pattern.globalMatch(frame.text);
+            while (matches.hasNext()) {
+                frame.systemTokens.append(matches.next().captured(1));
+            }
+        }
+    }
+    refreshFrameTable();
+    refreshFrameProperties();
+    markDirty();
+}
+
+void ReportDesignerWidget::setReportFont(bool dataFont, ReportFontDefinition font)
+{
+    ReportFontDefinition& current = dataFont ? m_report.dataFont : m_report.textFont;
+    if (current.faceName == font.faceName && current.legacyHeight == font.legacyHeight) {
+        return;
+    }
+    pushUndoState();
+    current = std::move(font);
+    markDirty();
 }
 
 void ReportDesignerWidget::save()
@@ -823,8 +926,11 @@ void ReportDesignerWidget::refreshFrameProperties()
 
 void ReportDesignerWidget::selectFrame(int frameIndex)
 {
-    applyPropertyEdits();
-    m_selectedFrameIndex = frameIndex >= 0 && frameIndex < m_report.frames.size() ? frameIndex : -1;
+    const int normalizedFrameIndex = frameIndex >= 0 && frameIndex < m_report.frames.size() ? frameIndex : -1;
+    if (normalizedFrameIndex != m_selectedFrameIndex) {
+        applyPropertyEdits();
+    }
+    m_selectedFrameIndex = normalizedFrameIndex;
     if (m_frameTable != nullptr && m_selectedFrameIndex >= 0 && m_frameTable->currentRow() != m_selectedFrameIndex) {
         const QSignalBlocker blocker(m_frameTable);
         m_frameTable->setCurrentCell(m_selectedFrameIndex, 0);
@@ -833,6 +939,7 @@ void ReportDesignerWidget::selectFrame(int frameIndex)
         m_canvas->setSelectedFrameIndex(m_selectedFrameIndex);
     }
     refreshFrameProperties();
+    emit selectedFrameChanged();
 }
 
 void ReportDesignerWidget::markDirty()
@@ -846,12 +953,46 @@ void ReportDesignerWidget::markDirty()
     }
 }
 
+void ReportDesignerWidget::pushUndoState()
+{
+    if (m_restoringUndoState) {
+        return;
+    }
+    constexpr int MaximumUndoStates = 100;
+    if (m_undoStack.size() >= MaximumUndoStates) {
+        m_undoStack.removeFirst();
+    }
+    m_undoStack.append({m_report, m_selectedFrameIndex});
+}
+
+void ReportDesignerWidget::undo()
+{
+    if (m_undoStack.isEmpty()) {
+        return;
+    }
+    m_restoringUndoState = true;
+    const UndoState state = m_undoStack.takeLast();
+    m_report = state.report;
+    if (m_nameEdit != nullptr) {
+        m_nameEdit->setText(m_report.name);
+    }
+    if (m_canvas != nullptr) {
+        m_canvas->setReport(&m_report);
+    }
+    refreshFrameTable();
+    selectFrame(std::clamp(state.selectedFrameIndex, -1, static_cast<int>(m_report.frames.size()) - 1));
+    m_restoringUndoState = false;
+    markDirty();
+}
+
 void ReportDesignerWidget::applyPropertyEdits()
 {
     if (m_selectedFrameIndex < 0 || m_selectedFrameIndex >= m_report.frames.size() || m_kindCombo == nullptr) {
         return;
     }
 
+    const ReportFrameDefinition previousFrame = m_report.frames.at(m_selectedFrameIndex);
+    pushUndoState();
     ReportFrameDefinition& frame = m_report.frames[m_selectedFrameIndex];
     frame.kind = static_cast<ReportFrameKind>(m_kindCombo->currentData().toInt());
     frame.text = m_textEdit->toPlainText();
@@ -887,6 +1028,9 @@ void ReportDesignerWidget::applyPropertyEdits()
         while (matches.hasNext()) {
             frame.systemTokens.append(matches.next().captured(1));
         }
+    }
+    if (frame == previousFrame && !m_undoStack.isEmpty()) {
+        m_undoStack.removeLast();
     }
 }
 

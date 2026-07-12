@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QRect>
 #include <QString>
 #include <QVector>
@@ -44,6 +45,9 @@ struct ReportFrameDefinition {
     int lineStyle = 0;
     int fillPattern = 0;
     int cornerRadius = 0;
+    QByteArray legacyDescriptor;
+
+    bool operator==(const ReportFrameDefinition&) const = default;
 };
 
 inline constexpr quint8 ReportStyleFlagBold = 0x01;
@@ -116,8 +120,13 @@ struct ReportDefinition {
     int marginBottom = 0;
     int horizontalGutter = 0;
     int verticalGutter = 0;
+    int paperStyleId = 0;
+    int pageWidth = 0;
+    int pageHeight = 0;
+    int orientation = 0;
     ReportFontDefinition dataFont;
     ReportFontDefinition textFont;
+    QByteArray legacyHeader;
     QVector<ReportFrameDefinition> frames;
 };
 

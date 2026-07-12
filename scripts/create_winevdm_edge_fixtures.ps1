@@ -186,6 +186,31 @@ Write-PatchedSoftwareFixture $plainPath (Join-Path $FixtureDir "max_lengths.BTN"
     }
 }
 
+Write-PatchedSoftwareFixture $plainPath (Join-Path $FixtureDir "oem_text.BTN") {
+    param([byte[]]$Bytes)
+    # CP437: 0x82=e acute, 0x84=a umlaut, 0x94=o umlaut, 0x81=u umlaut.
+    $Bytes[8209] = 0x82
+    $Bytes[8210] = 0x84
+    $Bytes[8211] = 0x94
+    $Bytes[8212] = 0x81
+    Set-AsciiField $Bytes 8213 60 " OEM Library"
+    $Bytes[$cardSlots[0] + $payloadOffset] = 0x82
+    $Bytes[$cardSlots[0] + $payloadOffset + 1] = 0x84
+    $Bytes[$cardSlots[0] + $payloadOffset + 2] = 0x94
+    $Bytes[$cardSlots[0] + $payloadOffset + 3] = 0x81
+}
+
+Write-PatchedSoftwareFixture $plainPath (Join-Path $FixtureDir "unusual_index.BTN") {
+    param([byte[]]$Bytes)
+    # Key-segment flag word at descriptor +0x12; preserve all structural values.
+    Set-U16 $Bytes 0x122 1
+}
+
+$plainBytes = [IO.File]::ReadAllBytes($plainPath)
+[IO.File]::WriteAllBytes(
+    (Join-Path $FixtureDir "damaged_truncated.BTN"),
+    $plainBytes[0..([Math]::Min(2047, $plainBytes.Length - 1))])
+
 Write-ManyFieldsFixture (Join-Path $FixtureDir "many_fields.BTN")
 Copy-Item -LiteralPath $plainPath -Destination (Join-Path $FixtureDir "security_cycle.BTN") -Force
 
@@ -193,6 +218,9 @@ Get-Item -LiteralPath `
     (Join-Path $FixtureDir "notes_heavy.BTN"), `
     (Join-Path $FixtureDir "many_fields.BTN"), `
     (Join-Path $FixtureDir "max_lengths.BTN"), `
+    (Join-Path $FixtureDir "oem_text.BTN"), `
+    (Join-Path $FixtureDir "unusual_index.BTN"), `
+    (Join-Path $FixtureDir "damaged_truncated.BTN"), `
     (Join-Path $FixtureDir "security_cycle.BTN") |
     Select-Object Name, Length |
     Format-Table -AutoSize

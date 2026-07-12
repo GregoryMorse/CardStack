@@ -109,6 +109,27 @@ $matrix = @(
         Validation = "LegacyDeckReaderTests no-password import success check"
     },
     [pscustomobject]@{
+        Id = "oem-text"
+        Files = @("oem_text.BTN")
+        Required = $true
+        Purpose = "CP437 deck metadata and card text"
+        Validation = "LegacyDeckReaderTests OEM-to-Unicode checks"
+    },
+    [pscustomobject]@{
+        Id = "unusual-index"
+        Files = @("unusual_index.BTN")
+        Required = $true
+        Purpose = "Non-default Btrieve key metadata"
+        Validation = "LegacyDeckReaderTests schema/card import checks"
+    },
+    [pscustomobject]@{
+        Id = "damaged-truncated"
+        Files = @("damaged_truncated.BTN")
+        Required = $true
+        Purpose = "Truncated Btrieve deck rejection"
+        Validation = "LegacyDeckReaderTests clear rejection check"
+    },
+    [pscustomobject]@{
         Id = "dbase-export"
         Files = @("EXDBF.DBF", "EXDBF.DBT")
         Required = $true

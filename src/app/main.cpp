@@ -8,6 +8,30 @@ int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
 
+    app.setStyleSheet(QStringLiteral(R"(
+        QPushButton {
+            border: 1px solid #aeb7c2;
+            border-radius: 6px;
+            padding: 5px 12px;
+            background-color: #f7f9fb;
+        }
+        QPushButton:hover {
+            border-color: #78889a;
+            background-color: #ffffff;
+        }
+        QPushButton:pressed {
+            background-color: #e5eaf0;
+        }
+        QPushButton:disabled {
+            color: #929aa3;
+            border-color: #d2d7dc;
+            background-color: #eef1f4;
+        }
+        QPushButton:default {
+            border-color: #557da5;
+        }
+    )"));
+
     QIcon appIcon;
     appIcon.addFile(QStringLiteral(":/cardstack/icons/icon-16.png"), QSize(16, 16));
     appIcon.addFile(QStringLiteral(":/cardstack/icons/icon-24.png"), QSize(24, 24));

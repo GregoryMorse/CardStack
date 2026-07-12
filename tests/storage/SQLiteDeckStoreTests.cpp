@@ -1,7 +1,9 @@
 #include "SQLiteDeckStore.h"
 
 #include "DeckTemplate.h"
+#include "LegacyDeckReader.h"
 
+#include <QDir>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QStringList>
@@ -16,6 +18,17 @@ Deck makeRoundTripDeck()
 {
     Deck deck(QStringLiteral("Round Trip"));
     deck.setDescription(QStringLiteral("A deck description saved with the native CardStack file."));
+    DeckAppearance appearance;
+    appearance.dataFont = QStringLiteral("Data Font Serialization");
+    appearance.nameFont = QStringLiteral("Name Font Serialization");
+    appearance.textFont = QStringLiteral("Text Font Serialization");
+    appearance.indexFont = QStringLiteral("Index Font Serialization");
+    appearance.customColors = {
+        QStringLiteral("#102030"), QStringLiteral("#203040"), QStringLiteral("#304050"),
+        QStringLiteral("#405060"), QStringLiteral("#506070"), QStringLiteral("#607080"),
+        QStringLiteral("#708090")};
+    appearance.useSystemColors = false;
+    deck.setAppearance(appearance);
     deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64));
     deck.addField(FieldDefinition(QStringLiteral("Notes"), FieldType::Notes, 8192));
     deck.setSortKeys({
@@ -115,6 +128,41 @@ class SQLiteDeckStoreTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void roundTripsImportedLegacyAppearanceAndRawDescriptors()
+    {
+        const QString fixtureDirPath = qEnvironmentVariable("CARDSTACK_WINEVDM_GOLDEN_DIR");
+        if (fixtureDirPath.isEmpty() || !QDir(fixtureDirPath).exists()) {
+            QSKIP("Set CARDSTACK_WINEVDM_GOLDEN_DIR to the accepted WineVDM fixture directory.");
+        }
+
+        const LegacyDeckReader::Result imported = LegacyDeckReader().readDeck(
+            QDir(fixtureDirPath).filePath(QStringLiteral("plain.BTN")));
+        QVERIFY2(imported.ok(), qPrintable(imported.errorMessage));
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("migrated.cardstack"));
+        QString error;
+        SQLiteDeckStore writer;
+        QVERIFY2(writer.open(path, &error), qPrintable(error));
+        QVERIFY2(writer.saveDeck(imported.deck, &error), qPrintable(error));
+        writer.close();
+
+        Deck loaded;
+        SQLiteDeckStore reader;
+        QVERIFY2(reader.open(path, &error), qPrintable(error));
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+
+        QCOMPARE(loaded.appearance(), imported.deck.appearance());
+        QCOMPARE(loaded.legacyControlRecord(), imported.deck.legacyControlRecord());
+        QCOMPARE(loaded.fieldCount(), imported.deck.fieldCount());
+        for (int fieldIndex = 0; fieldIndex < loaded.fieldCount(); ++fieldIndex) {
+            QCOMPARE(
+                loaded.fieldAt(fieldIndex).legacyDescriptor(),
+                imported.deck.fieldAt(fieldIndex).legacyDescriptor());
+        }
+    }
+
     void savesAndLoadsDeckFieldsAndCards()
     {
         QTemporaryDir directory;
@@ -134,6 +182,7 @@ private slots:
 
         QCOMPARE(loaded.name(), QStringLiteral("Round Trip"));
         QCOMPARE(loaded.description(), QStringLiteral("A deck description saved with the native CardStack file."));
+        QCOMPARE(loaded.appearance(), makeRoundTripDeck().appearance());
         QCOMPARE(loaded.fieldCount(), 2);
         QCOMPARE(loaded.fieldAt(0).name(), QStringLiteral("Name"));
         QCOMPARE(loaded.fieldAt(0).type(), FieldType::Text);
@@ -226,30 +275,63 @@ private slots:
 
     void preservesBuiltInTemplateReportPresets()
     {
-        QTemporaryDir directory;
-        QVERIFY(directory.isValid());
+        for (const DeckTemplate& deckTemplate : builtInDeckTemplates()) {
+            QTemporaryDir directory;
+            QVERIFY2(directory.isValid(), qPrintable(deckTemplate.name));
+            const Deck expected = createDeckFromTemplate(deckTemplate);
+            const QString path = directory.filePath(QStringLiteral("template.cardstack"));
+            QString error;
+            SQLiteDeckStore writer;
+            QVERIFY2(writer.open(path, &error), qPrintable(error));
+            QVERIFY2(writer.saveDeck(expected, &error), qPrintable(QStringLiteral("%1: %2").arg(deckTemplate.name, error)));
+            writer.close();
 
-        const Deck software = createDeckFromTemplateName(QStringLiteral("Software Library"));
-        QCOMPARE(software.reportCount(), 3);
-
-        const QString path = directory.filePath(QStringLiteral("software.cardstack"));
-        QString error;
-        SQLiteDeckStore writer;
-        QVERIFY2(writer.open(path, &error), qPrintable(error));
-        QVERIFY2(writer.saveDeck(software, &error), qPrintable(error));
-        writer.close();
-
-        Deck loaded;
-        SQLiteDeckStore reader;
-        QVERIFY2(reader.open(path, &error), qPrintable(error));
-        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
-
-        QCOMPARE(loaded.reportCount(), 3);
-        QCOMPARE(loaded.reportAt(0).name, QStringLiteral("Index Card (3 x 5 - laser)"));
-        QCOMPARE(loaded.reportAt(1).name, QStringLiteral("Index Card (3 x 5 - pin)"));
-        QCOMPARE(loaded.reportAt(2).name, QStringLiteral("Software Registrations"));
-        QCOMPARE(loaded.reportAt(2).frames.size(), 14);
-        QCOMPARE(loaded.reportAt(2).frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
+            Deck loaded;
+            SQLiteDeckStore reader;
+            QVERIFY2(reader.open(path, &error), qPrintable(error));
+            QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(QStringLiteral("%1: %2").arg(deckTemplate.name, error)));
+            QCOMPARE(loaded.name(), expected.name());
+            QCOMPARE(loaded.fieldCount(), expected.fieldCount());
+            QCOMPARE(loaded.cardTemplateLayout(), expected.cardTemplateLayout());
+            QCOMPARE(loaded.reportCount(), expected.reportCount());
+            for (int fieldIndex = 0; fieldIndex < expected.fieldCount(); ++fieldIndex) {
+                const FieldDefinition& actual = loaded.fieldAt(fieldIndex);
+                const FieldDefinition& oracle = expected.fieldAt(fieldIndex);
+                QCOMPARE(actual.name(), oracle.name());
+                QCOMPARE(actual.type(), oracle.type());
+                QCOMPARE(actual.maxLength(), oracle.maxLength());
+                QCOMPARE(actual.showName(), oracle.showName());
+                QCOMPARE(actual.isPhone(), oracle.isPhone());
+                QCOMPARE(actual.legacyDescriptor(), oracle.legacyDescriptor());
+            }
+            for (int reportIndex = 0; reportIndex < expected.reportCount(); ++reportIndex) {
+                const ReportDefinition& actual = loaded.reportAt(reportIndex);
+                const ReportDefinition& oracle = expected.reportAt(reportIndex);
+                QCOMPARE(actual.name, oracle.name);
+                QCOMPARE(actual.formatMagic, oracle.formatMagic);
+                QCOMPARE(actual.formType, oracle.formType);
+                QCOMPARE(actual.formWidth, oracle.formWidth);
+                QCOMPARE(actual.formHeight, oracle.formHeight);
+                QCOMPARE(actual.rows, oracle.rows);
+                QCOMPARE(actual.columns, oracle.columns);
+                QCOMPARE(actual.frames.size(), oracle.frames.size());
+                for (int frameIndex = 0; frameIndex < oracle.frames.size(); ++frameIndex) {
+                    const ReportFrameDefinition& actualFrame = actual.frames.at(frameIndex);
+                    const ReportFrameDefinition& oracleFrame = oracle.frames.at(frameIndex);
+                    QCOMPARE(actualFrame.bounds, oracleFrame.bounds);
+                    QCOMPARE(actualFrame.text, oracleFrame.text);
+                    QCOMPARE(actualFrame.kind, oracleFrame.kind);
+                    QCOMPARE(actualFrame.printEntireContentsFlag, oracleFrame.printEntireContentsFlag);
+                    QCOMPARE(actualFrame.validationFlags, oracleFrame.validationFlags);
+                    QCOMPARE(actualFrame.styleFlags, oracleFrame.styleFlags);
+                    QCOMPARE(actualFrame.lineBoxShape, oracleFrame.lineBoxShape);
+                    QCOMPARE(actualFrame.lineStyle, oracleFrame.lineStyle);
+                    QCOMPARE(actualFrame.fillPattern, oracleFrame.fillPattern);
+                    QCOMPARE(actualFrame.cornerRadius, oracleFrame.cornerRadius);
+                    QCOMPARE(actualFrame.legacyDescriptor, oracleFrame.legacyDescriptor);
+                }
+            }
+        }
     }
 
     void createsVersionedSpecSchema()

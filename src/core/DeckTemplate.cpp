@@ -101,7 +101,12 @@ QVector<FieldDefinition> fieldDefinitionsFromLegacyFields(const QVector<LegacyTe
     QVector<FieldDefinition> fields;
     fields.reserve(legacyFields.size());
     for (const LegacyTemplateFieldDescriptor& legacyField : legacyFields) {
-        fields.append(FieldDefinition(legacyField.name, legacyField.fieldType, legacyField.dataLength));
+        fields.append(FieldDefinition(
+            legacyField.name,
+            legacyField.fieldType,
+            legacyField.dataLength,
+            legacyField.controlRole == LegacyTemplateControlRole::Standalone,
+            legacyField.dialableMarker != 0));
     }
     return fields;
 }

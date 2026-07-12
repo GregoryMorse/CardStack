@@ -122,7 +122,9 @@ public:
 
     void applyDataFont(const QFont& font);
     void applyNameFont(const QFont& font);
+    void applyTextFont(const QFont& font);
     void applyIndexFont(const QFont& font);
+    void applyAppearance(DeckAppearance appearance);
 
     void commitPendingEdits();
     bool redefineFields(
@@ -152,6 +154,7 @@ signals:
     void cardPositionChanged(int currentCardIndex, int cardCount);
 
 private:
+    void applyStoredAppearance();
     QWidget* createCardPage();
     QWidget* createTablePage();
     void attachCardDetailPanelToCardPage();

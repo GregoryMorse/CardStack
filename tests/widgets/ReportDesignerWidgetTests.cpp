@@ -118,6 +118,36 @@ private slots:
         QVERIFY(!designer.isDirty());
     }
 
+    void undoRestoresReportFramesAndToolbarEdits()
+    {
+        ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});
+        QVERIFY(!designer.canUndo());
+
+        designer.addTextFrameWithText(QStringLiteral("Original heading"), ReportStyleFlagBold);
+        QVERIFY(designer.canUndo());
+        QCOMPARE(designer.report().frames.size(), 1);
+
+        designer.updateSelectedFrameFromToolbar(
+            QStringLiteral("Changed heading"),
+            ReportStyleFlagItalic,
+            false,
+            ReportLineShapeBox,
+            ReportLineStyleSolid,
+            ReportFillPatternClear,
+            0);
+        QCOMPARE(designer.report().frames.first().text, QStringLiteral("Changed heading"));
+
+        designer.undo();
+        QCOMPARE(designer.report().frames.size(), 1);
+        QCOMPARE(designer.report().frames.first().text, QStringLiteral("Original heading"));
+        QCOMPARE(designer.report().frames.first().styleFlags, quint8(ReportStyleFlagBold));
+
+        designer.undo();
+        QVERIFY(designer.report().frames.isEmpty());
+        QCOMPARE(designer.selectedFrameIndex(), -1);
+        QVERIFY(!designer.canUndo());
+    }
+
     void appliesReportMargins()
     {
         ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});
@@ -140,6 +170,20 @@ private slots:
         QCOMPARE(report.marginRight, 500);
         QCOMPARE(report.marginBottom, 500);
         QVERIFY(designer.isDirty());
+    }
+
+    void reportFontsParticipateInUndo()
+    {
+        ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});
+        const ReportFontDefinition original = designer.report().dataFont;
+        designer.setReportFont(true, {QStringLiteral("Arial"), -14});
+        QCOMPARE(designer.report().dataFont.faceName, QStringLiteral("Arial"));
+        QCOMPARE(designer.report().dataFont.legacyHeight, -14);
+        QVERIFY(designer.canUndo());
+
+        designer.undo();
+        QCOMPARE(designer.report().dataFont.faceName, original.faceName);
+        QCOMPARE(designer.report().dataFont.legacyHeight, original.legacyHeight);
     }
 
     void exposesAndStoresEveryReportLineAndFillStyle()

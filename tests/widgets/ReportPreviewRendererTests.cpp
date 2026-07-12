@@ -109,6 +109,37 @@ ReportDefinition makeCardGridReport()
     return report;
 }
 
+ReportDefinition makeBandedReport()
+{
+    ReportDefinition report = makeReport();
+    report.formType = ReportFormType::Report;
+    report.frames.clear();
+
+    ReportFrameDefinition header;
+    header.kind = ReportFrameKind::SystemText;
+    header.band = 1;
+    header.bounds = QRect(50, 20, 900, 80);
+    header.text = QStringLiteral("Page {page}");
+    header.systemTokens = {QStringLiteral("page")};
+    report.frames.append(header);
+
+    ReportFrameDefinition body;
+    body.kind = ReportFrameKind::Data;
+    body.band = 0;
+    body.bounds = QRect(50, 120, 900, 140);
+    body.text = QStringLiteral("[Project]");
+    body.fieldPlaceholders = {QStringLiteral("Project")};
+    report.frames.append(body);
+
+    ReportFrameDefinition footer;
+    footer.kind = ReportFrameKind::Text;
+    footer.band = 2;
+    footer.bounds = QRect(50, 900, 900, 60);
+    footer.text = QStringLiteral("Footer");
+    report.frames.append(footer);
+    return report;
+}
+
 bool hasInk(const QImage& image)
 {
     for (int y = 0; y < image.height(); ++y) {
@@ -282,6 +313,39 @@ private slots:
         QCOMPARE(pages.first().cells.at(1).target, QRectF(0.5, 0.0, 0.5, 0.1));
         QCOMPARE(pages.first().cells.at(2).target, QRectF(0.0, 0.1, 0.5, 0.1));
         QCOMPARE(pages.first().cells.at(19).target, QRectF(0.5, 0.9, 0.5, 0.1));
+    }
+
+    void paginatesReportBodyRowsBetweenRepeatedBands()
+    {
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(makeBandedReport(), 8);
+        QCOMPARE(pages.size(), 2);
+        QCOMPARE(pages.first().cells.size(), 5);
+        QCOMPARE(pages.last().cells.size(), 3);
+        QVERIFY(pages.first().usesReportBands);
+        QCOMPARE(pages.first().cells.at(0).logicalYOffset, 0);
+        QCOMPARE(pages.first().cells.at(1).logicalYOffset, 140);
+    }
+
+    void continuesPrintEntireContentsAcrossBodySlots()
+    {
+        ReportDefinition report = makeBandedReport();
+        report.dataFont.faceName = QStringLiteral("Arial");
+        report.dataFont.legacyHeight = -20;
+        report.frames[1].bounds.setHeight(24);
+        report.frames[1].bounds.setWidth(120);
+        report.frames[1].printEntireContentsFlag = 1;
+        report.frames[2].bounds.moveTop(170);
+
+        ReportPreviewData data;
+        data.fieldValues.insert(
+            QStringLiteral("Project"),
+            QStringLiteral("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen"));
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, QVector<ReportPreviewData>{data});
+        QVERIFY(pages.size() > 1);
+        QVERIFY(!pages.first().cells.first().fieldValueOverrides.value(QStringLiteral("Project")).isEmpty());
+        QVERIFY(!pages.last().cells.last().fieldValueOverrides.value(QStringLiteral("Project")).isEmpty());
+        QVERIFY(pages.first().cells.first().fieldValueOverrides.value(QStringLiteral("Project"))
+            != pages.last().cells.last().fieldValueOverrides.value(QStringLiteral("Project")));
     }
 
     void renderPageClipsToTargetAndDrawsCells()

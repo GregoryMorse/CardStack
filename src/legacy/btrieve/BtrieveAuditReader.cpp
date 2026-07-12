@@ -1,4 +1,5 @@
 #include "BtrieveAuditReader.h"
+#include "../legacy_deck/LegacyOemCodec.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -72,7 +73,7 @@ QString readFixedAscii(const QByteArray& bytes, int offset, int length)
     while (actualLength < available && bytes.at(offset + actualLength) != '\0') {
         ++actualLength;
     }
-    return QString::fromLatin1(bytes.constData() + offset, actualLength).trimmed();
+    return LegacyOemCodec::decode(QByteArrayView(bytes).sliced(offset, actualLength)).trimmed();
 }
 
 quint32 readOldFormatPageNumber(const QByteArray& bytes, int offset)

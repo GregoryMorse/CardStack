@@ -586,6 +586,9 @@ private slots:
         auto* cardPosition = toolBar->findChild<QLabel*>(QStringLiteral("toolbarCardPositionLabel"));
         QVERIFY(cardPosition != nullptr);
         QCOMPARE(cardPosition->text(), QStringLiteral("Card 1 of 2"));
+        auto* deckMode = toolBar->findChild<QLabel*>(QStringLiteral("toolbarDeckModeLabel"));
+        QVERIFY(deckMode != nullptr);
+        QCOMPARE(deckMode->text(), QStringLiteral("Card View"));
     }
 
     void deckViewShortcutsAndCheckmarksFollowActiveView()
@@ -599,31 +602,46 @@ private slots:
 
         auto* viewCardAction = findCommandAction(window.menuBar(), UiIds::Command::ViewCard);
         auto* viewTableAction = findCommandAction(window.menuBar(), UiIds::Command::ViewTable);
+        auto* previousAction = findCommandAction(window.menuBar(), UiIds::Command::NavigatePreviousCard);
+        auto* nextAction = findCommandAction(window.menuBar(), UiIds::Command::NavigateNextCard);
+        auto* deckMode = window.findChild<QLabel*>(QStringLiteral("toolbarDeckModeLabel"));
         QVERIFY(viewCardAction != nullptr);
         QVERIFY(viewTableAction != nullptr);
+        QVERIFY(previousAction != nullptr);
+        QVERIFY(nextAction != nullptr);
+        QVERIFY(deckMode != nullptr);
         QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Card);
         QVERIFY(viewCardAction->isChecked());
         QVERIFY(!viewTableAction->isChecked());
+        QCOMPARE(deckMode->text(), QStringLiteral("Card View"));
+        QVERIFY(!previousAction->isEnabled());
+        QVERIFY(nextAction->isEnabled());
 
         QTest::keyClick(&window, Qt::Key_F9);
         QCoreApplication::processEvents();
         QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Table);
         QVERIFY(viewTableAction->isChecked());
         QVERIFY(!viewCardAction->isChecked());
+        QCOMPARE(deckMode->text(), QStringLiteral("Table View"));
 
         QTest::keyClick(&window, Qt::Key_F9);
         QCoreApplication::processEvents();
         QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Card);
         QVERIFY(viewCardAction->isChecked());
         QVERIFY(!viewTableAction->isChecked());
+        QCOMPARE(deckMode->text(), QStringLiteral("Card View"));
 
         QTest::keyClick(&window, Qt::Key_PageDown);
         QCoreApplication::processEvents();
         QCOMPARE(workspace->currentCardIndex(), 1);
+        QVERIFY(previousAction->isEnabled());
+        QVERIFY(!nextAction->isEnabled());
 
         QTest::keyClick(&window, Qt::Key_PageUp);
         QCoreApplication::processEvents();
         QCOMPARE(workspace->currentCardIndex(), 0);
+        QVERIFY(!previousAction->isEnabled());
+        QVERIFY(nextAction->isEnabled());
 
         QTest::keyClick(&window, Qt::Key_PageDown, Qt::ControlModifier);
         QCoreApplication::processEvents();

@@ -1,4 +1,7 @@
 #include "LegacyDeckReader.h"
+#include "LegacyOemCodec.h"
+#include "LegacyTemplateLayoutParser.h"
+#include "LegacyDeckAppearanceParser.h"
 
 #include "BtrieveAuditReader.h"
 
@@ -68,7 +71,7 @@ QChar decodeWindows1252Byte(quint8 byte)
     return QChar(static_cast<ushort>(byte));
 }
 
-QString readNullTerminatedWindows1252(const QByteArray& bytes, int offset, int maxLength)
+QString readNullTerminatedOem(const QByteArray& bytes, int offset, int maxLength)
 {
     if (offset < 0 || offset >= bytes.size() || maxLength <= 0) {
         return {};
@@ -80,12 +83,7 @@ QString readNullTerminatedWindows1252(const QByteArray& bytes, int offset, int m
         ++length;
     }
 
-    QString value;
-    value.reserve(length);
-    for (int index = 0; index < length; ++index) {
-        value.append(decodeWindows1252Byte(static_cast<quint8>(bytes.at(offset + index))));
-    }
-    return value.trimmed();
+    return LegacyOemCodec::decode(QByteArrayView(bytes).sliced(offset, length)).trimmed();
 }
 
 bool isLikelyFieldName(const QString& value)
@@ -120,7 +118,7 @@ bool parseLegacyFieldAt(const QByteArray& schemaRecord, int offset, LegacyField*
             continue;
         }
 
-        const QString name = readNullTerminatedWindows1252(schemaRecord, offset + layout.nameOffset, FieldNameSize);
+        const QString name = readNullTerminatedOem(schemaRecord, offset + layout.nameOffset, FieldNameSize);
         const int typeByte = static_cast<quint8>(schemaRecord.at(offset + layout.typeOffset));
         const int recordOffset = readU16(schemaRecord, offset + layout.recordOffsetOffset);
         const int length = readU16(schemaRecord, offset + layout.lengthOffset);
@@ -252,7 +250,7 @@ bool isControlRecord(const QByteArray& record)
 
 QString fieldValueFromRecord(const QByteArray& record, const LegacyField& field)
 {
-    return readNullTerminatedWindows1252(record, RecordPayloadOffset + field.recordOffset, field.length);
+    return readNullTerminatedOem(record, RecordPayloadOffset + field.recordOffset, field.length);
 }
 
 int minimumRecordSize(const QVector<LegacyField>& fields)
@@ -291,7 +289,7 @@ void writeU16(QByteArray* bytes, int offset, quint16 value)
 
 QByteArray legacyOwnerVerificationBytes(const QString& password)
 {
-    QByteArray ownerName = normalizeLegacyOwnerPassword(password).toLatin1().left(8);
+    QByteArray ownerName = LegacyOemCodec::encode(normalizeLegacyOwnerPassword(password), 8);
     while (ownerName.size() < 8) {
         ownerName.append(' ');
     }
@@ -617,11 +615,21 @@ LegacyDeckReader::Result LegacyDeckReader::readRecords(
         return result;
     }
 
-    const QString deckName = readNullTerminatedWindows1252(*schemaRecord, SchemaDeckNameOffset, SchemaDeckNameLength);
+    const auto visualTemplate = LegacyTemplateLayoutFormat::find(records, fields.size());
+    const QString deckName = readNullTerminatedOem(*schemaRecord, SchemaDeckNameOffset, SchemaDeckNameLength);
     Deck deck(deckName.isEmpty() ? fallbackDeckName : deckName);
+    deck.setLegacyControlRecord(*schemaRecord);
+    deck.setAppearance(LegacyDeckAppearanceFormat::parse(*schemaRecord));
     deck.setDescription(QStringLiteral("Imported from a legacy Btrieve deck."));
-    for (const LegacyField& field : fields) {
-        deck.addField(FieldDefinition(field.name, field.type, field.length));
+    if (visualTemplate.has_value()) {
+        for (const FieldDefinition& field : visualTemplate->fields) {
+            deck.addField(field);
+        }
+        deck.setCardTemplateLayout(visualTemplate->layout);
+    } else {
+        for (const LegacyField& field : fields) {
+            deck.addField(FieldDefinition(field.name, field.type, field.length));
+        }
     }
 
     const int requiredSize = minimumRecordSize(fields);

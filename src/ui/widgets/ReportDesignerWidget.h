@@ -3,6 +3,7 @@
 #include "ReportDefinition.h"
 
 #include <QWidget>
+#include <optional>
 
 class QCheckBox;
 class QComboBox;
@@ -34,8 +35,12 @@ public:
 
     const ReportDefinition& report() const;
     int selectedFrameIndex() const;
+    const ReportFrameDefinition* selectedFrameDefinition() const;
     QStringList fieldNames() const;
     bool isDirty() const;
+    bool canUndo() const { return !m_undoStack.isEmpty(); }
+    bool canCopyFrame() const { return m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_report.frames.size(); }
+    bool canPasteFrame() const { return m_copiedFrame.has_value(); }
     void commitPendingEdits();
     void markDirty();
     void setReportName(const QString& name);
@@ -56,8 +61,10 @@ signals:
     void commandRequested(int commandId);
     void saveRequested(const ReportDefinition& report);
     void dirtyChanged(bool dirty);
+    void selectedFrameChanged();
 
 public slots:
+    void undo();
     void addTextFrame();
     void addTextFrameWithText(const QString& text, quint8 styleFlags);
     void addDataFrame();
@@ -67,13 +74,31 @@ public slots:
     void addLineBoxFrame();
     void addLineBoxFrameShape(ReportLineBoxShape shape, int lineStyle = 0, int fillPattern = 0, int cornerRadius = 0);
     void deleteSelectedFrame();
+    void cutSelectedFrame();
+    void copySelectedFrame();
+    void pasteFrame();
     void selectCurrentFrameText();
+    void updateSelectedFrameFromToolbar(
+        const QString& text,
+        quint8 styleFlags,
+        bool printEntireContents,
+        int lineBoxShape,
+        int lineStyle,
+        int fillPattern,
+        int cornerRadius);
+    void setReportFont(bool dataFont, ReportFontDefinition font);
     void save();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
+    struct UndoState {
+        ReportDefinition report;
+        int selectedFrameIndex = -1;
+    };
+
+    void pushUndoState();
     void normalizeReport();
     void buildUi();
     void refreshFrameTable();
@@ -87,6 +112,9 @@ private:
     QStringList m_fieldNames;
     bool m_dirty = false;
     int m_selectedFrameIndex = -1;
+    std::optional<ReportFrameDefinition> m_copiedFrame;
+    QVector<UndoState> m_undoStack;
+    bool m_restoringUndoState = false;
 
     ReportDesignCanvas* m_canvas = nullptr;
     QLineEdit* m_nameEdit = nullptr;

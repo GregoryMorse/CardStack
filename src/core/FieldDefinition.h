@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 
 namespace CardStack {
@@ -12,11 +13,14 @@ enum class FieldType {
 class FieldDefinition {
 public:
     FieldDefinition() = default;
-    FieldDefinition(QString name, FieldType type, int maxLength);
+    FieldDefinition(QString name, FieldType type, int maxLength, bool showName = true, bool phone = false, QByteArray legacyDescriptor = {});
 
     const QString& name() const;
     FieldType type() const;
     int maxLength() const;
+    bool showName() const;
+    bool isPhone() const;
+    const QByteArray& legacyDescriptor() const;
 
     bool isNotes() const;
 
@@ -24,7 +28,9 @@ private:
     QString m_name;
     FieldType m_type = FieldType::Text;
     int m_maxLength = 255;
+    bool m_showName = true;
+    bool m_phone = false;
+    QByteArray m_legacyDescriptor;
 };
 
 } // namespace CardStack
-

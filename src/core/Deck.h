@@ -6,6 +6,8 @@
 #include "ImportExportProfile.h"
 #include "ReportDefinition.h"
 
+#include <QByteArray>
+
 #include <QString>
 #include <QVector>
 
@@ -16,6 +18,28 @@ struct DeckSortKey {
     bool descending = false;
 
     bool operator==(const DeckSortKey&) const = default;
+};
+
+enum class DeckColorRole {
+    IndexForeground = 0,
+    DataForeground,
+    NameForeground,
+    TextForeground,
+    DataBackground,
+    IndexBackground,
+    CardBackground,
+    Count
+};
+
+struct DeckAppearance {
+    QString dataFont;
+    QString nameFont;
+    QString textFont;
+    QString indexFont;
+    QVector<QString> customColors = QVector<QString>(static_cast<int>(DeckColorRole::Count));
+    bool useSystemColors = true;
+
+    bool operator==(const DeckAppearance&) const = default;
 };
 
 class Deck {
@@ -39,6 +63,8 @@ public:
     const QVector<DeckSortKey>& sortKeys() const;
     const QVector<ImportExportProfile>& importExportProfiles() const;
     const CardTemplateLayout& cardTemplateLayout() const;
+    const QByteArray& legacyControlRecord() const;
+    const DeckAppearance& appearance() const;
     bool hasSecurity() const;
     bool hasEncryptedSecurity() const;
     const QString& securityPassword() const;
@@ -49,7 +75,9 @@ public:
     const ReportDefinition& reportAt(int index) const;
 
     void addField(FieldDefinition field);
+    void setFields(QVector<FieldDefinition> fields);
     void addCard(CardRecord card);
+    void setCards(QVector<CardRecord> cards);
     void addReport(ReportDefinition report);
     void insertReport(int index, ReportDefinition report);
     void setSortKeys(QVector<DeckSortKey> sortKeys);
@@ -58,6 +86,8 @@ public:
     void addImportExportProfile(ImportExportProfile profile);
     void clearImportExportProfiles();
     void setCardTemplateLayout(CardTemplateLayout layout);
+    void setLegacyControlRecord(QByteArray record);
+    void setAppearance(DeckAppearance appearance);
     void setSecurity(QString password, bool encrypted);
     void clearSecurity();
     void setReport(int index, ReportDefinition report);
@@ -73,6 +103,8 @@ private:
     QVector<ImportExportProfile> m_importExportProfiles;
     QVector<ReportDefinition> m_reports;
     CardTemplateLayout m_cardTemplateLayout;
+    QByteArray m_legacyControlRecord;
+    DeckAppearance m_appearance;
     QString m_securityPassword;
     bool m_securityEncrypted = false;
 };

@@ -28,10 +28,6 @@
 namespace CardStack {
 namespace {
 
-constexpr quint8 TemplateStyleBold = 0x01;
-constexpr quint8 TemplateStyleItalic = 0x02;
-constexpr quint8 TemplateStyleUnderline = 0x04;
-
 QRectF scaledBounds(const QRect& bounds, const CardTemplateLayout& layout, const QRectF& page)
 {
     return QRectF(
@@ -95,6 +91,12 @@ public:
         update();
     }
 
+    void setFieldDefinitions(const QVector<FieldDefinition>* fields)
+    {
+        m_fields = fields;
+        update();
+    }
+
     void setSelectedFrameIndex(int frameIndex)
     {
         m_selectedFrameIndex = frameIndex;
@@ -119,6 +121,17 @@ protected:
         painter.setPen(palette().mid().color());
         painter.drawRect(page.adjusted(0, 0, -1, -1));
 
+        const QRect indexHeader(0, 0, m_layout->canvasWidth, 220);
+        painter.fillRect(indexHeader, palette().alternateBase());
+        painter.setPen(QPen(palette().mid().color(), 12));
+        painter.drawRect(indexHeader.adjusted(6, 6, -6, -6));
+        QFont indexFont = painter.font();
+        indexFont.setPixelSize(170);
+        indexFont.setWeight(QFont::Medium);
+        painter.setFont(indexFont);
+        painter.setPen(palette().text().color());
+        painter.drawText(indexHeader.adjusted(30, 0, -30, 0), Qt::AlignLeft | Qt::AlignVCenter, tr("Index"));
+
         for (int index = 0; index < m_layout->frames.size(); ++index) {
             const CardTemplateFrame& frame = m_layout->frames.at(index);
             const QRectF frameRect = scaledBounds(frame.bounds, *m_layout, page);
@@ -137,9 +150,37 @@ protected:
             case CardTemplateFrameKind::DataBox:
             case CardTemplateFrameKind::NotesBox:
                 painter.drawRect(frameRect);
+                painter.drawText(frameRect.adjusted(4, 2, -4, -2), Qt::AlignLeft | Qt::AlignVCenter, tr("Sample data"));
+                if (m_fields != nullptr
+                    && frame.fieldIndex >= 0
+                    && frame.fieldIndex < m_fields->size()
+                    && m_fields->at(frame.fieldIndex).showName()
+                    && !std::any_of(
+                        m_layout->frames.cbegin(),
+                        m_layout->frames.cend(),
+                        [&frame](const CardTemplateFrame& candidate) {
+                            if (candidate.kind != CardTemplateFrameKind::Text) {
+                                return false;
+                            }
+                            const bool matchingText = candidate.text.compare(frame.text, Qt::CaseInsensitive) == 0;
+                            const bool adjacentCaption = candidate.bounds.left() < frame.bounds.right()
+                                && candidate.bounds.right() > frame.bounds.left()
+                                && candidate.bounds.bottom() <= frame.bounds.top()
+                                && frame.bounds.top() - candidate.bounds.bottom() <= 300;
+                            return matchingText || adjacentCaption;
+                        })) {
+                    const QRectF labelRect(page.left(), frameRect.top(), std::max<qreal>(0.0, frameRect.left() - page.left() - 6.0), frameRect.height());
+                    painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, m_fields->at(frame.fieldIndex).name());
+                }
                 break;
             case CardTemplateFrameKind::Text:
-                painter.drawText(frameRect, Qt::AlignLeft | Qt::AlignVCenter, frame.text);
+                painter.drawText(
+                    frameRect,
+                    ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
+                            ? Qt::AlignRight
+                            : ((frame.styleFlags & CardTemplateStyleFlagAlignCenter) != 0 ? Qt::AlignHCenter : Qt::AlignLeft))
+                        | Qt::AlignVCenter,
+                    frame.text);
                 painter.drawRect(frameRect.adjusted(0, 0, -1, -1));
                 break;
             }
@@ -261,6 +302,7 @@ private:
     }
 
     const CardTemplateLayout* m_layout = nullptr;
+    const QVector<FieldDefinition>* m_fields = nullptr;
     int m_selectedFrameIndex = -1;
     int m_dragFrameIndex = -1;
     DragMode m_dragMode = DragMode::None;
@@ -273,6 +315,16 @@ TemplateDesignerWidget::TemplateDesignerWidget(CardTemplateLayout layout, QVecto
     , m_layout(std::move(layout))
     , m_fields(std::move(fields))
 {
+    for (CardTemplateFrame& frame : m_layout.frames) {
+        const bool fieldFrame = frame.kind == CardTemplateFrameKind::DataBox
+            || frame.kind == CardTemplateFrameKind::NotesBox;
+        if (fieldFrame
+            && frame.text.trimmed().isEmpty()
+            && frame.fieldIndex >= 0
+            && frame.fieldIndex < m_fields.size()) {
+            frame.text = m_fields.at(frame.fieldIndex).name();
+        }
+    }
     buildUi();
     refreshFrameTable();
     selectFrame(m_layout.frames.isEmpty() ? -1 : 0);
@@ -281,6 +333,11 @@ TemplateDesignerWidget::TemplateDesignerWidget(CardTemplateLayout layout, QVecto
 const CardTemplateLayout& TemplateDesignerWidget::layoutDefinition() const
 {
     return m_layout;
+}
+
+const QVector<FieldDefinition>& TemplateDesignerWidget::fieldDefinitions() const
+{
+    return m_fields;
 }
 
 QStringList TemplateDesignerWidget::fieldNames() const
@@ -298,6 +355,25 @@ int TemplateDesignerWidget::selectedFrameIndex() const
     return m_selectedFrameIndex;
 }
 
+const CardTemplateFrame* TemplateDesignerWidget::selectedFrameDefinition() const
+{
+    return m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_layout.frames.size()
+        ? &m_layout.frames.at(m_selectedFrameIndex)
+        : nullptr;
+}
+
+int TemplateDesignerWidget::selectedFieldIndex() const
+{
+    if (m_selectedFrameIndex < 0 || m_selectedFrameIndex >= m_layout.frames.size()) {
+        return -1;
+    }
+    const CardTemplateFrame& frame = m_layout.frames.at(m_selectedFrameIndex);
+    if (frame.kind != CardTemplateFrameKind::DataBox && frame.kind != CardTemplateFrameKind::NotesBox) {
+        return -1;
+    }
+    return frame.fieldIndex;
+}
+
 bool TemplateDesignerWidget::isDirty() const
 {
     return m_dirty;
@@ -310,6 +386,7 @@ void TemplateDesignerWidget::addTextFrame()
 
 void TemplateDesignerWidget::addTextFrameWithText(const QString& text, quint8 styleFlags)
 {
+    pushUndoState();
     CardTemplateFrame frame = defaultFrame(CardTemplateFrameKind::Text);
     if (!text.isEmpty()) {
         frame.text = text;
@@ -328,6 +405,7 @@ void TemplateDesignerWidget::addDataBoxFrame()
 
 void TemplateDesignerWidget::addDataBoxFrameForField(const QString& fieldName, quint8 styleFlags)
 {
+    pushUndoState();
     CardTemplateFrame frame = defaultFrame(CardTemplateFrameKind::DataBox);
     const QString trimmedFieldName = fieldName.trimmed();
     if (!trimmedFieldName.isEmpty()) {
@@ -348,6 +426,7 @@ void TemplateDesignerWidget::addDataBoxFrameForField(const QString& fieldName, q
 
 void TemplateDesignerWidget::addNotesBoxFrame()
 {
+    pushUndoState();
     m_layout.frames.append(defaultFrame(CardTemplateFrameKind::NotesBox));
     refreshFrameTable();
     selectFrame(m_layout.frames.size() - 1);
@@ -361,6 +440,7 @@ void TemplateDesignerWidget::addLineBoxFrame()
 
 void TemplateDesignerWidget::addLineBoxFrameShape(CardTemplateLineBoxShape shape, int lineStyle, int fillPattern, int cornerRadius)
 {
+    pushUndoState();
     CardTemplateFrame frame = defaultFrame(CardTemplateFrameKind::LineOrBox);
     frame.lineBoxShape = shape;
     frame.lineStyle = lineStyle;
@@ -377,9 +457,112 @@ void TemplateDesignerWidget::deleteSelectedFrame()
     if (m_selectedFrameIndex < 0 || m_selectedFrameIndex >= m_layout.frames.size()) {
         return;
     }
+    pushUndoState();
     m_layout.frames.removeAt(m_selectedFrameIndex);
     refreshFrameTable();
     selectFrame(std::min(m_selectedFrameIndex, static_cast<int>(m_layout.frames.size()) - 1));
+    markDirty();
+}
+
+void TemplateDesignerWidget::copySelectedFrame()
+{
+    if (m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_layout.frames.size()) {
+        m_copiedFrame = m_layout.frames.at(m_selectedFrameIndex);
+    }
+}
+
+void TemplateDesignerWidget::cutSelectedFrame()
+{
+    copySelectedFrame();
+    if (m_copiedFrame.has_value()) {
+        deleteSelectedFrame();
+    }
+}
+
+void TemplateDesignerWidget::pasteFrame()
+{
+    if (!m_copiedFrame.has_value()) {
+        return;
+    }
+    pushUndoState();
+    CardTemplateFrame frame = *m_copiedFrame;
+    frame.bounds.translate(120, 120);
+    m_layout.frames.append(std::move(frame));
+    refreshFrameTable();
+    selectFrame(m_layout.frames.size() - 1);
+    markDirty();
+}
+
+void TemplateDesignerWidget::updateSelectedFieldDefinition(
+    const QString& name,
+    int maxLength,
+    bool phone,
+    bool showName)
+{
+    const int fieldIndex = selectedFieldIndex();
+    if (fieldIndex < 0 || fieldIndex >= m_fields.size()) {
+        return;
+    }
+
+    const FieldDefinition previous = m_fields.at(fieldIndex);
+    const QString normalizedName = name.trimmed().isEmpty() ? previous.name() : name.trimmed();
+    const FieldDefinition updated(
+        normalizedName,
+        previous.type(),
+        std::max(1, maxLength),
+        showName,
+        phone,
+        previous.legacyDescriptor());
+    if (previous.name() == updated.name()
+        && previous.maxLength() == updated.maxLength()
+        && previous.showName() == updated.showName()
+        && previous.isPhone() == updated.isPhone()) {
+        return;
+    }
+
+    pushUndoState();
+    m_fields[fieldIndex] = updated;
+    for (CardTemplateFrame& frame : m_layout.frames) {
+        if ((frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox)
+            && frame.fieldIndex == fieldIndex) {
+            frame.text = updated.name();
+        } else if (frame.kind == CardTemplateFrameKind::Text
+            && frame.text.compare(previous.name(), Qt::CaseInsensitive) == 0) {
+            frame.text = updated.name();
+        }
+    }
+    const int comboIndex = m_fieldCombo->findData(fieldIndex);
+    if (comboIndex >= 0) {
+        m_fieldCombo->setItemText(comboIndex, updated.name());
+    }
+    refreshFrameTable();
+    markDirty();
+}
+
+void TemplateDesignerWidget::updateSelectedFrameFromToolbar(
+    const QString& text,
+    quint8 styleFlags,
+    CardTemplateLineBoxShape lineBoxShape,
+    int lineStyle,
+    int fillPattern,
+    int cornerRadius)
+{
+    if (m_selectedFrameIndex < 0 || m_selectedFrameIndex >= m_layout.frames.size()) {
+        return;
+    }
+    pushUndoState();
+    CardTemplateFrame& frame = m_layout.frames[m_selectedFrameIndex];
+    if (frame.kind == CardTemplateFrameKind::Text) {
+        frame.text = text;
+        frame.styleFlags = styleFlags;
+    } else if (frame.kind == CardTemplateFrameKind::LineOrBox) {
+        frame.lineBoxShape = lineBoxShape;
+        frame.lineStyle = std::max(0, lineStyle);
+        frame.fillPattern = std::max(0, fillPattern);
+        frame.cornerRadius = std::max(0, cornerRadius);
+    }
+    refreshFrameTable();
+    refreshFrameProperties();
     markDirty();
 }
 
@@ -424,6 +607,7 @@ void TemplateDesignerWidget::buildUi()
     auto* splitter = new QSplitter(this);
     m_canvas = new TemplateDesignCanvas(splitter);
     m_canvas->setLayoutDefinition(&m_layout);
+    m_canvas->setFieldDefinitions(&m_fields);
     splitter->addWidget(m_canvas);
 
     auto* side = new QWidget(splitter);
@@ -553,7 +737,18 @@ void TemplateDesignerWidget::refreshFrameTable()
         const CardTemplateFrame& frame = m_layout.frames.at(row);
         m_frameTable->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         m_frameTable->setItem(row, 1, new QTableWidgetItem(frameKindName(frame.kind)));
-        m_frameTable->setItem(row, 2, new QTableWidgetItem(frame.text));
+        QString displayText = frame.text;
+        if (displayText.trimmed().isEmpty()
+            && frame.fieldIndex >= 0
+            && frame.fieldIndex < m_fields.size()) {
+            displayText = m_fields.at(frame.fieldIndex).name();
+        }
+        if (displayText.trimmed().isEmpty() && frame.kind == CardTemplateFrameKind::DataBox) {
+            displayText = tr("Data field");
+        } else if (displayText.trimmed().isEmpty() && frame.kind == CardTemplateFrameKind::NotesBox) {
+            displayText = tr("Notes field");
+        }
+        m_frameTable->setItem(row, 2, new QTableWidgetItem(displayText));
     }
     if (m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_frameTable->rowCount()) {
         m_frameTable->setCurrentCell(m_selectedFrameIndex, 0);
@@ -599,9 +794,9 @@ void TemplateDesignerWidget::refreshFrameProperties()
     m_fieldCombo->setCurrentIndex(std::max(0, m_fieldCombo->findData(frame.fieldIndex)));
     m_lineShapeCombo->setCurrentIndex(std::max(0, m_lineShapeCombo->findData(lineBoxShapeToInt(frame.lineBoxShape))));
     m_textEdit->setText(frame.text);
-    m_boldCheck->setChecked((frame.styleFlags & TemplateStyleBold) != 0);
-    m_italicCheck->setChecked((frame.styleFlags & TemplateStyleItalic) != 0);
-    m_underlineCheck->setChecked((frame.styleFlags & TemplateStyleUnderline) != 0);
+    m_boldCheck->setChecked((frame.styleFlags & CardTemplateStyleFlagBold) != 0);
+    m_italicCheck->setChecked((frame.styleFlags & CardTemplateStyleFlagItalic) != 0);
+    m_underlineCheck->setChecked((frame.styleFlags & CardTemplateStyleFlagUnderline) != 0);
     m_leftSpin->setValue(frame.bounds.left());
     m_topSpin->setValue(frame.bounds.top());
     m_widthSpin->setValue(std::max(1, frame.bounds.width()));
@@ -631,12 +826,16 @@ void TemplateDesignerWidget::refreshFrameProperties()
 
 void TemplateDesignerWidget::selectFrame(int frameIndex)
 {
-    applyPropertyEdits();
-    m_selectedFrameIndex = frameIndex >= 0 && frameIndex < m_layout.frames.size() ? frameIndex : -1;
+    const int normalizedFrameIndex = frameIndex >= 0 && frameIndex < m_layout.frames.size() ? frameIndex : -1;
+    if (normalizedFrameIndex != m_selectedFrameIndex) {
+        applyPropertyEdits();
+    }
+    m_selectedFrameIndex = normalizedFrameIndex;
     if (m_canvas != nullptr) {
         m_canvas->setSelectedFrameIndex(m_selectedFrameIndex);
     }
     refreshFrameProperties();
+    emit selectedFieldChanged();
 }
 
 void TemplateDesignerWidget::markDirty()
@@ -650,31 +849,75 @@ void TemplateDesignerWidget::markDirty()
     }
 }
 
+void TemplateDesignerWidget::pushUndoState()
+{
+    if (m_restoringUndoState) {
+        return;
+    }
+    constexpr int MaximumUndoStates = 100;
+    if (m_undoStack.size() >= MaximumUndoStates) {
+        m_undoStack.removeFirst();
+    }
+    m_undoStack.append({m_layout, m_fields, m_selectedFrameIndex});
+}
+
+void TemplateDesignerWidget::undo()
+{
+    if (m_undoStack.isEmpty()) {
+        return;
+    }
+    m_restoringUndoState = true;
+    const UndoState state = m_undoStack.takeLast();
+    m_layout = state.layout;
+    m_fields = state.fields;
+    if (m_canvas != nullptr) {
+        m_canvas->setLayoutDefinition(&m_layout);
+        m_canvas->setFieldDefinitions(&m_fields);
+    }
+    refreshFrameTable();
+    selectFrame(std::clamp(state.selectedFrameIndex, -1, static_cast<int>(m_layout.frames.size()) - 1));
+    m_restoringUndoState = false;
+    markDirty();
+}
+
 void TemplateDesignerWidget::applyPropertyEdits()
 {
     if (m_selectedFrameIndex < 0 || m_selectedFrameIndex >= m_layout.frames.size()) {
         return;
     }
+    const CardTemplateFrame previousFrame = m_layout.frames.at(m_selectedFrameIndex);
+    pushUndoState();
     CardTemplateFrame& frame = m_layout.frames[m_selectedFrameIndex];
     frame.kind = static_cast<CardTemplateFrameKind>(m_kindCombo->currentData().toInt());
     frame.fieldIndex = m_fieldCombo->currentData().toInt();
-    frame.text = m_textEdit->text();
+    if ((frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox)
+        && frame.fieldIndex >= 0
+        && frame.fieldIndex < m_fields.size()) {
+        frame.text = m_fields.at(frame.fieldIndex).name();
+    } else if (frame.kind == CardTemplateFrameKind::Text) {
+        frame.text = m_textEdit->text();
+    } else {
+        frame.text.clear();
+    }
     frame.bounds = QRect(m_leftSpin->value(), m_topSpin->value(), m_widthSpin->value(), m_heightSpin->value());
     frame.lineBoxShape = lineBoxShapeFromInt(m_lineShapeCombo->currentData().toInt());
     frame.lineStyle = m_lineStyleSpin->value();
     frame.fillPattern = m_fillPatternSpin->value();
     frame.cornerRadius = m_cornerRadiusSpin->value();
-    quint8 styleFlags = 0;
+    quint8 styleFlags = frame.styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight);
     if (m_boldCheck->isChecked()) {
-        styleFlags |= TemplateStyleBold;
+        styleFlags |= CardTemplateStyleFlagBold;
     }
     if (m_italicCheck->isChecked()) {
-        styleFlags |= TemplateStyleItalic;
+        styleFlags |= CardTemplateStyleFlagItalic;
     }
     if (m_underlineCheck->isChecked()) {
-        styleFlags |= TemplateStyleUnderline;
+        styleFlags |= CardTemplateStyleFlagUnderline;
     }
     frame.styleFlags = styleFlags;
+    if (frame == previousFrame && !m_undoStack.isEmpty()) {
+        m_undoStack.removeLast();
+    }
 }
 
 void TemplateDesignerWidget::setPropertyRowVisible(QWidget* field, bool visible)

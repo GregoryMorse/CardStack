@@ -19,6 +19,7 @@ class QMdiArea;
 class QMdiSubWindow;
 class QResizeEvent;
 class QToolBar;
+class QWidget;
 
 namespace CardStack {
 
@@ -72,6 +73,7 @@ private:
     void rebuildMenus(int menuId);
     void refreshMenuForActiveWindow();
     void configureToolBarForMenu(int menuId);
+    void rebuildDesignerPropertyToolbar();
     void updateToolbarCardPosition();
     void resizeIndexBarButtons();
     void updateIndexBarVisibility();
@@ -91,6 +93,7 @@ private:
     bool openDeckFromPath(const QString& filePath);
     bool probeLegacyDeckFromPath(const QString& filePath);
     bool loadDeckFromPath(const QString& filePath, Deck* deck, QString* errorMessage = nullptr);
+    bool reviewImportedDeck(const QString& filePath, Deck* deck);
     bool importReportPackageFromPath(const QString& filePath);
     bool importLegacyReportStoreFromPath(const QString& filePath);
     LegacyDeckReader::Result readLegacyDeckFromPath(const QString& filePath);
@@ -121,6 +124,8 @@ private:
     QToolBar* m_buttonBar = nullptr;
     QToolBar* m_indexBar = nullptr;
     QLabel* m_cardPositionLabel = nullptr;
+    QLabel* m_deckModeLabel = nullptr;
+    QWidget* m_designerPropertyToolbar = nullptr;
     QVector<QuickDial> m_quickDials;
     QString m_phoneLongDistancePrefix = QStringLiteral("1");
     QString m_phoneOutsideLinePrefix = QStringLiteral("9");

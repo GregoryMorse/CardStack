@@ -1,6 +1,9 @@
 ﻿#include "LegacyDeckReader.h"
 
 #include <QByteArray>
+#include "LegacyTemplateLayoutParser.h"
+#include "LegacyDeckAppearanceParser.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -88,6 +91,107 @@ class LegacyDeckReaderTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void decodesRecoveredDeckAppearanceOffsets()
+    {
+        using namespace LegacyDeckAppearanceFormat;
+        QByteArray record(MinimumAppearanceRecordSize, '\0');
+        const auto putU16 = [&record](int offset, quint16 value) {
+            record[offset] = static_cast<char>(value & 0xff);
+            record[offset + 1] = static_cast<char>((value >> 8) & 0xff);
+        };
+        const auto putColorRef = [&putU16](int offset, quint32 value) {
+            putU16(offset, static_cast<quint16>(value & 0xffff));
+            putU16(offset + 2, static_cast<quint16>((value >> 16) & 0xffff));
+        };
+        const auto putFont = [&record, &putU16](int offset, const QByteArray& family, int height, int weight) {
+            putU16(offset + FontHeightOffset, static_cast<quint16>(static_cast<qint16>(height)));
+            putU16(offset + FontWeightOffset, static_cast<quint16>(weight));
+            record[offset + FontItalicOffset] = 1;
+            const QByteArray face = family.left(FontFaceNameLength - 1);
+            std::copy(face.cbegin(), face.cend(), record.begin() + offset + FontFaceNameOffset);
+        };
+
+        putFont(IndexFontOffset, "Index Face", -13, 400);
+        putFont(NameFontOffset, "Name Face", -14, 500);
+        putFont(DataFontOffset, "Data Face", -15, 600);
+        putFont(TextFontOffset, "Text Face", -16, 700);
+        putColorRef(IndexForegroundColorOffset, 0x00332211);
+        putColorRef(DataForegroundColorOffset, 0x00665544);
+        putColorRef(NameForegroundColorOffset, 0x00998877);
+        putColorRef(TextForegroundColorOffset, 0x00ccbbaa);
+        putColorRef(DataBackgroundColorOffset, 0x00030201);
+        putColorRef(IndexBackgroundColorOffset, 0x00060504);
+        putColorRef(CardBackgroundColorOffset, 0x00090807);
+        putU16(UseSystemColorsOffset, 0);
+
+        const DeckAppearance appearance = parse(record);
+        QFont font;
+        QVERIFY(font.fromString(appearance.indexFont));
+        QCOMPARE(font.family(), QStringLiteral("Index Face"));
+        QCOMPARE(font.pixelSize(), 13);
+        QVERIFY(font.italic());
+        QVERIFY(font.fromString(appearance.nameFont));
+        QCOMPARE(font.family(), QStringLiteral("Name Face"));
+        QVERIFY(font.fromString(appearance.dataFont));
+        QCOMPARE(font.family(), QStringLiteral("Data Face"));
+        QVERIFY(font.fromString(appearance.textFont));
+        QCOMPARE(font.family(), QStringLiteral("Text Face"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::IndexForeground)), QStringLiteral("#112233"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::DataForeground)), QStringLiteral("#445566"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::NameForeground)), QStringLiteral("#778899"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::TextForeground)), QStringLiteral("#aabbcc"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::DataBackground)), QStringLiteral("#010203"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::IndexBackground)), QStringLiteral("#040506"));
+        QCOMPARE(appearance.customColors.at(static_cast<int>(DeckColorRole::CardBackground)), QStringLiteral("#070809"));
+        QVERIFY(!appearance.useSystemColors);
+    }
+
+    void mapsCurrentVisualTemplateDescriptorRecord()
+    {
+        using namespace LegacyTemplateLayoutFormat;
+        QByteArray record(FieldTableOffset + FieldDescriptorSize * 2, '\0');
+        putU16(&record, TextFrameCountOffset, 1);
+        putU16(&record, FieldCountOffset, 2);
+
+        putCString(&record, TextFrameTableOffset, TextFrameTextSize, "Index");
+        putU16(&record, TextFrameTableOffset + TextFrameRightOffset, 640);
+        putU16(&record, TextFrameTableOffset + TextFrameBottomOffset, 22);
+
+        const int nameOffset = FieldTableOffset;
+        putCString(&record, nameOffset, LegacyTemplateLayoutFormat::FieldNameSize, "Name");
+        putU16(&record, nameOffset + FieldControlRoleOffset, StandaloneControlRole);
+        putU16(&record, nameOffset + FieldDialableMarkerOffset, 1);
+        putU16(&record, nameOffset + FieldDataLengthOffset, 30);
+        putU16(&record, nameOffset + FieldLeftOffset, 60);
+        putU16(&record, nameOffset + FieldTopOffset, 30);
+        putU16(&record, nameOffset + FieldRightOffset, 300);
+        putU16(&record, nameOffset + FieldBottomOffset, 55);
+        record[nameOffset + FieldAlignmentOffset] = AlignRight;
+
+        const int notesOffset = FieldTableOffset + FieldDescriptorSize;
+        putCString(&record, notesOffset, LegacyTemplateLayoutFormat::FieldNameSize, "Notes");
+        putU16(&record, notesOffset + FieldFlagsOffset, NotesFlags);
+        putU16(&record, notesOffset + FieldControlRoleOffset, StandaloneControlRole);
+        putU16(&record, notesOffset + FieldDataLengthOffset, 40);
+        putU16(&record, notesOffset + FieldLeftOffset, 60);
+        putU16(&record, notesOffset + FieldTopOffset, 60);
+        putU16(&record, notesOffset + FieldRightOffset, 300);
+        putU16(&record, notesOffset + FieldBottomOffset, 120);
+
+        const auto parsed = parse(record, 2);
+        QVERIFY(parsed.has_value());
+        QCOMPARE(parsed->fields.size(), 2);
+        QCOMPARE(parsed->fields.at(0).name(), QStringLiteral("Name"));
+        QVERIFY(parsed->fields.at(0).showName());
+        QVERIFY(parsed->fields.at(0).isPhone());
+        QVERIFY(parsed->fields.at(1).isNotes());
+        QCOMPARE(parsed->layout.frames.size(), 3);
+        QCOMPARE(parsed->layout.frames.at(0).text, QStringLiteral("Index"));
+        QCOMPARE(parsed->layout.frames.at(1).bounds, QRect(600, 300, 2400, 250));
+        QVERIFY((parsed->layout.frames.at(1).styleFlags & CardTemplateStyleFlagAlignRight) != 0);
+        QCOMPARE(parsed->layout.frames.at(1).legacyDescriptor.size(), FieldDescriptorSize);
+    }
+
     void mapsLegacyFieldDefinitionsAndFixedRecords()
     {
         const QVector<QByteArray> records = {
@@ -155,6 +259,7 @@ private slots:
         QCOMPARE(result.rawRecords.size(), 5);
         QCOMPARE(result.deck.name(), QStringLiteral("Software Library"));
         QCOMPARE(result.deck.fieldCount(), 11);
+        QVERIFY(result.deck.cardTemplateLayout().frames.size() >= result.deck.fieldCount());
         QStringList importedProducts;
         for (int index = 0; index < result.deck.cardCount(); ++index) {
             importedProducts.append(result.deck.cardAt(index).valueAt(0));
@@ -186,6 +291,9 @@ private slots:
         const QString manyFieldsPath = fixtureDir.filePath(QStringLiteral("many_fields.BTN"));
         const QString maxLengthsPath = fixtureDir.filePath(QStringLiteral("max_lengths.BTN"));
         const QString securityCyclePath = fixtureDir.filePath(QStringLiteral("security_cycle.BTN"));
+        const QString oemTextPath = fixtureDir.filePath(QStringLiteral("oem_text.BTN"));
+        const QString unusualIndexPath = fixtureDir.filePath(QStringLiteral("unusual_index.BTN"));
+        const QString damagedTruncatedPath = fixtureDir.filePath(QStringLiteral("damaged_truncated.BTN"));
         QVERIFY2(QFileInfo::exists(plainPath), qPrintable(QStringLiteral("Missing %1").arg(plainPath)));
         QVERIFY2(QFileInfo::exists(passwordOnlyPath), qPrintable(QStringLiteral("Missing %1").arg(passwordOnlyPath)));
         QVERIFY2(QFileInfo::exists(encryptedPath), qPrintable(QStringLiteral("Missing %1").arg(encryptedPath)));
@@ -193,6 +301,9 @@ private slots:
         QVERIFY2(QFileInfo::exists(manyFieldsPath), qPrintable(QStringLiteral("Missing %1").arg(manyFieldsPath)));
         QVERIFY2(QFileInfo::exists(maxLengthsPath), qPrintable(QStringLiteral("Missing %1").arg(maxLengthsPath)));
         QVERIFY2(QFileInfo::exists(securityCyclePath), qPrintable(QStringLiteral("Missing %1").arg(securityCyclePath)));
+        QVERIFY2(QFileInfo::exists(oemTextPath), qPrintable(QStringLiteral("Missing %1").arg(oemTextPath)));
+        QVERIFY2(QFileInfo::exists(unusualIndexPath), qPrintable(QStringLiteral("Missing %1").arg(unusualIndexPath)));
+        QVERIFY2(QFileInfo::exists(damagedTruncatedPath), qPrintable(QStringLiteral("Missing %1").arg(damagedTruncatedPath)));
 
         const LegacyDeckReader reader;
         const LegacyDeckReader::Result plain = reader.readDeck(plainPath);
@@ -201,6 +312,19 @@ private slots:
         QCOMPARE(plain.deck.fieldCount(), 11);
         QCOMPARE(plain.deck.cardCount(), 3);
         QCOMPARE(plain.deck.fieldAt(10).name(), QStringLiteral("Notes"));
+        QVERIFY(!plain.deck.legacyControlRecord().isEmpty());
+        const DeckAppearance& plainAppearance = plain.deck.appearance();
+        QVERIFY(!plainAppearance.indexFont.isEmpty());
+        QVERIFY(!plainAppearance.nameFont.isEmpty());
+        QVERIFY(!plainAppearance.dataFont.isEmpty());
+        QVERIFY(!plainAppearance.textFont.isEmpty());
+        QCOMPARE(plainAppearance.customColors.size(), static_cast<int>(DeckColorRole::Count));
+        for (const QString& colorName : plainAppearance.customColors) {
+            QVERIFY2(QColor::isValidColorName(colorName), qPrintable(colorName));
+        }
+        for (const FieldDefinition& field : plain.deck.fields()) {
+            QCOMPARE(field.legacyDescriptor().size(), LegacyTemplateLayoutFormat::FieldDescriptorSize);
+        }
 
         const LegacyDeckReader::Result passwordMissing = reader.readDeck(passwordOnlyPath);
         QVERIFY(passwordMissing.passwordRequired);
@@ -302,6 +426,25 @@ private slots:
         QCOMPARE(manyFields.deck.cardAt(0).valueAt(11), QStringLiteral("A1"));
         QCOMPARE(manyFields.deck.cardAt(0).valueAt(12), QStringLiteral("B1"));
         QCOMPARE(manyFields.deck.cardAt(0).valueAt(13), QStringLiteral("C1"));
+
+        QString expectedOemPrefix;
+        expectedOemPrefix.append(QChar(0x00e9));
+        expectedOemPrefix.append(QChar(0x00e4));
+        expectedOemPrefix.append(QChar(0x00f6));
+        expectedOemPrefix.append(QChar(0x00fc));
+        const LegacyDeckReader::Result oemText = reader.readDeck(oemTextPath);
+        QVERIFY2(oemText.ok(), qPrintable(oemText.errorMessage));
+        QVERIFY(oemText.deck.name().startsWith(expectedOemPrefix));
+        QVERIFY(oemText.deck.cardAt(0).valueAt(0).startsWith(expectedOemPrefix));
+
+        const LegacyDeckReader::Result unusualIndex = reader.readDeck(unusualIndexPath);
+        QVERIFY2(unusualIndex.ok(), qPrintable(unusualIndex.errorMessage));
+        QCOMPARE(unusualIndex.deck.fieldCount(), plain.deck.fieldCount());
+        QCOMPARE(unusualIndex.deck.cardCount(), plain.deck.cardCount());
+
+        const LegacyDeckReader::Result damagedTruncated = reader.readDeck(damagedTruncatedPath);
+        QVERIFY(!damagedTruncated.ok());
+        QVERIFY(!damagedTruncated.errorMessage.trimmed().isEmpty());
 
         const LegacyDeckReader::Result securityCycle = reader.readDeck(securityCyclePath);
         QVERIFY2(securityCycle.ok(), qPrintable(securityCycle.errorMessage));

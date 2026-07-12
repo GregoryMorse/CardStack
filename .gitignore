@@ -60,6 +60,7 @@ legacy_interchange_failure*.txt
 $zip
 $root/
 export-wordperfect-deck/
+/[Nn][Oo][Nn][Aa][Mm][Ee]*
 
 # OS noise
 Thumbs.db
