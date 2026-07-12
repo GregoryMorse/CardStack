@@ -2794,7 +2794,7 @@ void normalizeSearchClauseSpacing(
     QWidget* searchText = directControlById(dialog, searchTextId);
     QWidget* dataCombo = directControlById(dialog, dataComboId);
     QWidget* typeCombo = directControlById(dialog, typeComboId);
-    if (searchText == nullptr || dataCombo == nullptr || typeCombo == nullptr || searchText->isHidden()) {
+    if (searchText == nullptr || dataCombo == nullptr || typeCombo == nullptr) {
         return;
     }
 
