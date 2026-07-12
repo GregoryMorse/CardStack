@@ -555,31 +555,6 @@ LegacyDeckReader::Result LegacyDeckReader::readDeck(const QString& filePath, con
         btrievePath = decryptedFile.fileName();
     }
 
-#ifndef Q_OS_WIN
-    if (audit.ok() && audit.audit.oldFormat) {
-        QString extractionError;
-        const QVector<QByteArray> records = extractOldFormatFixedRecordsFromAudit(
-            btrievePath,
-            audit.audit,
-            &extractionError);
-        if (!records.isEmpty()) {
-            Result mapped = readRecords(records, QFileInfo(filePath).completeBaseName(), password);
-            mapped.rawRecords = records;
-            mapped.btrieveMetadata.pageSize = audit.audit.pageSize;
-            mapped.btrieveMetadata.fixedRecordLength = audit.audit.fixedRecordLength;
-            mapped.btrieveMetadata.internalFixedRecordLength = audit.audit.physicalRecordLength;
-            mapped.btrieveMetadata.declaredRecordCount = audit.audit.declaredRecordCount;
-            applyLegacySecurityMetadata(&mapped, audit, password);
-            return mapped;
-        }
-        if (!extractionError.isEmpty()) {
-            result.errorMessage = extractionError;
-            applyLegacySecurityMetadata(&result, audit, password);
-            return result;
-        }
-    }
-#endif
-
     const BtrieveFileSaverReader reader;
     const BtrieveFileSaverReader::Result btrieve = reader.readAllRecords(btrievePath);
     result.btrieveMetadata = btrieve.metadata;
