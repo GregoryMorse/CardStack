@@ -39,6 +39,18 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify BtrieveFileSaver PR revision
+        shell: bash
+        run: |
+          submodule_path="third_party/BtrieveFileSaver-Code"
+          submodule_name="third_party/BtrieveFileSaver-Code"
+          remote_url="$(git config -f .gitmodules --get "submodule.${submodule_name}.url")"
+          remote_branch="$(git config -f .gitmodules --get "submodule.${submodule_name}.branch")"
+          expected_revision="$(git ls-remote "$remote_url" "refs/heads/$remote_branch" | cut -f1)"
+          actual_revision="$(git -C "$submodule_path" rev-parse HEAD)"
+          test -n "$expected_revision"
+          test "$actual_revision" = "$expected_revision"
+
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |

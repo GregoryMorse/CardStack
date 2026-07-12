@@ -2819,8 +2819,17 @@ void normalizeSearchClauseSpacing(
     if (dataLabel == nullptr) {
         return;
     }
+    int searchRowBottom = searchText->geometry().bottom();
+    for (QComboBox* comboBox : dialog->findChildren<QComboBox*>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (comboBox->isHidden() ||
+            comboBox->geometry().bottom() < searchText->geometry().top() ||
+            comboBox->geometry().top() > searchText->geometry().bottom()) {
+            continue;
+        }
+        searchRowBottom = std::max(searchRowBottom, comboBox->geometry().bottom());
+    }
     QRect rect = dataLabel->geometry();
-    rect.moveTop(searchText->geometry().bottom() + 6);
+    rect.moveTop(searchRowBottom + 6);
     dataLabel->setGeometry(rect);
     rect = dataCombo->geometry();
     rect.moveTop(dataLabel->geometry().bottom() + 4);
