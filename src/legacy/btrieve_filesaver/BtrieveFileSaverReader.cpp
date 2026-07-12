@@ -96,8 +96,12 @@ BtrieveFileSaverReader::Result BtrieveFileSaverReader::readAllRecords(
 
     maxRecordBytes = std::max<qsizetype>(maxRecordBytes, 1);
     std::vector<char> buffer(static_cast<size_t>(maxRecordBytes));
+    const qsizetype declaredRecordLimit = std::max<qsizetype>(0, result.metadata.declaredRecordCount);
+    const qsizetype physicalRecordLength = std::max<qsizetype>(1, result.metadata.internalFixedRecordLength);
+    const qsizetype fileDerivedLimit = std::max<qsizetype>(1, fileInfo.size() / physicalRecordLength + 1);
+    const qsizetype traversalLimit = declaredRecordLimit > 0 ? declaredRecordLimit : fileDerivedLimit;
 
-    while (true) {
+    while (result.records.size() < traversalLimit) {
         unsigned long recordLength = static_cast<unsigned long>(buffer.size());
         result.status = BF_GET_REC(&client, buffer.data(), &recordLength);
         if (result.status == END_OF_FILE) {
@@ -109,8 +113,23 @@ BtrieveFileSaverReader::Result BtrieveFileSaverReader::readAllRecords(
             result.errorMessage = statusToMessage(result.status);
             break;
         }
+        if (recordLength > buffer.size()) {
+            result.status = DATA_BUFFER_TO_SHORT;
+            result.errorMessage = statusToMessage(result.status);
+            break;
+        }
 
         result.records.append(QByteArray(buffer.data(), static_cast<qsizetype>(recordLength)));
+    }
+
+    if (result.status == NO_ERROR && result.records.size() == traversalLimit) {
+        if (declaredRecordLimit > 0) {
+            result.status = END_OF_FILE;
+            result.errorMessage.clear();
+        } else {
+            result.status = IO_ERROR;
+            result.errorMessage = QStringLiteral("Btrieve record traversal did not terminate within the physical file bound.");
+        }
     }
 
     return result;

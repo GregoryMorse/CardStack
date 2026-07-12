@@ -2462,6 +2462,69 @@ void refineFindReplaceDialog(QDialog* dialog)
 
     }
 
+    const auto placeSearchClauseRows = [&](QGroupBox* clauseGroup,
+                                           QRect clauseRect,
+                                           int searchTextId,
+                                           int dataComboId,
+                                           int typeComboId,
+                                           const QVector<int>& optionIds) {
+        QWidget* searchText = directControlById(dialog, searchTextId);
+        QWidget* dataCombo = directControlById(dialog, dataComboId);
+        QWidget* typeCombo = directControlById(dialog, typeComboId);
+        QLabel* dataLabel = nullptr;
+        QLabel* typeLabel = nullptr;
+        for (QLabel* label : dialog->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (label->isHidden() ||
+                !clauseRect.adjusted(-GroupBoxInnerMarginPx, -GroupBoxInnerMarginPx, GroupBoxInnerMarginPx, GroupBoxInnerMarginPx)
+                    .contains(label->geometry().center())) {
+                continue;
+            }
+            const QString text = plainVisibleText(label->text());
+            dataLabel = text == QStringLiteral("Search in data box...") ? label : dataLabel;
+            typeLabel = text == QStringLiteral("Search type...") ? label : typeLabel;
+        }
+        if (searchText == nullptr || dataCombo == nullptr || typeCombo == nullptr || dataLabel == nullptr || typeLabel == nullptr) {
+            return clauseRect;
+        }
+
+        QRect rect = dataLabel->geometry();
+        rect.moveTop(searchText->geometry().bottom() + 6);
+        dataLabel->setGeometry(rect);
+        rect = dataCombo->geometry();
+        rect.moveTop(dataLabel->geometry().bottom() + 4);
+        dataCombo->setGeometry(rect);
+        rect = typeLabel->geometry();
+        rect.moveTop(dataCombo->geometry().bottom() + 6);
+        typeLabel->setGeometry(rect);
+        rect = typeCombo->geometry();
+        rect.moveTop(typeLabel->geometry().bottom() + 4);
+        typeCombo->setGeometry(rect);
+
+        int optionTop = dataCombo->geometry().top();
+        int contentBottom = typeCombo->geometry().bottom();
+        for (int optionId : optionIds) {
+            if (QWidget* option = directControlById(dialog, optionId)) {
+                QRect optionRect = option->geometry();
+                optionRect.moveTop(optionTop);
+                option->setGeometry(optionRect);
+                optionTop = optionRect.bottom() + 5;
+                contentBottom = std::max(contentBottom, optionRect.bottom());
+            }
+        }
+
+        clauseRect.setBottom(contentBottom + GroupBoxInnerMarginPx * 2);
+        clauseGroup->setGeometry(clauseRect);
+        return clauseRect;
+    };
+
+    expandedSearchGroupRect = placeSearchClauseRows(
+        topSearchGroup,
+        expandedSearchGroupRect,
+        Control::SearchText,
+        Control::SearchAllDataBoxes,
+        Control::SearchType,
+        {Control::SearchWholeWord, Control::SearchCaseSensitive, Control::SearchSoundsLike});
+
     if (dialogName == QStringLiteral("REPLACE")) {
         const int replaceTop = expandedSearchGroupRect.bottom() + GroupBoxVerticalGapPx;
         for (QWidget* widget : controls) {
@@ -2565,9 +2628,10 @@ void refineFindReplaceDialog(QDialog* dialog)
         }
         comparisonGroup->setGeometry(groupRect);
     }
-    const int directionLeft = std::max(
+    const int directionLeft = std::max({
         286,
-        comparisonGroup == nullptr ? 286 : comparisonGroup->geometry().right() + DialogControlGapPx * 2);
+        comparisonGroup == nullptr ? 286 : comparisonGroup->geometry().right() + DialogControlGapPx * 2,
+        topSearchGroup->geometry().right() + DialogControlGapPx * 2});
     constexpr int DirectionGroupHeightPx = 112;
     constexpr int ComparisonGroupHeightPx = 64;
     const int directionTop = comparisonTop - (DirectionGroupHeightPx - ComparisonGroupHeightPx);
@@ -2707,6 +2771,13 @@ void refineFindReplaceDialog(QDialog* dialog)
         }
         label->setGeometry(rect);
     }
+    lowerRect = placeSearchClauseRows(
+        lowerSearchGroup,
+        lowerRect,
+        Control::SearchSecondText,
+        Control::SearchSecondAllDataBoxes,
+        Control::SearchSecondType,
+        {Control::SearchSecondWholeWord, Control::SearchSecondCaseSensitive, Control::SearchSecondSoundsLike});
     dialog->resize(
         std::max(dialog->width(), directionGroup == nullptr ? lowerRect.right() + 24 : directionGroup->geometry().right() + 24),
         lowerRect.bottom() + DialogControlGapPx * 3);
