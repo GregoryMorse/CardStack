@@ -41,6 +41,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
 #include <tuple>
 
 namespace CardStack {
@@ -2783,6 +2784,92 @@ void refineFindReplaceDialog(QDialog* dialog)
         lowerRect.bottom() + DialogControlGapPx * 3);
 }
 
+void normalizeSearchClauseSpacing(
+    QDialog* dialog,
+    int searchTextId,
+    int dataComboId,
+    int typeComboId,
+    const QVector<int>& optionIds)
+{
+    QWidget* searchText = directControlById(dialog, searchTextId);
+    QWidget* dataCombo = directControlById(dialog, dataComboId);
+    QWidget* typeCombo = directControlById(dialog, typeComboId);
+    if (searchText == nullptr || dataCombo == nullptr || typeCombo == nullptr || searchText->isHidden()) {
+        return;
+    }
+
+    const auto nearestFollowingLabel = [dialog](const QString& text, const QWidget* preceding) {
+        QLabel* result = nullptr;
+        int bestDistance = std::numeric_limits<int>::max();
+        for (QLabel* label : dialog->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (label->isHidden() || plainVisibleText(label->text()) != text ||
+                label->geometry().top() < preceding->geometry().top()) {
+                continue;
+            }
+            const int distance = std::abs(label->geometry().top() - preceding->geometry().bottom());
+            if (distance < bestDistance) {
+                result = label;
+                bestDistance = distance;
+            }
+        }
+        return result;
+    };
+
+    QLabel* dataLabel = nearestFollowingLabel(QStringLiteral("Search in data box..."), searchText);
+    if (dataLabel == nullptr) {
+        return;
+    }
+    QRect rect = dataLabel->geometry();
+    rect.moveTop(searchText->geometry().bottom() + 6);
+    dataLabel->setGeometry(rect);
+    rect = dataCombo->geometry();
+    rect.moveTop(dataLabel->geometry().bottom() + 4);
+    dataCombo->setGeometry(rect);
+
+    QLabel* typeLabel = nearestFollowingLabel(QStringLiteral("Search type..."), dataCombo);
+    if (typeLabel == nullptr) {
+        return;
+    }
+    rect = typeLabel->geometry();
+    rect.moveTop(dataCombo->geometry().bottom() + 6);
+    typeLabel->setGeometry(rect);
+    rect = typeCombo->geometry();
+    rect.moveTop(typeLabel->geometry().bottom() + 4);
+    typeCombo->setGeometry(rect);
+
+    int optionTop = dataCombo->geometry().top();
+    for (int optionId : optionIds) {
+        if (QWidget* option = directControlById(dialog, optionId)) {
+            QRect optionRect = option->geometry();
+            optionRect.moveTop(optionTop);
+            option->setGeometry(optionRect);
+            optionTop = optionRect.bottom() + 5;
+        }
+    }
+}
+
+void normalizeFindReplaceSearchSpacing(QDialog* dialog)
+{
+    const QString dialogName = dialog->property("legacyDialogName").toString();
+    if (dialogName != QStringLiteral("SEARCH") && dialogName != QStringLiteral("REPLACE")) {
+        return;
+    }
+    normalizeSearchClauseSpacing(
+        dialog,
+        Control::SearchText,
+        Control::SearchAllDataBoxes,
+        Control::SearchType,
+        {Control::SearchWholeWord, Control::SearchCaseSensitive, Control::SearchSoundsLike});
+    if (dialogName == QStringLiteral("SEARCH")) {
+        normalizeSearchClauseSpacing(
+            dialog,
+            Control::SearchSecondText,
+            Control::SearchSecondAllDataBoxes,
+            Control::SearchSecondType,
+            {Control::SearchSecondWholeWord, Control::SearchSecondCaseSensitive, Control::SearchSecondSoundsLike});
+    }
+}
+
 void refineLineFrameDialog(QDialog* dialog)
 {
     if (dialog->property("legacyDialogName").toString() != QStringLiteral("LINEFRAME")) {
@@ -2955,6 +3042,8 @@ void refineDialogGeometry(QDialog* dialog)
     refinePrintPreviewDialog(dialog);
     refineDialDialog(dialog);
     refineFindReplaceDialog(dialog);
+    normalizeFindReplaceSearchSpacing(dialog);
+    expandGroupBoxesToContainChildren(dialog);
 
     for (QComboBox* comboBox : dialog->findChildren<QComboBox*>()) {
         if (comboBox->isHidden() || comboBox->isEditable() || comboBox->count() == 0) {
