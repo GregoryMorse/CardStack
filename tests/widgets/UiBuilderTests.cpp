@@ -287,6 +287,9 @@ bool textFitsWidget(const QWidget* widget)
         if (comboBox->count() == 0) {
             return true;
         }
+        if (qEnvironmentVariable("QT_QPA_PLATFORM").compare(QStringLiteral("offscreen"), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
         int widestText = 0;
         const QFontMetrics metrics(comboBox->font());
         for (int index = 0; index < comboBox->count(); ++index) {
@@ -1147,6 +1150,27 @@ private slots:
                     .arg(stem)),
                 qPrintable(QStringLiteral("Could not save wide-state dialog image for %1").arg(dialogName)));
             wideDialog->close();
+
+            if (dialogName == QStringLiteral("SEARCH")) {
+                const std::pair<int, QString> variants[] = {
+                    {UiIds::Control::SearchCompareAnd, QStringLiteral("and_variant")},
+                    {UiIds::Control::SearchCompareOr, QStringLiteral("or_variant")},
+                };
+                for (const auto& [controlId, suffix] : variants) {
+                    std::unique_ptr<QDialog> variantDialog = UiBuilder::createDialog(dialogName, nullptr, context);
+                    QVERIFY2(variantDialog != nullptr, qPrintable(dialogName));
+                    if (auto* button = qobject_cast<QAbstractButton*>(UiBuilder::controlById(variantDialog.get(), controlId))) {
+                        button->setChecked(true);
+                        QCoreApplication::processEvents();
+                    }
+                    QVERIFY2(
+                        saveDialogImage(variantDialog.get(), outputDirectory, QStringLiteral("%1_%2_%3")
+                            .arg(written, 2, 10, QLatin1Char('0'))
+                            .arg(stem, suffix)),
+                        qPrintable(QStringLiteral("Could not save variant dialog image for %1").arg(dialogName)));
+                    variantDialog->close();
+                }
+            }
             ++written;
         }
 

@@ -1112,11 +1112,11 @@ void refinePrintDialog(QDialog* dialog)
     if (QGroupBox* printSelectionGroup = directGroupBoxByTitle(dialog, QStringLiteral("Print selection"))) {
         QRect selectionRect = printSelectionGroup->geometry();
         selectionRect.setWidth(std::max(selectionRect.width(), 298));
-        selectionRect.setHeight(std::max(selectionRect.height(), 116));
+        selectionRect.setHeight(std::max(selectionRect.height(), 130));
         printSelectionGroup->setGeometry(selectionRect);
 
         const int radioLeft = selectionRect.left() + 162;
-        const int firstRadioTop = selectionRect.top() + 28;
+        const int firstRadioTop = selectionRect.top() + 42;
         const std::pair<int, int> printRadios[] = {
             {2004, firstRadioTop},
             {2005, firstRadioTop + 30},
@@ -1290,23 +1290,23 @@ void refineGetUserNameDialog(QDialog* dialog)
     for (QLabel* label : dialog->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
         if (plainVisibleText(label->text()).startsWith(QStringLiteral("To use the network version"))) {
             label->setWordWrap(true);
-            label->setGeometry(24, 16, 250, 44);
+            label->setGeometry(24, 16, 292, 64);
             break;
         }
     }
 
     if (QWidget* userLabel = directControlById(dialog, 511)) {
-        userLabel->setGeometry(24, 70, std::max(userLabel->width(), userLabel->sizeHint().width()), userLabel->height());
+        userLabel->setGeometry(24, 94, 114, userLabel->height());
     }
     if (QWidget* userEdit = directControlById(dialog, 510)) {
         QRect rect = userEdit->geometry();
-        rect.moveTo(98, 66);
+        rect.moveTo(150, 90);
         rect.setWidth(150);
         userEdit->setGeometry(rect);
     }
     if (QWidget* storeCheck = directControlById(dialog, 512)) {
         QRect rect = storeCheck->geometry();
-        rect.moveTo(34, 98);
+        rect.moveTo(34, 122);
         rect.setWidth(std::max(rect.width(), storeCheck->sizeHint().width()));
         storeCheck->setGeometry(rect);
     }
@@ -1315,14 +1315,14 @@ void refineGetUserNameDialog(QDialog* dialog)
     for (int controlId : {Control::Ok, Control::Cancel, Control::Help}) {
         if (QWidget* button = directControlById(dialog, controlId)) {
             QRect rect = button->geometry();
-            rect.moveTo(buttonLeft, 132);
+            rect.moveTo(buttonLeft, 156);
             rect.setWidth(std::max(rect.width(), button->sizeHint().width()));
             button->setGeometry(rect);
             buttonLeft = rect.right() + DialogControlGapPx;
         }
     }
 
-    dialog->resize(310, 180);
+    dialog->resize(360, 204);
 }
 
 void refineAdminPasswordDialog(QDialog* dialog)
@@ -1338,22 +1338,52 @@ void refineAdminPasswordDialog(QDialog* dialog)
         const QString text = plainVisibleText(label->text());
         if (text.contains(QStringLiteral("requires the current Administration Password"))) {
             label->setWordWrap(true);
-            QRect rect = label->geometry();
-            rect.setWidth(std::max(rect.width(), 220));
-            rect.setHeight(std::max(rect.height(), label->sizeHint().height()));
-            label->setGeometry(rect);
+            label->setAlignment(Qt::AlignCenter);
+            label->setGeometry(19, 8, 300, 40);
         }
     }
 
     if (dialogName == QStringLiteral("GETADMINPASS")) {
+        if (QWidget* filenameLabel = directControlById(dialog, 513)) {
+            QRect rect = filenameLabel->geometry();
+            rect.moveTo(24, 58);
+            filenameLabel->setGeometry(rect);
+        }
+        if (QWidget* filenameValue = directControlById(dialog, 505)) {
+            QRect rect = filenameValue->geometry();
+            rect.moveTo(136, 58);
+            rect.setWidth(276);
+            filenameValue->setGeometry(rect);
+        }
+        if (QWidget* passwordLabel = directControlById(dialog, 511)) {
+            QRect rect = passwordLabel->geometry();
+            rect.moveTo(24, 82);
+            rect.setWidth(228);
+            rect.setHeight(28);
+            passwordLabel->setGeometry(rect);
+            if (auto* label = qobject_cast<QLabel*>(passwordLabel)) {
+                label->setWordWrap(true);
+            }
+        }
         if (QWidget* edit = directControlById(dialog, Control::SecurityPassword)) {
             QRect rect = edit->geometry();
+            rect.moveTo(268, 78);
             rect.setWidth(132);
             edit->setMinimumWidth(rect.width());
             edit->setMaximumWidth(rect.width());
             edit->setGeometry(rect);
         }
-        dialog->resize(std::max(dialog->width(), 300), std::max(dialog->height(), 142));
+        int buttonLeft = 74;
+        for (int controlId : {Control::Ok, Control::Cancel}) {
+            if (QWidget* button = directControlById(dialog, controlId)) {
+                QRect rect = button->geometry();
+                rect.moveTo(buttonLeft, 112);
+                rect.setWidth(std::max(rect.width(), button->sizeHint().width()));
+                button->setGeometry(rect);
+                buttonLeft = rect.right() + DialogControlGapPx;
+            }
+        }
+        dialog->resize(432, 156);
     }
 }
 
@@ -1860,8 +1890,9 @@ void refineImportEditDialog(QDialog* dialog)
 
     QRect notesRect = notesCheck->geometry();
     notesRect.moveLeft(sizeRect.right() + DialogControlGapPx * 2);
-    notesRect.setWidth(std::max(notesRect.width(), notesCheck->sizeHint().width()));
+    notesRect.setWidth(std::max(notesRect.width(), notesCheck->sizeHint().width() + 18));
     notesCheck->setGeometry(notesRect);
+    dialog->resize(std::max(dialog->width(), notesRect.right() + 24), dialog->height());
 }
 
 void refineAddSystemBoxDialog(QDialog* dialog)
@@ -1951,16 +1982,16 @@ void refineTextFrameDialog(QDialog* dialog)
     }
 
     if (auto* alignmentGroup = directGroupBoxByTitle(dialog, QStringLiteral("Alignment"))) {
-        alignmentGroup->setGeometry(12, 45, 112, 104);
+        alignmentGroup->setGeometry(12, 58, 112, 104);
     }
     if (auto* fontGroup = directGroupBoxByTitle(dialog, QStringLiteral("Font style"))) {
-        fontGroup->setGeometry(138, 45, 112, 104);
+        fontGroup->setGeometry(152, 58, 112, 104);
     }
 
     const std::pair<int, QPoint> alignmentControls[] = {
-        {4203, QPoint(30, 70)},
-        {4204, QPoint(30, 100)},
-        {4205, QPoint(30, 130)},
+        {4203, QPoint(30, 84)},
+        {4204, QPoint(30, 114)},
+        {4205, QPoint(30, 144)},
     };
     for (const auto& [id, point] : alignmentControls) {
         if (QWidget* control = directControlById(dialog, id)) {
@@ -1972,9 +2003,9 @@ void refineTextFrameDialog(QDialog* dialog)
     }
 
     const std::pair<int, QPoint> fontControls[] = {
-        {4305, QPoint(156, 70)},
-        {4303, QPoint(156, 100)},
-        {4304, QPoint(156, 130)},
+        {4305, QPoint(170, 84)},
+        {4303, QPoint(170, 114)},
+        {4304, QPoint(170, 144)},
     };
     for (const auto& [id, point] : fontControls) {
         if (QWidget* control = directControlById(dialog, id)) {
@@ -1985,17 +2016,23 @@ void refineTextFrameDialog(QDialog* dialog)
         }
     }
 
+    if (QWidget* textEdit = directControlById(dialog, Control::FrameText)) {
+        QRect rect = textEdit->geometry();
+        rect.moveTo(19, 20);
+        rect.setWidth(269);
+        textEdit->setGeometry(rect);
+    }
     if (QWidget* okButton = directControlById(dialog, 1)) {
         QRect rect = okButton->geometry();
-        rect.moveTo(270, 30);
+        rect.moveTo(304, 30);
         okButton->setGeometry(rect);
     }
     if (QWidget* cancelButton = directControlById(dialog, 2)) {
         QRect rect = cancelButton->geometry();
-        rect.moveTo(270, 62);
+        rect.moveTo(304, 62);
         cancelButton->setGeometry(rect);
     }
-    dialog->resize(std::max(dialog->width(), 348), std::max(dialog->height(), 166));
+    dialog->resize(std::max(dialog->width(), 432), std::max(dialog->height(), 180));
 }
 
 void refineTemplateTextFrameDialog(QDialog* dialog)
@@ -2054,7 +2091,7 @@ void refineGroupFrameDialog(QDialog* dialog)
         alignmentGroup->setGeometry(12, 10, 112, 104);
     }
     if (auto* fontGroup = directGroupBoxByTitle(dialog, QStringLiteral("Font style"))) {
-        fontGroup->setGeometry(138, 10, 112, 104);
+        fontGroup->setGeometry(152, 10, 112, 104);
     }
 
     const QVector<std::pair<int, QPoint>> alignmentButtons = {
@@ -2072,9 +2109,9 @@ void refineGroupFrameDialog(QDialog* dialog)
     }
 
     const QVector<std::pair<int, QPoint>> styleButtons = {
-        {Control::FrameUnderline, QPoint(156, 35)},
-        {Control::FrameBold, QPoint(156, 65)},
-        {Control::FrameItalic, QPoint(156, 95)},
+        {Control::FrameUnderline, QPoint(170, 35)},
+        {Control::FrameBold, QPoint(170, 65)},
+        {Control::FrameItalic, QPoint(170, 95)},
     };
     for (const auto& entry : styleButtons) {
         if (QWidget* widget = directControlById(dialog, entry.first)) {
@@ -2087,15 +2124,15 @@ void refineGroupFrameDialog(QDialog* dialog)
 
     if (QWidget* ok = directControlById(dialog, Control::Ok)) {
         QRect rect = ok->geometry();
-        rect.moveTo(270, 24);
+        rect.moveTo(304, 24);
         ok->setGeometry(rect);
     }
     if (QWidget* cancel = directControlById(dialog, Control::Cancel)) {
         QRect rect = cancel->geometry();
-        rect.moveTo(270, 56);
+        rect.moveTo(304, 56);
         cancel->setGeometry(rect);
     }
-    dialog->resize(std::max(dialog->width(), 348), std::max(dialog->height(), 132));
+    dialog->resize(std::max(dialog->width(), 432), std::max(dialog->height(), 132));
 }
 
 void refineExportDialog(QDialog* dialog)
@@ -2124,7 +2161,26 @@ void refineExportDialog(QDialog* dialog)
                 rect.setBottom(std::max(rect.bottom(), widget->geometry().bottom() + GroupBoxInnerMarginPx));
             }
         }
+        rect.setBottom(std::min(rect.bottom(), 88));
         scopeGroup->setGeometry(rect);
+
+        int listTop = rect.bottom() + DialogControlGapPx + 14;
+        for (QLabel* label : dialog->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (plainVisibleText(label->text()) == QStringLiteral("Data box name:")) {
+                QRect labelRect = label->geometry();
+                labelRect.moveTop(rect.bottom() + DialogControlGapPx);
+                label->setGeometry(labelRect);
+                listTop = labelRect.bottom() + DialogControlGapPx;
+                break;
+            }
+        }
+        for (QListWidget* listWidget : dialog->findChildren<QListWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (listWidget->geometry().left() < 180) {
+                QRect listRect = listWidget->geometry();
+                listRect.moveTop(listTop);
+                listWidget->setGeometry(listRect);
+            }
+        }
     }
 }
 
@@ -2138,12 +2194,10 @@ void refineDataFrameDialog(QDialog* dialog)
         duplicateNameEdit->hide();
     }
 
+    constexpr int CommandColumnLeft = 304;
     if (QWidget* fieldCombo = directControlById(dialog, Control::DataFrameFieldList)) {
         QRect rect = fieldCombo->geometry();
-        const int rightLimit = directControlById(dialog, Control::Ok) == nullptr
-            ? dialog->width() - DialogControlGapPx
-            : directControlById(dialog, Control::Ok)->geometry().left() - DialogControlGapPx;
-        rect.setWidth(std::max(rect.width(), rightLimit - rect.left()));
+        rect.setWidth(std::max(120, CommandColumnLeft - DialogControlGapPx - rect.left()));
         fieldCombo->setGeometry(rect);
         if (auto* comboBox = qobject_cast<QComboBox*>(fieldCombo)) {
             comboBox->view()->setMinimumWidth(std::max(comboBox->view()->minimumWidth(), rect.width()));
@@ -2154,7 +2208,7 @@ void refineDataFrameDialog(QDialog* dialog)
         alignmentGroup->setGeometry(12, 80, 112, 104);
     }
     if (auto* fontGroup = directGroupBoxByTitle(dialog, QStringLiteral("Font style"))) {
-        fontGroup->setGeometry(138, 80, 112, 104);
+        fontGroup->setGeometry(152, 80, 112, 104);
     }
 
     const std::pair<int, QPoint> alignmentControls[] = {
@@ -2172,9 +2226,9 @@ void refineDataFrameDialog(QDialog* dialog)
     }
 
     const std::pair<int, QPoint> fontControls[] = {
-        {4305, QPoint(156, 105)},
-        {4303, QPoint(156, 135)},
-        {4304, QPoint(156, 165)},
+        {4305, QPoint(170, 105)},
+        {4303, QPoint(170, 135)},
+        {4304, QPoint(170, 165)},
     };
     for (const auto& [id, point] : fontControls) {
         if (QWidget* control = directControlById(dialog, id)) {
@@ -2187,15 +2241,15 @@ void refineDataFrameDialog(QDialog* dialog)
 
     if (QWidget* okButton = directControlById(dialog, Control::Ok)) {
         QRect rect = okButton->geometry();
-        rect.moveTo(270, 24);
+        rect.moveTo(CommandColumnLeft, 24);
         okButton->setGeometry(rect);
     }
     if (QWidget* cancelButton = directControlById(dialog, Control::Cancel)) {
         QRect rect = cancelButton->geometry();
-        rect.moveTo(270, 56);
+        rect.moveTo(CommandColumnLeft, 56);
         cancelButton->setGeometry(rect);
     }
-    dialog->resize(std::max(dialog->width(), 348), std::max(dialog->height(), 202));
+    dialog->resize(std::max(dialog->width(), 432), std::max(dialog->height(), 202));
 }
 
 void refineFindReplaceDialog(QDialog* dialog)
@@ -2210,13 +2264,17 @@ void refineFindReplaceDialog(QDialog* dialog)
         {Control::SearchSecondText, 300},
         {Control::SearchAllDataBoxes, 240},
         {Control::SearchSecondAllDataBoxes, 240},
-        {Control::SearchType, 220},
-        {Control::SearchSecondType, 220},
+        {Control::SearchType, 340},
+        {Control::SearchSecondType, 340},
     };
     for (const auto& entry : comboWidths) {
         if (QWidget* widget = directControlById(dialog, entry.first)) {
             QRect rect = widget->geometry();
-            rect.setWidth(std::min(rect.width(), entry.second));
+            if (entry.first == Control::SearchType || entry.first == Control::SearchSecondType) {
+                rect.setWidth(std::max(rect.width(), entry.second + DialogControlGapPx * 3));
+            } else {
+                rect.setWidth(std::min(rect.width(), entry.second));
+            }
             widget->setGeometry(rect);
         }
     }
@@ -2235,7 +2293,7 @@ void refineFindReplaceDialog(QDialog* dialog)
 
     const QRect groupRect = topSearchGroup->geometry();
     QRect expandedSearchGroupRect = groupRect;
-    expandedSearchGroupRect.setHeight(std::max(expandedSearchGroupRect.height(), 164));
+    expandedSearchGroupRect.setHeight(std::max(expandedSearchGroupRect.height(), 188));
     topSearchGroup->setGeometry(expandedSearchGroupRect);
 
     auto placeCommandButtons = [&]() {
@@ -2269,26 +2327,25 @@ void refineFindReplaceDialog(QDialog* dialog)
     }
     if (QWidget* typeCombo = directControlById(dialog, Control::SearchType)) {
         QRect rect = typeCombo->geometry();
+        rect.setWidth(std::max(rect.width(), 340));
         rect.moveTop(groupRect.top() + 113);
         typeCombo->setGeometry(rect);
     }
     int optionColumnLeft = 232;
-    for (int comboId : {Control::SearchAllDataBoxes, Control::SearchType}) {
-        if (QWidget* combo = directControlById(dialog, comboId)) {
-            optionColumnLeft = std::max(optionColumnLeft, combo->geometry().right() + DialogControlGapPx * 2);
-        }
+    if (QWidget* dataCombo = directControlById(dialog, Control::SearchAllDataBoxes)) {
+        optionColumnLeft = std::max(optionColumnLeft, dataCombo->geometry().right() + DialogControlGapPx * 2);
     }
     const QVector<std::pair<int, int>> primaryCheckBoxes = {
         {Control::SearchWholeWord, groupRect.top() + 67},
         {Control::SearchCaseSensitive, groupRect.top() + 91},
-        {Control::SearchSoundsLike, groupRect.top() + 115},
+        {Control::SearchSoundsLike, groupRect.top() + 145},
     };
     for (const auto& entry : primaryCheckBoxes) {
         if (QWidget* checkBox = directControlById(dialog, entry.first)) {
             QRect rect = checkBox->geometry();
             rect.moveLeft(optionColumnLeft);
             rect.moveTop(entry.second);
-            rect.setWidth(std::max(rect.width(), checkBox->sizeHint().width()));
+            rect.setWidth(checkBox->sizeHint().width() + DialogControlGapPx);
             checkBox->setGeometry(rect);
         }
     }
@@ -2395,16 +2452,20 @@ void refineFindReplaceDialog(QDialog* dialog)
             controls,
             comparisonTop - directionGroup->geometry().top());
     }
-    const QVector<std::pair<int, QPoint>> comparisonButtons = {
-        {Control::SearchCompareNone, QPoint(50, comparisonTop + 24)},
-        {Control::SearchCompareAnd, QPoint(150, comparisonTop + 24)},
-        {Control::SearchCompareOr, QPoint(228, comparisonTop + 24)},
+    const QVector<int> comparisonButtons = {
+        Control::SearchCompareNone,
+        Control::SearchCompareAnd,
+        Control::SearchCompareOr,
     };
-    for (const auto& entry : comparisonButtons) {
-        if (QWidget* widget = directControlById(dialog, entry.first)) {
+    int comparisonButtonLeft = 50;
+    const int comparisonButtonTop = comparisonTop + 24;
+    for (int controlId : comparisonButtons) {
+        if (QWidget* widget = directControlById(dialog, controlId)) {
             QRect rect = widget->geometry();
-            rect.moveTopLeft(entry.second);
+            rect.setWidth(std::max(rect.height() * 4, widget->sizeHint().width() + DialogControlGapPx));
+            rect.moveTopLeft(QPoint(comparisonButtonLeft, comparisonButtonTop));
             widget->setGeometry(rect);
+            comparisonButtonLeft = rect.right() + DialogControlGapPx * 3;
         }
     }
     if (comparisonGroup != nullptr) {
@@ -2412,17 +2473,21 @@ void refineFindReplaceDialog(QDialog* dialog)
         groupRect.moveTo(10, comparisonTop);
         groupRect.setWidth(266);
         groupRect.setHeight(64);
-        for (const auto& entry : comparisonButtons) {
-            if (QWidget* widget = directControlById(dialog, entry.first)) {
+        for (int controlId : comparisonButtons) {
+            if (QWidget* widget = directControlById(dialog, controlId)) {
                 groupRect.setRight(std::max(groupRect.right(), widget->geometry().right() + GroupBoxInnerMarginPx));
             }
         }
         comparisonGroup->setGeometry(groupRect);
     }
+    const int directionLeft = std::max(
+        286,
+        comparisonGroup == nullptr ? 286 : comparisonGroup->geometry().right() + DialogControlGapPx * 2);
+    const int directionButtonLeft = directionLeft + GroupBoxInnerMarginPx * 2;
     const QVector<std::pair<int, QPoint>> directionButtons = {
-        {Control::SearchDirectionBeginning, QPoint(306, comparisonTop + 24)},
-        {Control::SearchDirectionForward, QPoint(306, comparisonTop + 54)},
-        {Control::SearchDirectionBackward, QPoint(306, comparisonTop + 84)},
+        {Control::SearchDirectionBeginning, QPoint(directionButtonLeft, comparisonTop + 24)},
+        {Control::SearchDirectionForward, QPoint(directionButtonLeft, comparisonTop + 54)},
+        {Control::SearchDirectionBackward, QPoint(directionButtonLeft, comparisonTop + 84)},
     };
     for (const auto& entry : directionButtons) {
         if (QWidget* widget = directControlById(dialog, entry.first)) {
@@ -2433,7 +2498,7 @@ void refineFindReplaceDialog(QDialog* dialog)
     }
     if (directionGroup != nullptr) {
         QRect groupRect = directionGroup->geometry();
-        groupRect.moveTo(286, comparisonTop);
+        groupRect.moveTo(directionLeft, comparisonTop);
         groupRect.setWidth(250);
         groupRect.setHeight(112);
         for (const auto& entry : directionButtons) {
@@ -2545,6 +2610,9 @@ void refineFindReplaceDialog(QDialog* dialog)
         }
         label->setGeometry(rect);
     }
+    dialog->resize(
+        std::max(dialog->width(), directionGroup == nullptr ? lowerRect.right() + 24 : directionGroup->geometry().right() + 24),
+        std::max(dialog->height(), lowerRect.bottom() + DialogControlGapPx * 3));
 }
 
 void refineLineFrameDialog(QDialog* dialog)
@@ -3025,8 +3093,8 @@ void initializeSearchDialog(QDialog* dialog, const UiBuilder::DialogContext& con
     populateComboBox(dialog, Control::SearchSecondAllDataBoxes, fieldsWithAllDataBoxes(context), false);
     populateComboBox(dialog, Control::SearchText, context.recentSearches, true);
     populateComboBox(dialog, Control::SearchSecondText, context.recentSearches, true);
-    setControlWidth(dialog, Control::SearchType, 220);
-    setControlWidth(dialog, Control::SearchSecondType, 220);
+    setControlWidth(dialog, Control::SearchType, 340);
+    setControlWidth(dialog, Control::SearchSecondType, 340);
 
     createExclusiveButtonGroup(
         dialog,
@@ -3055,6 +3123,7 @@ void initializeSearchDialog(QDialog* dialog, const UiBuilder::DialogContext& con
             (orButton != nullptr && orButton->isChecked());
         setControlsEnabled(dialog, secondClauseControls, enabled);
         setSearchSecondClauseVisible(dialog, enabled);
+        refineFindReplaceDialog(dialog);
     };
 
     for (int controlId : {Control::SearchCompareNone, Control::SearchCompareAnd, Control::SearchCompareOr}) {

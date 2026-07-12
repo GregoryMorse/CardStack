@@ -2,8 +2,13 @@
 
 #include "../support/ModalDialogDriver.h"
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QSignalSpy>
+#include <QTableWidget>
 #include <QTest>
 
 using namespace CardStack;
@@ -18,6 +23,19 @@ ReportDefinition makeReport()
     report.formHeight = 3000;
     report.formType = ReportFormType::Report;
     return report;
+}
+
+bool saveWidgetImage(QWidget& widget, const QDir& outputDirectory, const QString& fileName)
+{
+    widget.resize(1080, 760);
+    widget.show();
+    if (!QTest::qWaitForWindowExposed(&widget)) {
+        return false;
+    }
+    QCoreApplication::processEvents();
+    QTest::qWait(30);
+    const QPixmap pixmap = widget.grab();
+    return !pixmap.isNull() && pixmap.save(outputDirectory.filePath(fileName));
 }
 
 } // namespace
@@ -189,6 +207,77 @@ private slots:
         QVERIFY(!designer.isVisible());
         QCOMPARE(saveSpy.size(), 1);
         QVERIFY(!designer.isDirty());
+    }
+
+    void writesManualDesignerInspectionImagesWhenConfigured()
+    {
+        const QString outputPath = qEnvironmentVariable("CARDSTACK_DESIGNER_GALLERY_DIR");
+        if (outputPath.isEmpty()) {
+            QSKIP("Set CARDSTACK_DESIGNER_GALLERY_DIR to write report designer PNGs for manual inspection.");
+        }
+
+        QDir outputDirectory(outputPath);
+        QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+
+        ReportDefinition report = makeReport();
+        report.formWidth = 8500;
+        report.formHeight = 11000;
+        report.frames = {
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::Text;
+                frame.bounds = QRect(500, 500, 2600, 320);
+                frame.text = QStringLiteral("Report heading");
+                frame.styleFlags = ReportStyleFlagBold;
+                return frame;
+            }(),
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::Data;
+                frame.bounds = QRect(500, 1100, 3200, 360);
+                frame.fieldPlaceholders = {QStringLiteral("Product")};
+                return frame;
+            }(),
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::SystemText;
+                frame.bounds = QRect(500, 1700, 2400, 320);
+                frame.text = QStringLiteral("Page Number");
+                return frame;
+            }(),
+            [] {
+                ReportFrameDefinition frame;
+                frame.kind = ReportFrameKind::LineOrBox;
+                frame.bounds = QRect(500, 2300, 3800, 900);
+                frame.lineBoxShape = ReportLineShapeBox;
+                frame.lineStyle = ReportLineStyleDash;
+                frame.fillPattern = ReportFillPatternLightTrellis;
+                frame.cornerRadius = 4;
+                return frame;
+            }(),
+        };
+
+        ReportDesignerWidget designer(report, {QStringLiteral("Product"), QStringLiteral("Version"), QStringLiteral("Notes")});
+        QVERIFY(saveWidgetImage(designer, outputDirectory, QStringLiteral("report_designer_all_elements.png")));
+
+        QTableWidget* frameTable = designer.findChild<QTableWidget*>();
+        QVERIFY(frameTable != nullptr);
+        const QVector<QString> stateNames = {
+            QStringLiteral("text_selected"),
+            QStringLiteral("data_selected"),
+            QStringLiteral("system_selected"),
+            QStringLiteral("line_box_selected"),
+        };
+        for (int row = 0; row < stateNames.size(); ++row) {
+            frameTable->setCurrentCell(row, 0);
+            frameTable->selectRow(row);
+            QCoreApplication::processEvents();
+            QTest::qWait(30);
+            QVERIFY(saveWidgetImage(
+                designer,
+                outputDirectory,
+                QStringLiteral("report_designer_%1.png").arg(stateNames.at(row))));
+        }
     }
 };
 

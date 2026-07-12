@@ -2,8 +2,13 @@
 
 #include "../support/ModalDialogDriver.h"
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QSignalSpy>
+#include <QTableWidget>
 #include <QTest>
 
 using namespace CardStack;
@@ -16,6 +21,19 @@ QVector<FieldDefinition> makeFields()
         FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64),
         FieldDefinition(QStringLiteral("Notes"), FieldType::Notes, 8192),
     };
+}
+
+bool saveWidgetImage(QWidget& widget, const QDir& outputDirectory, const QString& fileName)
+{
+    widget.resize(980, 720);
+    widget.show();
+    if (!QTest::qWaitForWindowExposed(&widget)) {
+        return false;
+    }
+    QCoreApplication::processEvents();
+    QTest::qWait(30);
+    const QPixmap pixmap = widget.grab();
+    return !pixmap.isNull() && pixmap.save(outputDirectory.filePath(fileName));
 }
 
 } // namespace
@@ -128,6 +146,50 @@ private slots:
         QVERIFY(!designer.isVisible());
         QCOMPARE(saveSpy.size(), 1);
         QVERIFY(!designer.isDirty());
+    }
+
+    void writesManualDesignerInspectionImagesWhenConfigured()
+    {
+        const QString outputPath = qEnvironmentVariable("CARDSTACK_DESIGNER_GALLERY_DIR");
+        if (outputPath.isEmpty()) {
+            QSKIP("Set CARDSTACK_DESIGNER_GALLERY_DIR to write template designer PNGs for manual inspection.");
+        }
+
+        QDir outputDirectory(outputPath);
+        QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+
+        CardTemplateLayout layout;
+        layout.canvasWidth = 6400;
+        layout.canvasHeight = 4800;
+        layout.frames = {
+            {CardTemplateFrameKind::Text, QRect(300, 280, 1800, 260), QStringLiteral("Template heading"), -1},
+            {CardTemplateFrameKind::DataBox, QRect(300, 740, 2200, 320), {}, 0},
+            {CardTemplateFrameKind::NotesBox, QRect(300, 1260, 3200, 900), {}, 1},
+            {CardTemplateFrameKind::LineOrBox, QRect(300, 2400, 3600, 70), {}, -1},
+        };
+        layout.frames.last().lineBoxShape = CardTemplateLineBoxShape::Box;
+
+        TemplateDesignerWidget designer(layout, makeFields());
+        QVERIFY(saveWidgetImage(designer, outputDirectory, QStringLiteral("template_designer_all_elements.png")));
+
+        QTableWidget* frameTable = designer.findChild<QTableWidget*>();
+        QVERIFY(frameTable != nullptr);
+        const QVector<QString> stateNames = {
+            QStringLiteral("text_selected"),
+            QStringLiteral("data_box_selected"),
+            QStringLiteral("notes_box_selected"),
+            QStringLiteral("line_box_selected"),
+        };
+        for (int row = 0; row < stateNames.size(); ++row) {
+            frameTable->setCurrentCell(row, 0);
+            frameTable->selectRow(row);
+            QCoreApplication::processEvents();
+            QTest::qWait(30);
+            QVERIFY(saveWidgetImage(
+                designer,
+                outputDirectory,
+                QStringLiteral("template_designer_%1.png").arg(stateNames.at(row))));
+        }
     }
 };
 
