@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <functional>
 
+#include "support/VisualTestSupport.h"
+
 int runMainWindowActionTests(int argc, char** argv);
 int runMainWindowWorkflowTests(int argc, char** argv);
 int runDeckMergeTests(int argc, char** argv);
@@ -115,6 +117,7 @@ int main(int argc, char** argv)
     int forwardedArgc = forwardedArgs.size();
     char** forwardedArgv = forwardedArgs.data();
     QApplication app(forwardedArgc, forwardedArgv);
+    CardStack::Tests::installVisualTestFonts();
 
     int failures = 0;
     const QVector<TestEntry> entries = testEntries();

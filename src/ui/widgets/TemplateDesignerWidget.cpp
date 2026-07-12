@@ -137,7 +137,6 @@ protected:
             case CardTemplateFrameKind::DataBox:
             case CardTemplateFrameKind::NotesBox:
                 painter.drawRect(frameRect);
-                painter.drawText(frameRect.adjusted(4, 2, -4, -2), Qt::AlignLeft | Qt::AlignTop, frame.text);
                 break;
             case CardTemplateFrameKind::Text:
                 painter.drawText(frameRect, Qt::AlignLeft | Qt::AlignVCenter, frame.text);
@@ -440,31 +439,46 @@ void TemplateDesignerWidget::buildUi()
     sideLayout->addWidget(m_frameTable, 1);
 
     auto* form = new QFormLayout;
+    m_propertyForm = form;
     m_kindCombo = new QComboBox(side);
+    m_kindCombo->setObjectName(QStringLiteral("templateKindCombo"));
     m_kindCombo->addItem(frameKindName(CardTemplateFrameKind::Text), static_cast<int>(CardTemplateFrameKind::Text));
     m_kindCombo->addItem(frameKindName(CardTemplateFrameKind::DataBox), static_cast<int>(CardTemplateFrameKind::DataBox));
     m_kindCombo->addItem(frameKindName(CardTemplateFrameKind::NotesBox), static_cast<int>(CardTemplateFrameKind::NotesBox));
     m_kindCombo->addItem(frameKindName(CardTemplateFrameKind::LineOrBox), static_cast<int>(CardTemplateFrameKind::LineOrBox));
     m_fieldCombo = new QComboBox(side);
+    m_fieldCombo->setObjectName(QStringLiteral("templateFieldCombo"));
     m_fieldCombo->addItem(tr("(none)"), -1);
     for (int index = 0; index < m_fields.size(); ++index) {
         m_fieldCombo->addItem(m_fields.at(index).name(), index);
     }
     m_lineShapeCombo = new QComboBox(side);
+    m_lineShapeCombo->setObjectName(QStringLiteral("templateLineShapeCombo"));
     m_lineShapeCombo->addItem(tr("Box"), lineBoxShapeToInt(CardTemplateLineBoxShape::Box));
     m_lineShapeCombo->addItem(tr("Horizontal line"), lineBoxShapeToInt(CardTemplateLineBoxShape::HorizontalLine));
     m_lineShapeCombo->addItem(tr("Vertical line"), lineBoxShapeToInt(CardTemplateLineBoxShape::VerticalLine));
     m_textEdit = new QLineEdit(side);
+    m_textEdit->setObjectName(QStringLiteral("templateTextEdit"));
     m_boldCheck = new QCheckBox(tr("Bold"), side);
+    m_boldCheck->setObjectName(QStringLiteral("templateBoldCheck"));
     m_italicCheck = new QCheckBox(tr("Italic"), side);
+    m_italicCheck->setObjectName(QStringLiteral("templateItalicCheck"));
     m_underlineCheck = new QCheckBox(tr("Underline"), side);
+    m_underlineCheck->setObjectName(QStringLiteral("templateUnderlineCheck"));
     m_leftSpin = new QSpinBox(side);
+    m_leftSpin->setObjectName(QStringLiteral("templateLeftSpin"));
     m_topSpin = new QSpinBox(side);
+    m_topSpin->setObjectName(QStringLiteral("templateTopSpin"));
     m_widthSpin = new QSpinBox(side);
+    m_widthSpin->setObjectName(QStringLiteral("templateWidthSpin"));
     m_heightSpin = new QSpinBox(side);
+    m_heightSpin->setObjectName(QStringLiteral("templateHeightSpin"));
     m_lineStyleSpin = new QSpinBox(side);
+    m_lineStyleSpin->setObjectName(QStringLiteral("templateLineStyleSpin"));
     m_fillPatternSpin = new QSpinBox(side);
+    m_fillPatternSpin->setObjectName(QStringLiteral("templateFillPatternSpin"));
     m_cornerRadiusSpin = new QSpinBox(side);
+    m_cornerRadiusSpin->setObjectName(QStringLiteral("templateCornerRadiusSpin"));
     for (QSpinBox* spin : {m_leftSpin, m_topSpin, m_widthSpin, m_heightSpin}) {
         spin->setRange(0, 20000);
     }
@@ -597,6 +611,18 @@ void TemplateDesignerWidget::refreshFrameProperties()
     m_cornerRadiusSpin->setValue(frame.cornerRadius);
 
     const bool lineOrBox = frame.kind == CardTemplateFrameKind::LineOrBox;
+    const bool textFrame = frame.kind == CardTemplateFrameKind::Text;
+    const bool dataFrame = frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox;
+    const bool styledTextFrame = textFrame || dataFrame;
+    setPropertyRowVisible(m_textEdit, textFrame);
+    setPropertyRowVisible(m_fieldCombo, dataFrame);
+    setPropertyRowVisible(m_boldCheck, styledTextFrame);
+    setPropertyRowVisible(m_italicCheck, styledTextFrame);
+    setPropertyRowVisible(m_underlineCheck, styledTextFrame);
+    setPropertyRowVisible(m_lineShapeCombo, lineOrBox);
+    setPropertyRowVisible(m_lineStyleSpin, lineOrBox);
+    setPropertyRowVisible(m_fillPatternSpin, lineOrBox);
+    setPropertyRowVisible(m_cornerRadiusSpin, lineOrBox);
     m_lineShapeCombo->setEnabled(lineOrBox);
     m_lineStyleSpin->setEnabled(lineOrBox);
     m_fillPatternSpin->setEnabled(lineOrBox);
@@ -649,6 +675,21 @@ void TemplateDesignerWidget::applyPropertyEdits()
         styleFlags |= TemplateStyleUnderline;
     }
     frame.styleFlags = styleFlags;
+}
+
+void TemplateDesignerWidget::setPropertyRowVisible(QWidget* field, bool visible)
+{
+    if (field == nullptr) {
+        return;
+    }
+
+    field->setVisible(visible);
+    if (m_propertyForm == nullptr) {
+        return;
+    }
+    if (QWidget* label = m_propertyForm->labelForField(field)) {
+        label->setVisible(visible);
+    }
 }
 
 CardTemplateFrame TemplateDesignerWidget::defaultFrame(CardTemplateFrameKind kind) const

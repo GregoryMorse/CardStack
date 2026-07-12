@@ -618,7 +618,7 @@ void ReportDesignerWidget::buildUi()
     m_frameTable->setSelectionMode(QAbstractItemView::SingleSelection);
     sideLayout->addWidget(m_frameTable, 1);
 
-    auto* form = new QFormLayout;
+    m_propertyForm = new QFormLayout;
     m_kindCombo = new QComboBox(side);
     m_kindCombo->addItem(kindName(ReportFrameKind::Text), static_cast<int>(ReportFrameKind::Text));
     m_kindCombo->addItem(kindName(ReportFrameKind::Data), static_cast<int>(ReportFrameKind::Data));
@@ -659,22 +659,22 @@ void ReportDesignerWidget::buildUi()
     }
     m_widthSpin->setMinimum(1);
     m_heightSpin->setMinimum(1);
-    form->addRow(tr("Kind"), m_kindCombo);
-    form->addRow(tr("Text"), m_textEdit);
-    form->addRow(tr("Alignment"), m_alignmentCombo);
-    form->addRow(tr("Line shape"), m_lineShapeCombo);
-    form->addRow(tr("Line style"), m_lineStyleCombo);
-    form->addRow(tr("Fill pattern"), m_fillPatternCombo);
-    form->addRow(tr("Corner radius"), m_cornerRadiusSpin);
-    form->addRow(QString(), m_printEntireContents);
-    form->addRow(tr("Style"), m_boldCheck);
-    form->addRow(QString(), m_italicCheck);
-    form->addRow(QString(), m_underlineCheck);
-    form->addRow(tr("Left"), m_leftSpin);
-    form->addRow(tr("Top"), m_topSpin);
-    form->addRow(tr("Width"), m_widthSpin);
-    form->addRow(tr("Height"), m_heightSpin);
-    sideLayout->addLayout(form);
+    m_propertyForm->addRow(tr("Kind"), m_kindCombo);
+    m_propertyForm->addRow(tr("Text"), m_textEdit);
+    m_propertyForm->addRow(tr("Alignment"), m_alignmentCombo);
+    m_propertyForm->addRow(tr("Line shape"), m_lineShapeCombo);
+    m_propertyForm->addRow(tr("Line style"), m_lineStyleCombo);
+    m_propertyForm->addRow(tr("Fill pattern"), m_fillPatternCombo);
+    m_propertyForm->addRow(tr("Corner radius"), m_cornerRadiusSpin);
+    m_propertyForm->addRow(QString(), m_printEntireContents);
+    m_propertyForm->addRow(tr("Style"), m_boldCheck);
+    m_propertyForm->addRow(QString(), m_italicCheck);
+    m_propertyForm->addRow(QString(), m_underlineCheck);
+    m_propertyForm->addRow(tr("Left"), m_leftSpin);
+    m_propertyForm->addRow(tr("Top"), m_topSpin);
+    m_propertyForm->addRow(tr("Width"), m_widthSpin);
+    m_propertyForm->addRow(tr("Height"), m_heightSpin);
+    sideLayout->addLayout(m_propertyForm);
     splitter->addWidget(side);
     splitter->setStretchFactor(0, 2);
     splitter->setStretchFactor(1, 1);
@@ -801,6 +801,20 @@ void ReportDesignerWidget::refreshFrameProperties()
     m_heightSpin->setValue(std::max(1, frame.bounds.height()));
 
     const bool lineOrBox = frame.kind == ReportFrameKind::LineOrBox;
+    const bool textLikeFrame = frame.kind == ReportFrameKind::Text
+        || frame.kind == ReportFrameKind::Data
+        || frame.kind == ReportFrameKind::SystemText;
+    const bool dataFrame = frame.kind == ReportFrameKind::Data;
+    setPropertyRowVisible(m_textEdit, textLikeFrame);
+    setPropertyRowVisible(m_alignmentCombo, textLikeFrame);
+    setPropertyRowVisible(m_printEntireContents, dataFrame);
+    setPropertyRowVisible(m_boldCheck, textLikeFrame);
+    setPropertyRowVisible(m_italicCheck, textLikeFrame);
+    setPropertyRowVisible(m_underlineCheck, textLikeFrame);
+    setPropertyRowVisible(m_lineShapeCombo, lineOrBox);
+    setPropertyRowVisible(m_lineStyleCombo, lineOrBox);
+    setPropertyRowVisible(m_fillPatternCombo, lineOrBox);
+    setPropertyRowVisible(m_cornerRadiusSpin, lineOrBox);
     m_lineShapeCombo->setEnabled(lineOrBox);
     m_lineStyleCombo->setEnabled(lineOrBox);
     m_fillPatternCombo->setEnabled(lineOrBox);
@@ -873,6 +887,21 @@ void ReportDesignerWidget::applyPropertyEdits()
         while (matches.hasNext()) {
             frame.systemTokens.append(matches.next().captured(1));
         }
+    }
+}
+
+void ReportDesignerWidget::setPropertyRowVisible(QWidget* field, bool visible)
+{
+    if (field == nullptr) {
+        return;
+    }
+
+    field->setVisible(visible);
+    if (m_propertyForm == nullptr) {
+        return;
+    }
+    if (QWidget* label = m_propertyForm->labelForField(field)) {
+        label->setVisible(visible);
     }
 }
 

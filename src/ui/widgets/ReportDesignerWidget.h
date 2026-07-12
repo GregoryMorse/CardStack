@@ -7,6 +7,7 @@
 class QCheckBox;
 class QComboBox;
 class QCloseEvent;
+class QFormLayout;
 class QLineEdit;
 class QPlainTextEdit;
 class QSpinBox;
@@ -79,6 +80,7 @@ private:
     void refreshFrameProperties();
     void selectFrame(int frameIndex);
     void applyPropertyEdits();
+    void setPropertyRowVisible(QWidget* field, bool visible);
     ReportFrameDefinition defaultFrame(ReportFrameKind kind) const;
 
     ReportDefinition m_report;
@@ -89,6 +91,7 @@ private:
     ReportDesignCanvas* m_canvas = nullptr;
     QLineEdit* m_nameEdit = nullptr;
     QTableWidget* m_frameTable = nullptr;
+    QFormLayout* m_propertyForm = nullptr;
     QPlainTextEdit* m_textEdit = nullptr;
     QComboBox* m_kindCombo = nullptr;
     QComboBox* m_alignmentCombo = nullptr;

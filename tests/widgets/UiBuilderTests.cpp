@@ -741,12 +741,39 @@ private slots:
             QVERIFY(dialog != nullptr);
             auto* noCompare = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog.get(), UiIds::Control::SearchCompareNone));
+            auto* andCompare = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SearchCompareAnd));
+            auto* orCompare = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SearchCompareOr));
             auto* beginning = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog.get(), UiIds::Control::SearchDirectionBeginning));
+            auto* dataCombo = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SearchAllDataBoxes));
+            auto* typeCombo = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SearchType));
+            QWidget* secondText = UiBuilder::controlById(dialog.get(), UiIds::Control::SearchSecondText);
             QVERIFY(noCompare != nullptr);
+            QVERIFY(andCompare != nullptr);
+            QVERIFY(orCompare != nullptr);
             QVERIFY(beginning != nullptr);
+            QVERIFY(dataCombo != nullptr);
+            QVERIFY(typeCombo != nullptr);
+            QVERIFY(secondText != nullptr);
             QVERIFY(noCompare->isChecked());
             QVERIFY(beginning->isChecked());
+            QVERIFY(typeCombo->width() >= 180);
+            QVERIFY(typeCombo->width() <= 190);
+            QVERIFY(secondText->isHidden());
+
+            andCompare->click();
+            QCoreApplication::processEvents();
+            QVERIFY(andCompare->isChecked());
+            QVERIFY(!secondText->isHidden());
+
+            orCompare->click();
+            QCoreApplication::processEvents();
+            QVERIFY(orCompare->isChecked());
+            QVERIFY(!secondText->isHidden());
         }
 
         {
@@ -1160,7 +1187,7 @@ private slots:
                     std::unique_ptr<QDialog> variantDialog = UiBuilder::createDialog(dialogName, nullptr, context);
                     QVERIFY2(variantDialog != nullptr, qPrintable(dialogName));
                     if (auto* button = qobject_cast<QAbstractButton*>(UiBuilder::controlById(variantDialog.get(), controlId))) {
-                        button->setChecked(true);
+                        button->click();
                         QCoreApplication::processEvents();
                     }
                     QVERIFY2(

@@ -24,6 +24,7 @@ set(CARDSTACK_TEST_SOURCES
 
 qt_add_executable(CardStackTests
     CardStackTestSuite.cpp
+    support/VisualTestSupport.cpp
     ${CARDSTACK_TEST_SOURCES}
 )
 

@@ -9,6 +9,7 @@
 class QCheckBox;
 class QComboBox;
 class QCloseEvent;
+class QFormLayout;
 class QLineEdit;
 class QSpinBox;
 class QTableWidget;
@@ -56,6 +57,7 @@ private:
     void refreshFrameProperties();
     void selectFrame(int frameIndex);
     void applyPropertyEdits();
+    void setPropertyRowVisible(QWidget* field, bool visible);
     CardTemplateFrame defaultFrame(CardTemplateFrameKind kind) const;
     QString frameKindName(CardTemplateFrameKind kind) const;
 
@@ -66,6 +68,7 @@ private:
 
     TemplateDesignCanvas* m_canvas = nullptr;
     QTableWidget* m_frameTable = nullptr;
+    QFormLayout* m_propertyForm = nullptr;
     QComboBox* m_kindCombo = nullptr;
     QComboBox* m_fieldCombo = nullptr;
     QComboBox* m_lineShapeCombo = nullptr;

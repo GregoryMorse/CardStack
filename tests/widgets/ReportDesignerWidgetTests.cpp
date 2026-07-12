@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QSignalSpy>
@@ -36,6 +37,16 @@ bool saveWidgetImage(QWidget& widget, const QDir& outputDirectory, const QString
     QTest::qWait(30);
     const QPixmap pixmap = widget.grab();
     return !pixmap.isNull() && pixmap.save(outputDirectory.filePath(fileName));
+}
+
+bool labelWithTextVisible(const QWidget& widget, const QString& text)
+{
+    for (const QLabel* label : widget.findChildren<QLabel*>()) {
+        if (label->text() == text) {
+            return !label->isHidden();
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -159,6 +170,27 @@ private slots:
             designer.addLineBoxFrameShape(ReportLineBoxShape::Box, ReportLineStyleSolid, fillPattern, 0);
             QCOMPARE(designer.report().frames.last().fillPattern, fillPattern);
         }
+    }
+
+    void propertyRowsFollowSelectedReportFrameKind()
+    {
+        ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});
+
+        designer.addTextFrameWithText(QStringLiteral("Heading"), 0);
+        QVERIFY(labelWithTextVisible(designer, QStringLiteral("Text")));
+        QVERIFY(labelWithTextVisible(designer, QStringLiteral("Alignment")));
+        QVERIFY(!labelWithTextVisible(designer, QStringLiteral("Line shape")));
+        QVERIFY(!labelWithTextVisible(designer, QStringLiteral("Line style")));
+        QVERIFY(!labelWithTextVisible(designer, QStringLiteral("Fill pattern")));
+        QVERIFY(!labelWithTextVisible(designer, QStringLiteral("Corner radius")));
+
+        designer.addLineBoxFrameShape(ReportLineBoxShape::Box, ReportLineStyleSolid, ReportFillPatternClear, 0);
+        QVERIFY(!labelWithTextVisible(designer, QStringLiteral("Text")));
+        QVERIFY(!labelWithTextVisible(designer, QStringLiteral("Alignment")));
+        QVERIFY(labelWithTextVisible(designer, QStringLiteral("Line shape")));
+        QVERIFY(labelWithTextVisible(designer, QStringLiteral("Line style")));
+        QVERIFY(labelWithTextVisible(designer, QStringLiteral("Fill pattern")));
+        QVERIFY(labelWithTextVisible(designer, QStringLiteral("Corner radius")));
     }
 
     void closePromptCancelKeepsDesignerOpen()

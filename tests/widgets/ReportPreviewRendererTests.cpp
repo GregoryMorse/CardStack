@@ -439,8 +439,24 @@ private slots:
 
         const auto* title = qobject_cast<QLabel*>(
             UiBuilder::controlById(dialog.get(), UiIds::Control::PreviewTitle));
+        const auto* pageStatus = qobject_cast<QLabel*>(
+            UiBuilder::controlById(dialog.get(), UiIds::Control::PreviewPageStatus));
+        const auto* canvas = dialog->findChild<QWidget*>(QStringLiteral("reportPreviewCanvas"));
+        const auto* firstPage = qobject_cast<QAbstractButton*>(
+            UiBuilder::controlById(dialog.get(), UiIds::Control::PreviewFirstPage));
+        const auto* nextPage = qobject_cast<QAbstractButton*>(
+            UiBuilder::controlById(dialog.get(), UiIds::Control::PreviewNextPage));
         QVERIFY(title != nullptr);
+        QVERIFY(pageStatus != nullptr);
+        QVERIFY(canvas != nullptr);
+        QVERIFY(firstPage != nullptr);
+        QVERIFY(nextPage != nullptr);
         QCOMPARE(title->text(), report.name);
+        QVERIFY(!pageStatus->text().trimmed().isEmpty());
+        QVERIFY(title->geometry().bottom() < canvas->geometry().top());
+        QVERIFY(pageStatus->geometry().bottom() < canvas->geometry().top());
+        QVERIFY(firstPage->geometry().left() > canvas->geometry().right());
+        QVERIFY(nextPage->geometry().left() > canvas->geometry().right());
     }
 
     void createsUiPreviewDialogWithPageNavigation()

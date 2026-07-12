@@ -1346,7 +1346,9 @@ void MainWindow::resizeIndexBarButtons()
     }
 
     const int buttonCount = static_cast<int>(buttons.size());
-    const int availableWidth = std::max(0, m_indexBar->contentsRect().width());
+    const int availableWidth = std::max(
+        m_indexBar->contentsRect().width(),
+        std::max(m_indexBar->width(), width()));
     const int marginWidth = IndexBarHorizontalMarginPx * 2;
     const int gapWidth = IndexBarButtonGapPx * std::max(0, buttonCount - 1);
     const int buttonWidth = std::max(1, (availableWidth - marginWidth - gapWidth) / buttonCount);

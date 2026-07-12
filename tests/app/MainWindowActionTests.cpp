@@ -1,6 +1,7 @@
 ﻿#include "MainWindow.h"
 
 #include "../support/ModalDialogDriver.h"
+#include "../support/VisualTestSupport.h"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -23,6 +24,7 @@
 #include <QToolBar>
 #include <QComboBox>
 #include <QDialog>
+#include <QDir>
 #include <QListWidget>
 #include <QTimer>
 
@@ -101,6 +103,12 @@ QSet<int> commandIdsFromToolBar(QToolBar* toolBar)
         }
     }
     return commandIds;
+}
+
+bool saveMainWindowImage(MainWindow& window, const QDir& outputDirectory, const QString& fileName)
+{
+    window.resize(1040, 720);
+    return Tests::saveWidgetImage(window, outputDirectory, fileName);
 }
 
 QAction* findCommandAction(const QList<QAction*>& actions, int commandId)
@@ -195,6 +203,31 @@ void acceptNextDialogByLegacyName(const QString& dialogName)
                 continue;
             }
 
+            dialog->accept();
+            return;
+        }
+
+        --(*attemptsRemaining);
+        if (*attemptsRemaining > 0) {
+            QTimer::singleShot(10, qApp, *retry);
+        }
+    };
+
+    QTimer::singleShot(0, qApp, *retry);
+}
+
+void captureNextAboutDialog(const QDir& outputDirectory, bool* saved)
+{
+    auto attemptsRemaining = std::make_shared<int>(100);
+    auto retry = std::make_shared<std::function<void()>>();
+    *retry = [outputDirectory, saved, attemptsRemaining, retry]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QDialog*>(widget);
+            if (dialog == nullptr || !dialog->isVisible() || dialog->windowTitle() != QStringLiteral("About CardStack")) {
+                continue;
+            }
+
+            *saved = Tests::saveWidgetImage(*dialog, outputDirectory, QStringLiteral("app_about_dialog.png"));
             dialog->accept();
             return;
         }
@@ -1349,6 +1382,66 @@ private slots:
         QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error));
         QCOMPARE(loaded.cardCount(), workspace->deck().cardCount());
         QCOMPARE(loaded.fieldCount(), workspace->deck().fieldCount());
+    }
+
+    void writesManualAppInspectionImagesWhenConfigured()
+    {
+        const QString outputPath = qEnvironmentVariable("CARDSTACK_APP_GALLERY_DIR");
+        if (outputPath.isEmpty()) {
+            QSKIP("Set CARDSTACK_APP_GALLERY_DIR to write app-window PNGs for manual inspection.");
+        }
+
+        Tests::installVisualTestFonts();
+        QDir outputDirectory(outputPath);
+        QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+
+        {
+            MainWindow window(nullptr, false);
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_startup_toolbar.png")));
+        }
+
+        {
+            MainWindow window(nullptr, true);
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_deck_toolbar.png")));
+        }
+
+        {
+            MainWindow window(nullptr, false);
+            window.show();
+            QCoreApplication::processEvents();
+            auto* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+            QVERIFY(newAction != nullptr);
+            acceptNextNewFileDialog(1);
+            newAction->trigger();
+            QCoreApplication::processEvents();
+            QTRY_VERIFY(window.findChild<TemplateDesignerWidget*>() != nullptr);
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar.png")));
+        }
+
+        {
+            MainWindow window(nullptr, true);
+            window.show();
+            QCoreApplication::processEvents();
+            auto* newReportAction = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+            QVERIFY(newReportAction != nullptr);
+            acceptNextReportFormDialog(ReportFormType::Report, 0);
+            newReportAction->trigger();
+            QCoreApplication::processEvents();
+            QTRY_VERIFY(window.findChild<ReportDesignerWidget*>() != nullptr);
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar.png")));
+        }
+
+        {
+            MainWindow window(nullptr, false);
+            window.show();
+            QCoreApplication::processEvents();
+            auto* aboutAction = findCommandAction(window.menuBar(), UiIds::Command::HelpAbout);
+            QVERIFY(aboutAction != nullptr);
+            bool saved = false;
+            captureNextAboutDialog(outputDirectory, &saved);
+            aboutAction->trigger();
+            QVERIFY(saved);
+        }
     }
 };
 

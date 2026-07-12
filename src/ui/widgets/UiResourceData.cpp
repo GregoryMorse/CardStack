@@ -681,11 +681,11 @@ const UiControl dialog_controls_TN_FILEOPEN[] = {
     {"static", "", 65535, Style::Child | Style::Visible | Style::Static::BlackFrame, 8, 132, 197, 15},
 };
 const UiControl dialog_controls_PRINTPREVIEW[] = {
-    {"button", "&Print", 1, Style::Child | Style::Visible | Style::TabStop | Style::Button::DefaultPushButton, 244, 19, 40, 16},
-    {"button", "&Cancel", 2, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 244, 37, 40, 16},
-    {"BTN_pict", "", 2100, Style::Child | Style::Visible | Style::Border, 6, 19, 230, 195},
-    {"button", "&Next Page", 2104, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 244, 99, 40, 16},
-    {"button", "&First Page", 2103, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 244, 117, 40, 16},
+    {"button", "&Print", 1, Style::Child | Style::Visible | Style::TabStop | Style::Button::DefaultPushButton, 212, 18, 66, 14},
+    {"button", "&Cancel", 2, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 212, 36, 66, 14},
+    {"BTN_pict", "", 2100, Style::Child | Style::Visible | Style::Border, 6, 25, 197, 180},
+    {"button", "&Next Page", 2104, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 212, 100, 66, 14},
+    {"button", "&First Page", 2103, Style::Child | Style::Visible | Style::TabStop | Style::Button::PushButton, 212, 118, 66, 14},
     {"static", "", 2002, Style::Child | Style::Visible | Style::Group | Style::Static::Left, 9, 6, 93, 8},
     {"static", "", 102, Style::Child | Style::Visible | Style::Group | Style::Static::Center, 105, 5, 129, 9},
 };

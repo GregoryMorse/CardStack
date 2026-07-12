@@ -915,6 +915,7 @@ void DeckWorkspace::rebuildCardEditor()
         const int canvasWidth = std::max(1, cardLayout.canvasWidth / TemplateCoordinateScale);
         const int canvasHeight = std::max(1, cardLayout.canvasHeight / TemplateCoordinateScale);
         m_cardEditorContent->setMinimumSize(canvasWidth + 24, canvasHeight + 24);
+        QVector<QWidget*> templateLabels;
 
         auto scaledBounds = [](const QRect& bounds) {
             constexpr int Scale = 10;
@@ -933,11 +934,13 @@ void DeckWorkspace::rebuildCardEditor()
                 label->setGeometry(rect);
                 label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 label->show();
+                templateLabels.append(label);
             } else if (frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox) {
                 const int fieldIndex = frame.fieldIndex;
                 if (fieldIndex < 0 || fieldIndex >= m_deck.fieldCount()) {
                     continue;
                 }
+
                 QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
                 editor->setMinimumSize(0, 0);
                 editor->setMaximumSize(rect.size());
@@ -969,6 +972,7 @@ void DeckWorkspace::rebuildCardEditor()
             label->setObjectName(QStringLiteral("fieldName_%1").arg(fieldIndex));
             label->setGeometry(12, fallbackTop + 4, 140, 22);
             label->show();
+            templateLabels.append(label);
 
             QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
             editor->setGeometry(160, fallbackTop, 360, field.isNotes() ? 90 : 26);
@@ -976,6 +980,9 @@ void DeckWorkspace::rebuildCardEditor()
             fallbackTop += field.isNotes() ? 104 : 34;
         }
         m_cardEditorContent->setMinimumHeight(std::max(m_cardEditorContent->minimumHeight(), fallbackTop + 12));
+        for (QWidget* label : templateLabels) {
+            label->raise();
+        }
         return;
     }
 
@@ -1026,8 +1033,7 @@ QString DeckWorkspace::cardTitle(int cardIndex) const
         return tr("Untitled card");
     }
 
-    const QString title = m_deck.cardAt(cardIndex).valueAt(CardTitleFieldIndex).trimmed();
-    return title.isEmpty() ? tr("Card %1").arg(cardIndex + 1) : title;
+    return m_deck.cardAt(cardIndex).valueAt(CardTitleFieldIndex).trimmed();
 }
 
 void DeckWorkspace::refreshCardHeader()

@@ -5,8 +5,13 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QDir>
+#include <QFileInfo>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QPixmap>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QTableView>
@@ -58,12 +63,20 @@ Deck createTemplateLayoutDeck()
     CardTemplateFrame nameFrame;
     nameFrame.kind = CardTemplateFrameKind::DataBox;
     nameFrame.fieldIndex = 0;
+    nameFrame.text = QStringLiteral("Name");
     nameFrame.bounds = QRect(100, 200, 1000, 240);
     layout.frames.append(nameFrame);
+
+    CardTemplateFrame labelFrame;
+    labelFrame.kind = CardTemplateFrameKind::Text;
+    labelFrame.text = QStringLiteral("Name label");
+    labelFrame.bounds = QRect(100, 80, 1000, 120);
+    layout.frames.append(labelFrame);
 
     CardTemplateFrame notesFrame;
     notesFrame.kind = CardTemplateFrameKind::NotesBox;
     notesFrame.fieldIndex = 1;
+    notesFrame.text = QStringLiteral("Notes");
     notesFrame.bounds = QRect(500, 800, 1200, 600);
     layout.frames.append(notesFrame);
 
@@ -103,11 +116,17 @@ private slots:
         DeckWorkspace workspace(createTemplateLayoutDeck());
         auto* nameEditor = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
         auto* notesEditor = workspace.findChild<QPlainTextEdit*>(QStringLiteral("fieldValue_1"));
+        auto* label = workspace.findChild<QLabel*>(QStringLiteral("templateTextFrame"));
 
         QVERIFY(nameEditor != nullptr);
         QVERIFY(notesEditor != nullptr);
+        QVERIFY(label != nullptr);
         QCOMPARE(nameEditor->geometry(), QRect(22, 32, 100, 24));
         QCOMPARE(notesEditor->geometry(), QRect(62, 92, 120, 60));
+        QCOMPARE(label->text(), QStringLiteral("Name label"));
+        QCOMPARE(label->geometry(), QRect(22, 20, 100, 12));
+        QVERIFY(!label->isHidden());
+        QVERIFY(workspace.findChildren<QLabel*>(QRegularExpression(QStringLiteral("^fieldCaption_"))).isEmpty());
     }
 
     void deleteUndoRestoresCardAndUndeleteState()
@@ -290,6 +309,22 @@ private slots:
         QCOMPARE(workspace.currentCardIndex(), 0);
     }
 
+    void cardViewLeavesBlankTitlesBlank()
+    {
+        Deck deck(QStringLiteral("Blank Title Test"));
+        deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 255));
+        deck.addCard(CardRecord({QString()}));
+        deck.addCard(CardRecord({QStringLiteral("Alpha")}));
+
+        DeckWorkspace workspace(std::move(deck));
+        workspace.showCardView();
+        QCoreApplication::processEvents();
+
+        auto* cardPanel = workspace.findChild<QWidget*>(QStringLiteral("cardDetailPanel"));
+        QVERIFY(cardPanel != nullptr);
+        QVERIFY(cardPanel->accessibleName().isEmpty());
+    }
+
     void indexPrefixJumpUsesNextPopulatedBucket()
     {
         Deck deck(QStringLiteral("Index Test"));
@@ -361,6 +396,32 @@ private slots:
         auto* editor = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
         QVERIFY(editor != nullptr);
         QCOMPARE(editor->text(), QStringLiteral("Beta"));
+    }
+
+    void writesManualDeckInspectionImagesWhenConfigured()
+    {
+        const QString outputPath = qEnvironmentVariable("CARDSTACK_DECK_GALLERY_DIR");
+        if (outputPath.isEmpty()) {
+            QSKIP("Set CARDSTACK_DECK_GALLERY_DIR to write deck card/table PNGs for manual inspection.");
+        }
+
+        QDir outputDirectory(outputPath);
+        QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+
+        DeckWorkspace workspace(createTemplateLayoutDeck());
+        workspace.resize(900, 620);
+        workspace.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&workspace));
+
+        workspace.showCardView();
+        QCoreApplication::processEvents();
+        QTest::qWait(30);
+        QVERIFY(workspace.grab().save(outputDirectory.filePath(QStringLiteral("deck_card_view_template_layout.png"))));
+
+        workspace.showTableView();
+        QCoreApplication::processEvents();
+        QTest::qWait(30);
+        QVERIFY(workspace.grab().save(outputDirectory.filePath(QStringLiteral("deck_table_view.png"))));
     }
 
     void fieldSearchMovesToMatchingCard()

@@ -75,7 +75,7 @@ void drawCardFrame(
     painter->drawText(
         headerRect.adjusted(14, 2, -14, -2),
         Qt::AlignLeft | Qt::AlignVCenter,
-        title.trimmed().isEmpty() ? QObject::tr("Untitled card") : title);
+        title.trimmed());
 
     if (active) {
         painter->setPen(QPen(QColor(214, 200, 169), 1));
@@ -112,6 +112,7 @@ void CardDetailPanel::setCardTitle(const QString& cardTitle)
     }
 
     m_cardTitle = cardTitle;
+    setAccessibleName(cardTitle);
     update();
 }
 

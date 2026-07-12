@@ -3,11 +3,14 @@
 #include "../support/ModalDialogDriver.h"
 
 #include <QCoreApplication>
+#include <QComboBox>
 #include <QDir>
 #include <QFileInfo>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QSignalSpy>
+#include <QSpinBox>
 #include <QTableWidget>
 #include <QTest>
 
@@ -146,6 +149,59 @@ private slots:
         QVERIFY(!designer.isVisible());
         QCOMPARE(saveSpy.size(), 1);
         QVERIFY(!designer.isDirty());
+    }
+
+    void propertyRowsFollowSelectedFrameKindAndLineShapeEditsPersist()
+    {
+        CardTemplateLayout layout;
+        layout.frames = {
+            {CardTemplateFrameKind::Text, QRect(300, 280, 1800, 260), QStringLiteral("Template heading"), -1},
+            {CardTemplateFrameKind::DataBox, QRect(300, 740, 2200, 320), {}, 0},
+            {CardTemplateFrameKind::LineOrBox, QRect(300, 2400, 3600, 700), {}, -1},
+        };
+
+        TemplateDesignerWidget designer(layout, makeFields());
+
+        auto* frameTable = designer.findChild<QTableWidget*>();
+        auto* textEdit = designer.findChild<QLineEdit*>(QStringLiteral("templateTextEdit"));
+        auto* fieldCombo = designer.findChild<QComboBox*>(QStringLiteral("templateFieldCombo"));
+        auto* lineShapeCombo = designer.findChild<QComboBox*>(QStringLiteral("templateLineShapeCombo"));
+        auto* lineStyleSpin = designer.findChild<QSpinBox*>(QStringLiteral("templateLineStyleSpin"));
+        QVERIFY(frameTable != nullptr);
+        QVERIFY(textEdit != nullptr);
+        QVERIFY(fieldCombo != nullptr);
+        QVERIFY(lineShapeCombo != nullptr);
+        QVERIFY(lineStyleSpin != nullptr);
+
+        frameTable->setCurrentCell(0, 0);
+        frameTable->selectRow(0);
+        QCoreApplication::processEvents();
+        QVERIFY(!textEdit->isHidden());
+        QVERIFY(fieldCombo->isHidden());
+        QVERIFY(lineShapeCombo->isHidden());
+
+        frameTable->setCurrentCell(1, 0);
+        frameTable->selectRow(1);
+        QCoreApplication::processEvents();
+        QVERIFY(textEdit->isHidden());
+        QVERIFY(!fieldCombo->isHidden());
+        QVERIFY(lineShapeCombo->isHidden());
+
+        frameTable->setCurrentCell(2, 0);
+        frameTable->selectRow(2);
+        QCoreApplication::processEvents();
+        QVERIFY(textEdit->isHidden());
+        QVERIFY(fieldCombo->isHidden());
+        QVERIFY(!lineShapeCombo->isHidden());
+        QVERIFY(!lineStyleSpin->isHidden());
+
+        lineShapeCombo->setCurrentIndex(lineShapeCombo->findData(static_cast<int>(CardTemplateLineBoxShape::HorizontalLine)));
+        QCoreApplication::processEvents();
+        QCOMPARE(designer.layoutDefinition().frames.at(2).lineBoxShape, CardTemplateLineBoxShape::HorizontalLine);
+
+        lineShapeCombo->setCurrentIndex(lineShapeCombo->findData(static_cast<int>(CardTemplateLineBoxShape::VerticalLine)));
+        QCoreApplication::processEvents();
+        QCOMPARE(designer.layoutDefinition().frames.at(2).lineBoxShape, CardTemplateLineBoxShape::VerticalLine);
     }
 
     void writesManualDesignerInspectionImagesWhenConfigured()
