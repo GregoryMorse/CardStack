@@ -77,7 +77,11 @@ set(CARDSTACK_TEST_SUITE_NAMES
 foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
     add_test(
         NAME ${cardstack_test_suite}
-        COMMAND CardStackTests --test ${cardstack_test_suite}
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_EXECUTABLE=$<TARGET_FILE:CardStackTests>
+            -DTEST_SUITE=${cardstack_test_suite}
+            -DTEST_LOG=${CMAKE_CURRENT_BINARY_DIR}/${cardstack_test_suite}.txt
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/RunQtTest.cmake
     )
     set_tests_properties(${cardstack_test_suite} PROPERTIES
         TIMEOUT 60
