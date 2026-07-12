@@ -2822,8 +2822,9 @@ void normalizeSearchClauseSpacing(
     int searchRowBottom = searchText->geometry().bottom();
     for (QComboBox* comboBox : dialog->findChildren<QComboBox*>(QString(), Qt::FindDirectChildrenOnly)) {
         if (comboBox->isHidden() ||
-            comboBox->geometry().bottom() < searchText->geometry().top() ||
-            comboBox->geometry().top() > searchText->geometry().bottom()) {
+            comboBox->geometry().bottom() >= dataLabel->geometry().top() ||
+            comboBox->geometry().right() < dataLabel->geometry().left() ||
+            comboBox->geometry().left() > dataLabel->geometry().right()) {
             continue;
         }
         searchRowBottom = std::max(searchRowBottom, comboBox->geometry().bottom());
