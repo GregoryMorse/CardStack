@@ -274,64 +274,73 @@ private slots:
         QCOMPARE(loaded.cardAt(0).valueAt(0), QStringLiteral("Only Card"));
     }
 
+    void preservesBuiltInTemplateReportPresets_data()
+    {
+        QTest::addColumn<int>("templateIndex");
+        const QVector<DeckTemplate>& templates = builtInDeckTemplates();
+        for (int templateIndex = 0; templateIndex < templates.size(); ++templateIndex) {
+            QTest::newRow(qPrintable(templates.at(templateIndex).name)) << templateIndex;
+        }
+    }
+
     void preservesBuiltInTemplateReportPresets()
     {
-        for (const DeckTemplate& deckTemplate : builtInDeckTemplates()) {
-            QTemporaryDir directory;
-            QVERIFY2(directory.isValid(), qPrintable(deckTemplate.name));
-            const Deck expected = createDeckFromTemplate(deckTemplate);
-            const QString path = directory.filePath(QStringLiteral("template.cardstack"));
-            QString error;
-            SQLiteDeckStore writer;
-            QVERIFY2(writer.open(path, &error), qPrintable(error));
-            QVERIFY2(writer.saveDeck(expected, &error), qPrintable(QStringLiteral("%1: %2").arg(deckTemplate.name, error)));
-            writer.close();
+        QFETCH(int, templateIndex);
+        const DeckTemplate& deckTemplate = builtInDeckTemplates().at(templateIndex);
+        QTemporaryDir directory;
+        QVERIFY2(directory.isValid(), qPrintable(deckTemplate.name));
+        const Deck expected = createDeckFromTemplate(deckTemplate);
+        const QString path = directory.filePath(QStringLiteral("template.cardstack"));
+        QString error;
+        SQLiteDeckStore writer;
+        QVERIFY2(writer.open(path, &error), qPrintable(error));
+        QVERIFY2(writer.saveDeck(expected, &error), qPrintable(QStringLiteral("%1: %2").arg(deckTemplate.name, error)));
+        writer.close();
 
-            Deck loaded;
-            SQLiteDeckStore reader;
-            QVERIFY2(reader.open(path, &error), qPrintable(error));
-            QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(QStringLiteral("%1: %2").arg(deckTemplate.name, error)));
-            QCOMPARE(loaded.name(), expected.name());
-            QCOMPARE(loaded.fieldCount(), expected.fieldCount());
-            QCOMPARE(loaded.cardTemplateLayout(), expected.cardTemplateLayout());
-            QCOMPARE(loaded.reportCount(), expected.reportCount());
-            for (int fieldIndex = 0; fieldIndex < expected.fieldCount(); ++fieldIndex) {
-                const FieldDefinition& actual = loaded.fieldAt(fieldIndex);
-                const FieldDefinition& oracle = expected.fieldAt(fieldIndex);
-                QCOMPARE(actual.name(), oracle.name());
-                QCOMPARE(actual.type(), oracle.type());
-                QCOMPARE(actual.maxLength(), oracle.maxLength());
-                QCOMPARE(actual.showName(), oracle.showName());
-                QCOMPARE(actual.isPhone(), oracle.isPhone());
-                QCOMPARE(actual.legacyDescriptor(), oracle.legacyDescriptor());
-                QCOMPARE(actual.displayWidth(), oracle.displayWidth());
-            }
-            for (int reportIndex = 0; reportIndex < expected.reportCount(); ++reportIndex) {
-                const ReportDefinition& actual = loaded.reportAt(reportIndex);
-                const ReportDefinition& oracle = expected.reportAt(reportIndex);
-                QCOMPARE(actual.name, oracle.name);
-                QCOMPARE(actual.formatMagic, oracle.formatMagic);
-                QCOMPARE(actual.formType, oracle.formType);
-                QCOMPARE(actual.formWidth, oracle.formWidth);
-                QCOMPARE(actual.formHeight, oracle.formHeight);
-                QCOMPARE(actual.rows, oracle.rows);
-                QCOMPARE(actual.columns, oracle.columns);
-                QCOMPARE(actual.frames.size(), oracle.frames.size());
-                for (int frameIndex = 0; frameIndex < oracle.frames.size(); ++frameIndex) {
-                    const ReportFrameDefinition& actualFrame = actual.frames.at(frameIndex);
-                    const ReportFrameDefinition& oracleFrame = oracle.frames.at(frameIndex);
-                    QCOMPARE(actualFrame.bounds, oracleFrame.bounds);
-                    QCOMPARE(actualFrame.text, oracleFrame.text);
-                    QCOMPARE(actualFrame.kind, oracleFrame.kind);
-                    QCOMPARE(actualFrame.printEntireContentsFlag, oracleFrame.printEntireContentsFlag);
-                    QCOMPARE(actualFrame.validationFlags, oracleFrame.validationFlags);
-                    QCOMPARE(actualFrame.styleFlags, oracleFrame.styleFlags);
-                    QCOMPARE(actualFrame.lineBoxShape, oracleFrame.lineBoxShape);
-                    QCOMPARE(actualFrame.lineStyle, oracleFrame.lineStyle);
-                    QCOMPARE(actualFrame.fillPattern, oracleFrame.fillPattern);
-                    QCOMPARE(actualFrame.cornerRadius, oracleFrame.cornerRadius);
-                    QCOMPARE(actualFrame.legacyDescriptor, oracleFrame.legacyDescriptor);
-                }
+        Deck loaded;
+        SQLiteDeckStore reader;
+        QVERIFY2(reader.open(path, &error), qPrintable(error));
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(QStringLiteral("%1: %2").arg(deckTemplate.name, error)));
+        QCOMPARE(loaded.name(), expected.name());
+        QCOMPARE(loaded.fieldCount(), expected.fieldCount());
+        QCOMPARE(loaded.cardTemplateLayout(), expected.cardTemplateLayout());
+        QCOMPARE(loaded.reportCount(), expected.reportCount());
+        for (int fieldIndex = 0; fieldIndex < expected.fieldCount(); ++fieldIndex) {
+            const FieldDefinition& actual = loaded.fieldAt(fieldIndex);
+            const FieldDefinition& oracle = expected.fieldAt(fieldIndex);
+            QCOMPARE(actual.name(), oracle.name());
+            QCOMPARE(actual.type(), oracle.type());
+            QCOMPARE(actual.maxLength(), oracle.maxLength());
+            QCOMPARE(actual.showName(), oracle.showName());
+            QCOMPARE(actual.isPhone(), oracle.isPhone());
+            QCOMPARE(actual.legacyDescriptor(), oracle.legacyDescriptor());
+            QCOMPARE(actual.displayWidth(), oracle.displayWidth());
+        }
+        for (int reportIndex = 0; reportIndex < expected.reportCount(); ++reportIndex) {
+            const ReportDefinition& actual = loaded.reportAt(reportIndex);
+            const ReportDefinition& oracle = expected.reportAt(reportIndex);
+            QCOMPARE(actual.name, oracle.name);
+            QCOMPARE(actual.formatMagic, oracle.formatMagic);
+            QCOMPARE(actual.formType, oracle.formType);
+            QCOMPARE(actual.formWidth, oracle.formWidth);
+            QCOMPARE(actual.formHeight, oracle.formHeight);
+            QCOMPARE(actual.rows, oracle.rows);
+            QCOMPARE(actual.columns, oracle.columns);
+            QCOMPARE(actual.frames.size(), oracle.frames.size());
+            for (int frameIndex = 0; frameIndex < oracle.frames.size(); ++frameIndex) {
+                const ReportFrameDefinition& actualFrame = actual.frames.at(frameIndex);
+                const ReportFrameDefinition& oracleFrame = oracle.frames.at(frameIndex);
+                QCOMPARE(actualFrame.bounds, oracleFrame.bounds);
+                QCOMPARE(actualFrame.text, oracleFrame.text);
+                QCOMPARE(actualFrame.kind, oracleFrame.kind);
+                QCOMPARE(actualFrame.printEntireContentsFlag, oracleFrame.printEntireContentsFlag);
+                QCOMPARE(actualFrame.validationFlags, oracleFrame.validationFlags);
+                QCOMPARE(actualFrame.styleFlags, oracleFrame.styleFlags);
+                QCOMPARE(actualFrame.lineBoxShape, oracleFrame.lineBoxShape);
+                QCOMPARE(actualFrame.lineStyle, oracleFrame.lineStyle);
+                QCOMPARE(actualFrame.fillPattern, oracleFrame.fillPattern);
+                QCOMPARE(actualFrame.cornerRadius, oracleFrame.cornerRadius);
+                QCOMPARE(actualFrame.legacyDescriptor, oracleFrame.legacyDescriptor);
             }
         }
     }
