@@ -15,7 +15,7 @@ constexpr quint16 LegacyReportFrameSignature = 0xabcd;
 constexpr int BuiltInReportFrameCoordinateScale = 10;
 constexpr int StandardReportPageWidthMils = 8500;
 constexpr int StandardReportPageHeightMils = 11000;
-constexpr int StandardReportMarginMils = 500;
+constexpr int StandardReportPaperStyleId = 10551;
 constexpr int StandardReportFieldLeftMils = 500;
 constexpr int StandardReportFieldTopMils = 950;
 constexpr int StandardReportFieldWidthMils = 3600;
@@ -131,10 +131,14 @@ ReportDefinition standardReportShell(
     report.formHeight = StandardReportPageHeightMils;
     report.rows = 1;
     report.columns = 1;
-    report.marginLeft = StandardReportMarginMils;
-    report.marginTop = StandardReportMarginMils;
-    report.marginRight = StandardReportMarginMils;
-    report.marginBottom = StandardReportMarginMils;
+    report.marginLeft = 0;
+    report.marginTop = 0;
+    report.marginRight = 0;
+    report.marginBottom = 0;
+    report.paperStyleId = StandardReportPaperStyleId;
+    report.pageWidth = StandardReportPageWidthMils;
+    report.pageHeight = StandardReportPageHeightMils;
+    report.orientation = 0;
     applyDefaultReportFonts(deck, &report, sourceReportIndex);
     return report;
 }

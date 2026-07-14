@@ -4,9 +4,11 @@
 #include "DeckMerge.h"
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QClipboard>
 #include <QDir>
 #include <QFileInfo>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -285,6 +287,14 @@ private slots:
 
         auto* tableView = workspace.findChild<QTableView*>(QStringLiteral("deckTableView"));
         QVERIFY(tableView != nullptr);
+        QVERIFY(!tableView->horizontalHeader()->isHidden());
+        QVERIFY(!tableView->verticalHeader()->isHidden());
+        QVERIFY(!tableView->alternatingRowColors());
+        QCOMPARE(tableView->model()->headerData(0, Qt::Horizontal).toString(), QStringLiteral("Short"));
+        QCOMPARE(tableView->model()->headerData(0, Qt::Vertical).toInt(), 1);
+        auto* corner = tableView->findChild<QAbstractButton*>(QStringLiteral("deckTableCornerButton"));
+        QVERIFY(corner != nullptr);
+        QCOMPARE(corner->text(), QStringLiteral("#"));
         QVERIFY(tableView->model()->setData(tableView->model()->index(0, 0), QStringLiteral("TableTooLong"), Qt::EditRole));
 
         QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Table"));

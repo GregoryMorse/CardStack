@@ -1484,10 +1484,13 @@ private slots:
 
         const ReportDefinition report = designer->report();
         QCOMPARE(report.formType, ReportFormType::Report);
-        QCOMPARE(report.marginLeft, 500);
-        QCOMPARE(report.marginTop, 500);
-        QCOMPARE(report.marginRight, 500);
-        QCOMPARE(report.marginBottom, 500);
+        QCOMPARE(report.marginLeft, 0);
+        QCOMPARE(report.marginTop, 0);
+        QCOMPARE(report.marginRight, 0);
+        QCOMPARE(report.marginBottom, 0);
+        QCOMPARE(report.paperStyleId, 10553);
+        QCOMPARE(report.pageWidth, 8500);
+        QCOMPARE(report.pageHeight, 14000);
 
         const QSet<int> commandIds = commandIdsFromMenuBar(window.menuBar());
         QVERIFY(commandIds.contains(UiIds::Command::FileSaveReport));
@@ -1532,6 +1535,13 @@ private slots:
         QCOMPARE(report.formHeight, 14000);
         QCOMPARE(report.rows, 1);
         QCOMPARE(report.columns, 1);
+        QCOMPARE(report.paperStyleId, 10553);
+        QCOMPARE(report.pageWidth, 8500);
+        QCOMPARE(report.pageHeight, 14000);
+        QCOMPARE(report.marginLeft, 0);
+        QCOMPARE(report.marginTop, 0);
+        QCOMPARE(report.marginRight, 0);
+        QCOMPARE(report.marginBottom, 0);
     }
 
     void newReportCustomFormUpdatesDefineFormPreviewState()
@@ -1679,15 +1689,15 @@ private slots:
         QVERIFY2(SQLitePackageStore::loadReportPackage(filePath, &reports, &packageName, &error), qPrintable(error));
         QCOMPARE(reports.size(), 1);
         QCOMPARE(packageName, reports.first().name);
-        QCOMPARE(reports.first().marginLeft, 500);
+        QCOMPARE(reports.first().marginLeft, 0);
         const ReportFrameDefinition persistedToolbarFrame = reports.first().frames.last();
         QCOMPARE(persistedToolbarFrame.kind, ReportFrameKind::LineOrBox);
         QCOMPARE(persistedToolbarFrame.lineStyle, toolbarFrame.lineStyle);
         QCOMPARE(persistedToolbarFrame.fillPattern, toolbarFrame.fillPattern);
         QCOMPARE(persistedToolbarFrame.cornerRadius, toolbarFrame.cornerRadius);
-        QCOMPARE(reports.first().marginTop, 500);
-        QCOMPARE(reports.first().marginRight, 500);
-        QCOMPARE(reports.first().marginBottom, 500);
+        QCOMPARE(reports.first().marginTop, 0);
+        QCOMPARE(reports.first().marginRight, 0);
+        QCOMPARE(reports.first().marginBottom, 0);
     }
 
     void closingDirtyReportDesignerDiscardsWithoutHeapCorruption()

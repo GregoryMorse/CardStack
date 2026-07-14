@@ -251,7 +251,13 @@ enum class PrintCardScope {
 
 constexpr int DefaultReportPageWidthMils = 8500;
 constexpr int DefaultReportPageHeightMils = 11000;
-constexpr int DefaultReportMarginMils = 500;
+constexpr int DefaultReportPaperStyleId = 10551;
+constexpr int LabelFormNameFirstId = 10300;
+constexpr int LabelFormNameLastId = 10436;
+constexpr int CardFormNameFirstId = 10450;
+constexpr int CardFormNameLastId = 10510;
+constexpr int ReportFormNameFirstId = 10550;
+constexpr int ReportFormNameLastId = 10560;
 constexpr int DefaultCardFormWidthMils = 5000;
 constexpr int DefaultCardFormHeightMils = 3000;
 constexpr int DefaultLabelFormWidthMils = 2625;
@@ -278,17 +284,21 @@ constexpr int HtmlDialogHeightPx = 620;
 
 struct ReportFormPreset {
     ReportFormType type = ReportFormType::Report;
-    const char* label = "";
+    QString label;
     int formWidth = DefaultReportPageWidthMils;
     int formHeight = DefaultReportPageHeightMils;
     int rows = 1;
     int columns = 1;
-    int marginLeft = DefaultReportMarginMils;
-    int marginTop = DefaultReportMarginMils;
-    int marginRight = DefaultReportMarginMils;
-    int marginBottom = DefaultReportMarginMils;
+    int marginLeft = 0;
+    int marginTop = 0;
+    int marginRight = 0;
+    int marginBottom = 0;
     int horizontalGutter = 0;
     int verticalGutter = 0;
+    int paperStyleId = DefaultReportPaperStyleId;
+    int pageWidth = DefaultReportPageWidthMils;
+    int pageHeight = DefaultReportPageHeightMils;
+    int orientation = 0;
 };
 
 class IndexBarContainer final : public QWidget {
@@ -335,32 +345,58 @@ protected:
 
 QVector<ReportFormPreset> reportFormPresets(ReportFormType type)
 {
+    int firstNameId = ReportFormNameFirstId;
+    int lastNameId = ReportFormNameLastId;
     if (type == ReportFormType::Card) {
-        return {
-            {ReportFormType::Card, QT_TR_NOOP("Index 5 x 3 (pin)"), 5000, 3000, 1, 1, 0, 0, 0, 0, 0, 0},
-            {ReportFormType::Card, QT_TR_NOOP("Post Card 6 x 4 (laser)"), 6000, 4000, 2, 1, 1500, 1250, 1500, 1250, 0, 0},
-            {ReportFormType::Card, QT_TR_NOOP("Envelope #10 9½ x 4⅛ (laser)"), 9500, 4125, 1, 1, 0, 0, 0, 0, 0, 0},
-            {ReportFormType::Card, QT_TR_NOOP("Rotary Index 5 x 3 (laser)"), 5000, 3000, 3, 1, 1000, 1750, 1000, 1750, 0, 0},
-        };
+        firstNameId = CardFormNameFirstId;
+        lastNameId = CardFormNameLastId;
+    } else if (type == ReportFormType::Label) {
+        firstNameId = LabelFormNameFirstId;
+        lastNameId = LabelFormNameLastId;
     }
 
-    if (type == ReportFormType::Label) {
-        return {
-            {ReportFormType::Label, QT_TR_NOOP("Address 2⅝ x 1 3-across (laser)"), 2833, 1000, 10, 3, 500, 500, 500, 500, 0, 0},
-            {ReportFormType::Label, QT_TR_NOOP("Address 4¼ x 1⅓ 2-across (laser)"), 4250, 1333, 7, 2, 834, 835, 834, 835, 0, 0},
-            {ReportFormType::Label, QT_TR_NOOP("Shipping 4 x 2 2-across (laser)"), 4000, 2000, 5, 2, 500, 500, 500, 500, 188, 0},
-            {ReportFormType::Label, QT_TR_NOOP("File Folder 3 7⁄16 x ⅔ 2-across (laser)"), 3438, 667, 15, 2, 495, 500, 495, 500, 562, 0},
-            {ReportFormType::Label, QT_TR_NOOP("Address 3 x 15⁄16 (pin)"), 3000, 938, 1, 1, 62, 500, 62, 500, 0, 0},
-        };
-    }
+    QVector<ReportFormPreset> presets;
+    for (int nameId = firstNameId; nameId <= lastNameId; nameId += 2) {
+        const QString label = UiBuilder::resourceString(nameId);
+        const QStringList parts = UiBuilder::resourceString(nameId + 1)
+                                      .simplified()
+                                      .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (label.isEmpty() || parts.size() < 10) {
+            continue;
+        }
 
-    return {
-        {ReportFormType::Report, QT_TR_NOOP("Letter (portrait)\t8½ x 11"), 8500, 11000, 1, 1, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, 0, 0},
-        {ReportFormType::Report, QT_TR_NOOP("Legal\t8½ x 14"), 8500, 14000, 1, 1, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, 0, 0},
-        {ReportFormType::Report, QT_TR_NOOP("Note (portrait)\t5½ x 8½"), 5500, 8500, 1, 1, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, 0, 0},
-        {ReportFormType::Report, QT_TR_NOOP("Letter (landscape)\t11 x 8½"), 11000, 8500, 1, 1, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, 0, 0},
-        {ReportFormType::Report, QT_TR_NOOP("Note (landscape)\t8½ x 5½"), 8500, 5500, 1, 1, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, DefaultReportMarginMils, 0, 0},
-    };
+        QVector<int> values;
+        values.reserve(parts.size());
+        bool valid = true;
+        for (const QString& part : parts) {
+            bool ok = false;
+            values.append(part.toInt(&ok));
+            valid = valid && ok;
+        }
+        if (!valid) {
+            continue;
+        }
+
+        ReportFormPreset preset;
+        preset.type = type;
+        preset.label = label;
+        preset.formHeight = values.at(0);
+        preset.formWidth = values.at(1);
+        preset.marginLeft = values.at(2);
+        preset.marginRight = values.at(3);
+        preset.marginTop = values.at(4);
+        preset.marginBottom = values.at(5);
+        preset.columns = values.at(6);
+        preset.rows = values.at(7);
+        preset.pageHeight = values.at(8);
+        preset.pageWidth = values.at(9);
+        preset.orientation = values.value(10);
+        preset.horizontalGutter = values.value(11);
+        preset.verticalGutter = values.value(12);
+        preset.paperStyleId = nameId + 1;
+        presets.append(std::move(preset));
+    }
+    return presets;
 }
 
 void applyReportFormPreset(ReportDefinition* report, const ReportFormPreset& preset)
@@ -380,6 +416,10 @@ void applyReportFormPreset(ReportDefinition* report, const ReportFormPreset& pre
     report->marginBottom = preset.marginBottom;
     report->horizontalGutter = preset.horizontalGutter;
     report->verticalGutter = preset.verticalGutter;
+    report->paperStyleId = preset.paperStyleId;
+    report->pageWidth = preset.pageWidth;
+    report->pageHeight = preset.pageHeight;
+    report->orientation = preset.orientation;
 }
 
 bool isDeckCommand(int commandId)
@@ -875,10 +915,14 @@ ReportDefinition createDefaultReportDefinition(const Deck& deck, QString name = 
     report.formHeight = DefaultReportPageHeightMils;
     report.rows = 1;
     report.columns = 1;
-    report.marginLeft = DefaultReportMarginMils;
-    report.marginTop = DefaultReportMarginMils;
-    report.marginRight = DefaultReportMarginMils;
-    report.marginBottom = DefaultReportMarginMils;
+    report.marginLeft = 0;
+    report.marginTop = 0;
+    report.marginRight = 0;
+    report.marginBottom = 0;
+    report.paperStyleId = DefaultReportPaperStyleId;
+    report.pageWidth = DefaultReportPageWidthMils;
+    report.pageHeight = DefaultReportPageHeightMils;
+    report.orientation = 0;
     applyDefaultReportFonts(deck, &report);
 
     ReportFrameDefinition title;
@@ -2137,13 +2181,7 @@ void MainWindow::handleUiAction()
     case Command::FilePrinterSetup:
     {
         QPrinter printer(QPrinter::HighResolution);
-        printer.setPageMargins(
-            QMarginsF(
-                DefaultReportMarginMils / 1000.0,
-                DefaultReportMarginMils / 1000.0,
-                DefaultReportMarginMils / 1000.0,
-                DefaultReportMarginMils / 1000.0),
-            QPageLayout::Inch);
+        printer.setFullPage(true);
         QPageSetupDialog pageSetup(&printer, this);
         pageSetup.exec();
         return;
@@ -2886,6 +2924,7 @@ void MainWindow::handlePrintReportCommand()
     const Deck deckSnapshot = workspace->deck();
     const int currentCardIndex = workspace->currentCardIndex();
     auto printer = std::make_shared<QPrinter>(QPrinter::HighResolution);
+    printer->setFullPage(true);
     if (report.formWidth > report.formHeight) {
         printer->setPageOrientation(QPageLayout::Landscape);
     }
@@ -2913,13 +2952,7 @@ void MainWindow::handlePrintReportCommand()
     }
     if (auto* setupButton = uiControl<QAbstractButton>(*optionsDialog, Control::PrintPrinterSetup)) {
         connect(setupButton, &QAbstractButton::clicked, optionsDialog.get(), [this, printer]() {
-            printer->setPageMargins(
-                QMarginsF(
-                    DefaultReportMarginMils / 1000.0,
-                    DefaultReportMarginMils / 1000.0,
-                    DefaultReportMarginMils / 1000.0,
-                    DefaultReportMarginMils / 1000.0),
-                QPageLayout::Inch);
+            printer->setFullPage(true);
             QPageSetupDialog pageSetup(printer.get(), this);
             pageSetup.exec();
         });
@@ -4384,23 +4417,24 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             presetOrder.end(),
             [this, &presets](int left, int right) {
                 const QString leftName =
-                    tr(presets.at(left).label).section(QLatin1Char('\t'), 0, 0);
+                    presets.at(left).label.section(QLatin1Char('\t'), 0, 0);
                 const QString rightName =
-                    tr(presets.at(right).label).section(QLatin1Char('\t'), 0, 0);
+                    presets.at(right).label.section(QLatin1Char('\t'), 0, 0);
                 return QString::localeAwareCompare(leftName, rightName) < 0;
             });
         int firstColumnWidth = 0;
         for (const ReportFormPreset& preset : presets) {
-            const QString label = tr(preset.label);
+            const QString label = preset.label;
             firstColumnWidth = std::max(
                 firstColumnWidth,
                 list->fontMetrics().horizontalAdvance(label.section(QLatin1Char('\t'), 0, 0)));
         }
         for (int displayIndex = 0; displayIndex < presetOrder.size(); ++displayIndex) {
             const int index = presetOrder.at(displayIndex);
-            const QString label = tr(presets.at(index).label);
-            auto* item = new QListWidgetItem(label, list);
+            const QString label = presets.at(index).label;
+            auto* item = new QListWidgetItem(list);
             item->setData(Qt::UserRole, index);
+            item->setData(Qt::AccessibleTextRole, label);
             if (label.contains(QLatin1Char('\t'))) {
                 item->setSizeHint(QSize(0, list->fontMetrics().height() + 8));
                 auto* row = new QWidget(list);
@@ -4409,10 +4443,12 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 rowLayout->setSpacing(12);
                 auto* name = new QLabel(label.section(QLatin1Char('\t'), 0, 0), row);
                 name->setFixedWidth(firstColumnWidth);
-                auto* size = new QLabel(label.section(QLatin1Char('\t'), 1), row);
+                auto* size = new QLabel(label.section(QLatin1Char('\t'), 1, -1).simplified(), row);
                 rowLayout->addWidget(name);
                 rowLayout->addWidget(size, 1);
                 list->setItemWidget(item, row);
+            } else {
+                item->setText(label);
             }
         }
         if (list->count() > 0) {
@@ -4487,8 +4523,20 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         selectedType = ReportFormType::Report;
     }
 
+    const QVector<ReportFormPreset> selectedPresets = reportFormPresets(selectedType);
+    int selectedPresetIndex = 0;
+    if (list != nullptr && list->currentItem() != nullptr) {
+        selectedPresetIndex = list->currentItem()->data(Qt::UserRole).toInt();
+    }
+    if (selectedPresetIndex < 0 || selectedPresetIndex >= selectedPresets.size()) {
+        selectedPresetIndex = 0;
+    }
+    if (!useCustomForm && !selectedPresets.isEmpty()) {
+        const ReportFormPreset& selectedPreset = selectedPresets.at(selectedPresetIndex);
+        useCustomForm = selectedPreset.formWidth <= 0 || selectedPreset.formHeight <= 0;
+    }
+
     if (useCustomForm) {
-        selectedType = ReportFormType::Report;
         std::unique_ptr<QDialog> defineDialog = UiBuilder::createDialog(QStringLiteral("DEFINEFORM"), this, dialogContext());
         if (!defineDialog) {
             statusBar()->showMessage(tr("Define Form dialog is not available."), StatusMessageTimeoutMs);
@@ -4536,9 +4584,9 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 defineFormGroup->addButton(button, controlId);
             }
         }
-        setChecked(*defineDialog, Control::DefineFormCard, false);
-        setChecked(*defineDialog, Control::DefineFormLabel, false);
-        setChecked(*defineDialog, Control::DefineFormReport, true);
+        setChecked(*defineDialog, Control::DefineFormCard, selectedType == ReportFormType::Card);
+        setChecked(*defineDialog, Control::DefineFormLabel, selectedType == ReportFormType::Label);
+        setChecked(*defineDialog, Control::DefineFormReport, selectedType == ReportFormType::Report);
 
         auto* orientationGroup = new QButtonGroup(defineDialog.get());
         orientationGroup->setExclusive(true);
@@ -4717,7 +4765,7 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         updateDefineFormState();
 
         if (defineDialog->exec() != QDialog::Accepted) {
-            return false;
+            return configureReportForm(report);
         }
 
         ReportFormPreset preset;
@@ -4740,23 +4788,27 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         preset.marginBottom = formMeasureValue(*defineDialog, Control::DefineFormMarginBottom, 0);
         preset.horizontalGutter = formMeasureValue(*defineDialog, Control::DefineFormHorizontalGutter, 0);
         preset.verticalGutter = formMeasureValue(*defineDialog, Control::DefineFormVerticalGutter, 0);
+        preset.pageWidth = preset.marginLeft + preset.marginRight
+            + preset.columns * preset.formWidth
+            + std::max(0, preset.columns - 1) * preset.horizontalGutter;
+        preset.pageHeight = preset.marginTop + preset.marginBottom
+            + preset.rows * preset.formHeight
+            + std::max(0, preset.rows - 1) * preset.verticalGutter;
+        preset.orientation = preset.pageWidth > preset.pageHeight ? 1 : 0;
+        preset.paperStyleId = preset.type == ReportFormType::Card
+            ? CardFormNameLastId + 1
+            : preset.type == ReportFormType::Label
+                ? LabelFormNameLastId + 1
+                : ReportFormNameLastId + 1;
         applyReportFormPreset(report, preset);
         return true;
     }
 
-    const QVector<ReportFormPreset> presets = reportFormPresets(selectedType);
-    int presetIndex = 0;
-    if (list != nullptr && list->currentItem() != nullptr) {
-        presetIndex = list->currentItem()->data(Qt::UserRole).toInt();
-    }
-    if (presetIndex < 0 || presetIndex >= presets.size()) {
-        presetIndex = 0;
-    }
-    if (presets.isEmpty()) {
+    if (selectedPresets.isEmpty()) {
         return false;
     }
 
-    applyReportFormPreset(report, presets.at(presetIndex));
+    applyReportFormPreset(report, selectedPresets.at(selectedPresetIndex));
     return true;
 }
 

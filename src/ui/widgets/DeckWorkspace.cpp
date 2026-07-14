@@ -8,6 +8,7 @@
 #include "PhoneticSearch.h"
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QClipboard>
 #include <QFormLayout>
 #include <QFrame>
@@ -260,9 +261,25 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
         return setValueAt(row, fieldIndex, value, false);
     });
     m_tableView->setModel(m_tableModel);
-    m_tableView->setAlternatingRowColors(true);
+    m_tableView->setAlternatingRowColors(false);
     m_tableView->setSelectionBehavior(QAbstractItemView::SelectItems);
     m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_tableView->horizontalHeader()->setVisible(true);
+    m_tableView->verticalHeader()->setVisible(true);
+    m_tableView->setCornerButtonEnabled(true);
+    for (QAbstractButton* button : m_tableView->findChildren<QAbstractButton*>()) {
+        if (button->inherits("QTableCornerButton")) {
+            button->setObjectName(QStringLiteral("deckTableCornerButton"));
+            button->setText(QStringLiteral("#"));
+            auto* cornerLayout = new QVBoxLayout(button);
+            cornerLayout->setContentsMargins(0, 0, 0, 0);
+            auto* cornerLabel = new QLabel(QStringLiteral("#"), button);
+            cornerLabel->setAlignment(Qt::AlignCenter);
+            cornerLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+            cornerLayout->addWidget(cornerLabel);
+            break;
+        }
+    }
     m_tableView->horizontalHeader()->setStretchLastSection(false);
     connect(m_tableView->horizontalHeader(),
             &QHeaderView::sectionResized,
@@ -755,9 +772,23 @@ void DeckWorkspace::applyStoredAppearance()
     };
 
     QPalette tablePalette = m_tableView->palette();
-    tablePalette.setColor(QPalette::Text, roleColor(DeckColorRole::IndexForeground, QPalette::Text));
-    tablePalette.setColor(QPalette::Base, roleColor(DeckColorRole::IndexBackground, QPalette::Base));
+    tablePalette.setColor(QPalette::Text, roleColor(DeckColorRole::DataForeground, QPalette::Text));
+    tablePalette.setColor(QPalette::Base, roleColor(DeckColorRole::DataBackground, QPalette::Base));
+    tablePalette.setColor(QPalette::AlternateBase, roleColor(DeckColorRole::DataBackground, QPalette::AlternateBase));
     m_tableView->setPalette(tablePalette);
+    QPalette headerPalette = m_tableView->horizontalHeader()->palette();
+    headerPalette.setColor(QPalette::Button, roleColor(DeckColorRole::IndexBackground, QPalette::Button));
+    headerPalette.setColor(QPalette::Window, roleColor(DeckColorRole::IndexBackground, QPalette::Window));
+    headerPalette.setColor(QPalette::ButtonText, roleColor(DeckColorRole::IndexForeground, QPalette::ButtonText));
+    headerPalette.setColor(QPalette::WindowText, roleColor(DeckColorRole::IndexForeground, QPalette::WindowText));
+    m_tableView->horizontalHeader()->setPalette(headerPalette);
+    m_tableView->verticalHeader()->setPalette(headerPalette);
+    if (auto* corner = m_tableView->findChild<QAbstractButton*>(QStringLiteral("deckTableCornerButton"))) {
+        corner->setPalette(headerPalette);
+        for (QLabel* label : corner->findChildren<QLabel*>()) {
+            label->setPalette(headerPalette);
+        }
+    }
     for (QWidget* editor : m_valueEditors) {
         QPalette editorPalette = editor->palette();
         editorPalette.setColor(QPalette::Text, roleColor(DeckColorRole::DataForeground, QPalette::Text));

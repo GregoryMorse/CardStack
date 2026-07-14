@@ -163,6 +163,13 @@ private slots:
         QCOMPARE(reports.at(1).name, QStringLiteral("Default Row Report"));
         QCOMPARE(reports.at(0).formType, ReportFormType::Report);
         QCOMPARE(reports.at(1).formType, ReportFormType::Report);
+        QCOMPARE(reports.at(0).paperStyleId, 10551);
+        QCOMPARE(reports.at(0).pageWidth, 8500);
+        QCOMPARE(reports.at(0).pageHeight, 11000);
+        QCOMPARE(reports.at(0).marginLeft, 0);
+        QCOMPARE(reports.at(0).marginTop, 0);
+        QCOMPARE(reports.at(0).marginRight, 0);
+        QCOMPARE(reports.at(0).marginBottom, 0);
         QCOMPARE(reports.at(0).frames.size(), deck.fieldCount() + 2);
         QCOMPARE(reports.at(1).frames.size(), deck.fieldCount() + 2);
         QCOMPARE(reports.at(0).frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Name")});

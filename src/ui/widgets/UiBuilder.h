@@ -39,12 +39,16 @@ public:
 
     static std::unique_ptr<QDialog> createDialog(
         const QString& dialogName,
-        QWidget* parent = nullptr,
-        const DialogContext& context = {});
+        QWidget* parent = nullptr);
+    static std::unique_ptr<QDialog> createDialog(
+        const QString& dialogName,
+        QWidget* parent,
+        const DialogContext& context);
     static QWidget* controlById(QWidget* parent, int controlId);
     static void setColorDialogState(QDialog* dialog, const QStringList& colors, bool useSystemColors);
     static QStringList colorDialogColors(const QDialog* dialog);
     static bool colorDialogUsesSystemColors(const QDialog* dialog);
+    static QString resourceString(int stringId);
     static QStringList dialogNames();
 };
 

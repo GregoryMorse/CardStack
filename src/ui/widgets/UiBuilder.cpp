@@ -468,7 +468,7 @@ public:
         setFocusPolicy(Qt::StrongFocus);
         setAutoFillBackground(true);
         setProperty("paletteColorCount", 48);
-        setProperty("hasDeckPreview", true);
+        setProperty("hasDeckPreview", false);
     }
 
     void setSelectedRole(int role)
@@ -481,6 +481,7 @@ public:
     {
         m_useSystemColors = useSystemColors;
         update();
+        notifyStateChanged();
     }
 
     void setCustomColors(const QStringList& colors)
@@ -492,6 +493,18 @@ public:
             }
         }
         update();
+        notifyStateChanged();
+    }
+
+    void setStateChangedCallback(std::function<void()> callback)
+    {
+        m_stateChanged = std::move(callback);
+        notifyStateChanged();
+    }
+
+    bool usesSystemColors() const
+    {
+        return m_useSystemColors;
     }
 
     QStringList customColors() const
@@ -511,7 +524,7 @@ protected:
         painter.setPen(palette().shadow().color());
         painter.drawRect(rect().adjusted(0, 0, -1, -1));
 
-        const QRect paletteRect = rect().adjusted(8, 8, -8, -72);
+        const QRect paletteRect = rect().adjusted(8, 8, -8, -8);
         const int swatchWidth = std::max(1, paletteRect.width() / 8);
         const int swatchHeight = std::max(1, paletteRect.height() / 6);
         const QVector<QColor>& colors = paletteColors();
@@ -531,30 +544,6 @@ protected:
             }
         }
 
-        const QRect preview = rect().adjusted(8, height() - 64, -8, -8);
-        painter.fillRect(preview, colorForRole(static_cast<int>(DeckColorRole::CardBackground)));
-        painter.setPen(QColor(QStringLiteral("#707070")));
-        painter.drawRect(preview.adjusted(0, 0, -1, -1));
-
-        const QRect indexPreview(preview.left() + 5, preview.top() + 4, preview.width() - 10, 15);
-        painter.fillRect(indexPreview, colorForRole(static_cast<int>(DeckColorRole::IndexBackground)));
-        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::IndexForeground)));
-        painter.drawText(indexPreview.adjusted(4, 0, -4, 0), Qt::AlignVCenter, tr("Index"));
-
-        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::NameForeground)));
-        painter.drawText(QRect(preview.left() + 6, preview.top() + 24, 52, 20),
-                         Qt::AlignRight | Qt::AlignVCenter,
-                         tr("Name"));
-        const QRect dataPreview(preview.left() + 64, preview.top() + 24,
-                                std::max(20, preview.width() - 70), 20);
-        painter.fillRect(dataPreview, colorForRole(static_cast<int>(DeckColorRole::DataBackground)));
-        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::DataForeground)));
-        painter.drawText(dataPreview.adjusted(4, 0, -4, 0), Qt::AlignVCenter, tr("Sample data"));
-        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::TextForeground)));
-        painter.drawText(QRect(preview.left() + 6, preview.bottom() - 14,
-                               preview.width() - 12, 12),
-                         Qt::AlignVCenter,
-                         tr("Text"));
     }
 
     void mousePressEvent(QMouseEvent* event) override
@@ -569,6 +558,7 @@ protected:
         }
         m_customColors[m_selectedRole] = paletteColors().at(paletteIndex);
         update();
+        notifyStateChanged();
     }
 
 private:
@@ -591,7 +581,7 @@ private:
 
     int paletteIndexAt(const QPoint& point) const
     {
-        const QRect paletteRect = rect().adjusted(8, 8, -8, -72);
+        const QRect paletteRect = rect().adjusted(8, 8, -8, -8);
         if (!paletteRect.contains(point)) {
             return -1;
         }
@@ -625,6 +615,81 @@ private:
 
     QVector<QColor> m_customColors;
     int m_selectedRole = 5;
+    bool m_useSystemColors = false;
+    std::function<void()> m_stateChanged;
+
+    void notifyStateChanged()
+    {
+        if (m_stateChanged) {
+            m_stateChanged();
+        }
+    }
+};
+
+class DeckColorPreview final : public QWidget {
+public:
+    explicit DeckColorPreview(QWidget* parent = nullptr)
+        : QWidget(parent)
+    {
+        setAutoFillBackground(true);
+        setObjectName(QStringLiteral("deckColorPreview"));
+        setProperty("hasDeckPreview", true);
+    }
+
+    void setState(const QStringList& colors, bool useSystemColors)
+    {
+        m_colors = colors;
+        m_useSystemColors = useSystemColors;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        const QRect preview = rect().adjusted(1, 1, -2, -2);
+        painter.fillRect(preview, colorForRole(DeckColorRole::CardBackground));
+        painter.setPen(QColor(QStringLiteral("#707070")));
+        painter.drawRect(preview);
+
+        const QRect indexPreview(preview.left() + 4, preview.top() + 4, preview.width() - 8, 15);
+        painter.fillRect(indexPreview, colorForRole(DeckColorRole::IndexBackground));
+        painter.setPen(colorForRole(DeckColorRole::IndexForeground));
+        painter.drawText(indexPreview.adjusted(3, 0, -3, 0), Qt::AlignVCenter, tr("Index"));
+
+        const int dataTop = indexPreview.bottom() + 4;
+        painter.setPen(colorForRole(DeckColorRole::NameForeground));
+        painter.drawText(QRect(preview.left() + 4, dataTop, 38, 18),
+                         Qt::AlignRight | Qt::AlignVCenter, tr("Name"));
+        const QRect dataPreview(preview.left() + 46, dataTop,
+                                std::max(16, preview.width() - 51), 18);
+        painter.fillRect(dataPreview, colorForRole(DeckColorRole::DataBackground));
+        painter.setPen(colorForRole(DeckColorRole::DataForeground));
+        painter.drawText(dataPreview.adjusted(3, 0, -3, 0), Qt::AlignVCenter, tr("Data"));
+        painter.setPen(colorForRole(DeckColorRole::TextForeground));
+        painter.drawText(QRect(preview.left() + 5, preview.bottom() - 17,
+                               preview.width() - 10, 14), Qt::AlignVCenter, tr("Text"));
+    }
+
+private:
+    QColor colorForRole(DeckColorRole role) const
+    {
+        if (m_useSystemColors) {
+            if (role == DeckColorRole::IndexBackground) {
+                return QColor(QStringLiteral("#c0c0c0"));
+            }
+            if (role == DeckColorRole::DataBackground || role == DeckColorRole::CardBackground) {
+                return QColor(QStringLiteral("#ffffff"));
+            }
+            return QColor(QStringLiteral("#000000"));
+        }
+        const int index = static_cast<int>(role);
+        return index >= 0 && index < m_colors.size() && QColor::isValidColorName(m_colors.at(index))
+            ? QColor(m_colors.at(index))
+            : QColor(QStringLiteral("#000000"));
+    }
+
+    QStringList m_colors;
     bool m_useSystemColors = false;
 };
 
@@ -3898,7 +3963,8 @@ void initializeDesignReportsDialog(QDialog* dialog, const UiBuilder::DialogConte
             : context.reports;
 
         for (const auto& report : reports) {
-            auto* item = new QListWidgetItem(report.description, reportList);
+            auto* item = new QListWidgetItem(reportList);
+            item->setData(Qt::AccessibleTextRole, report.description);
             item->setSizeHint(QSize(0, reportList->fontMetrics().height() + 8));
             auto* row = new QWidget(reportList);
             auto* rowLayout = new QHBoxLayout(row);
@@ -3990,6 +4056,14 @@ void initializeColorDialog(QDialog* dialog)
     }
 
     auto* swatchGrid = dynamic_cast<ColorSwatchGrid*>(findUiControl<QWidget>(dialog, Control::ColorCustomGrid));
+    QWidget* previewPlaceholder = findUiControl<QWidget>(dialog, Control::ColorPreview);
+    DeckColorPreview* deckPreview = nullptr;
+    if (previewPlaceholder != nullptr) {
+        deckPreview = new DeckColorPreview(dialog);
+        deckPreview->setGeometry(previewPlaceholder->geometry());
+        previewPlaceholder->hide();
+        deckPreview->show();
+    }
     if (swatchGrid != nullptr) {
         const QRect oldGeometry = swatchGrid->geometry();
         const int desiredWidth = std::max(oldGeometry.width(), 360);
@@ -4000,7 +4074,9 @@ void initializeColorDialog(QDialog* dialog)
             const QList<QWidget*> controls =
                 dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
             for (QWidget* control : controls) {
-                if (control != swatchGrid && control->y() >= oldGeometry.bottom()) {
+                if (control != swatchGrid && control != deckPreview
+                    && control->x() >= oldGeometry.x()
+                    && control->y() >= oldGeometry.bottom()) {
                     control->move(control->x(), control->y() + heightDelta);
                 }
             }
@@ -4008,6 +4084,11 @@ void initializeColorDialog(QDialog* dialog)
                            dialog->height() + heightDelta);
         }
         swatchGrid->setSelectedRole(roleCombo != nullptr ? roleCombo->currentIndex() : 5);
+        swatchGrid->setStateChangedCallback([swatchGrid, deckPreview]() {
+            if (deckPreview != nullptr) {
+                deckPreview->setState(swatchGrid->customColors(), swatchGrid->usesSystemColors());
+            }
+        });
     }
 
     if (roleCombo != nullptr && swatchGrid != nullptr) {
@@ -4395,6 +4476,11 @@ bool UiBuilder::populateMenuBar(
     return true;
 }
 
+std::unique_ptr<QDialog> UiBuilder::createDialog(const QString& dialogName, QWidget* parent)
+{
+    return createDialog(dialogName, parent, DialogContext{});
+}
+
 std::unique_ptr<QDialog> UiBuilder::createDialog(
     const QString& dialogName,
     QWidget* parent,
@@ -4490,6 +4576,11 @@ bool UiBuilder::colorDialogUsesSystemColors(const QDialog* dialog)
         return button->isChecked();
     }
     return true;
+}
+
+QString UiBuilder::resourceString(int stringId)
+{
+    return legacyString(stringId);
 }
 
 QStringList UiBuilder::dialogNames()

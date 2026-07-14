@@ -242,6 +242,7 @@ inline constexpr int ImportEditLength = 706;
 inline constexpr int ImportEditNotes = 707;
 
 inline constexpr int ColorCustomGrid = 950;
+inline constexpr int ColorPreview = 951;
 inline constexpr int ColorRoleCombo = 952;
 inline constexpr int ColorUseSystem = 953;
 

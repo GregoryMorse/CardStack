@@ -1112,18 +1112,23 @@ private slots:
         auto* roleCombo = qobject_cast<QComboBox*>(
             UiBuilder::controlById(dialog.get(), UiIds::Control::ColorRoleCombo));
         auto* swatchGrid = UiBuilder::controlById(dialog.get(), UiIds::Control::ColorCustomGrid);
+        auto* deckPreview = dialog->findChild<QWidget*>(QStringLiteral("deckColorPreview"));
         auto* useSystem = qobject_cast<QAbstractButton*>(
             UiBuilder::controlById(dialog.get(), UiIds::Control::ColorUseSystem));
 
         QVERIFY(roleCombo != nullptr);
         QVERIFY(swatchGrid != nullptr);
+        QVERIFY(deckPreview != nullptr);
         QVERIFY(useSystem != nullptr);
         QCOMPARE(roleCombo->count(), UiIds::StringId::ColorRoleLast - UiIds::StringId::ColorRoleFirst + 1);
         QCOMPARE(roleCombo->currentIndex(), 5);
         QVERIFY(useSystem->isCheckable());
         QVERIFY(!useSystem->isHidden());
         QCOMPARE(swatchGrid->property("paletteColorCount").toInt(), 48);
-        QVERIFY(swatchGrid->property("hasDeckPreview").toBool());
+        QVERIFY(!swatchGrid->property("hasDeckPreview").toBool());
+        QVERIFY(deckPreview->property("hasDeckPreview").toBool());
+        QCOMPARE(deckPreview->geometry().left(), roleCombo->geometry().left());
+        QVERIFY(deckPreview->geometry().right() < swatchGrid->geometry().left());
         roleCombo->setCurrentIndex(1);
         useSystem->setChecked(true);
         QCoreApplication::processEvents();
