@@ -2,6 +2,7 @@
 #include "LegacyOemCodec.h"
 #include "LegacyTemplateLayoutParser.h"
 #include "LegacyDeckAppearanceParser.h"
+#include "PhoneCallLog.h"
 
 #include "BtrieveAuditReader.h"
 
@@ -571,6 +572,13 @@ LegacyDeckReader::Result LegacyDeckReader::readDeck(const QString& filePath, con
                 mapped.btrieveMetadata.internalFixedRecordLength = audit.audit.physicalRecordLength;
                 mapped.btrieveMetadata.declaredRecordCount = audit.audit.declaredRecordCount;
                 applyLegacySecurityMetadata(&mapped, audit, password);
+                if (mapped.ok()) {
+                    QString warning;
+                    PhoneCallLog::importLegacySidecar(filePath, &mapped.deck, &warning);
+                    if (!warning.isEmpty()) {
+                        mapped.warningMessages.append(warning);
+                    }
+                }
                 return mapped;
             }
             result.errorMessage = extractionError.isEmpty() ? btrieve.errorMessage : extractionError;
@@ -586,6 +594,13 @@ LegacyDeckReader::Result LegacyDeckReader::readDeck(const QString& filePath, con
     mapped.btrieveMetadata = btrieve.metadata;
     mapped.rawRecords = btrieve.records;
     applyLegacySecurityMetadata(&mapped, audit, password);
+    if (mapped.ok()) {
+        QString warning;
+        PhoneCallLog::importLegacySidecar(filePath, &mapped.deck, &warning);
+        if (!warning.isEmpty()) {
+            mapped.warningMessages.append(warning);
+        }
+    }
     return mapped;
 }
 

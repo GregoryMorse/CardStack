@@ -5,6 +5,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace CardStack {
@@ -16,6 +17,7 @@ public:
         BtrieveFileSaverReader::Metadata btrieveMetadata;
         QVector<QByteArray> rawRecords;
         QString errorMessage;
+        QStringList warningMessages;
         bool legacyPasswordProtected = false;
         bool legacyDataEncrypted = false;
         bool legacyPasswordVerified = false;

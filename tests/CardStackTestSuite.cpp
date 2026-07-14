@@ -14,6 +14,7 @@ int runMainWindowActionTests(int argc, char** argv);
 int runMainWindowWorkflowTests(int argc, char** argv);
 int runDeckMergeTests(int argc, char** argv);
 int runDelimitedTextTests(int argc, char** argv);
+int runPhoneCallLogTests(int argc, char** argv);
 int runDeckTemplateTests(int argc, char** argv);
 int runLegacyDeckReaderTests(int argc, char** argv);
 int runLegacyInterchangeReaderTests(int argc, char** argv);
@@ -42,6 +43,7 @@ QVector<TestEntry> testEntries()
         {"MainWindowWorkflowTests", runMainWindowWorkflowTests},
         {"DeckMergeTests", runDeckMergeTests},
         {"DelimitedTextTests", runDelimitedTextTests},
+        {"PhoneCallLogTests", runPhoneCallLogTests},
         {"DeckTemplateTests", runDeckTemplateTests},
         {"LegacyDeckReaderTests", runLegacyDeckReaderTests},
         {"LegacyInterchangeReaderTests", runLegacyInterchangeReaderTests},
@@ -117,6 +119,8 @@ int main(int argc, char** argv)
     int forwardedArgc = forwardedArgs.size();
     char** forwardedArgv = forwardedArgs.data();
     QApplication app(forwardedArgc, forwardedArgv);
+    QCoreApplication::setOrganizationName(QStringLiteral("CardStackTests"));
+    QCoreApplication::setApplicationName(QStringLiteral("CardStackTests"));
     CardStack::Tests::installVisualTestFonts();
 
     int failures = 0;

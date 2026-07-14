@@ -15,6 +15,8 @@ qt_add_library(cardstack_core STATIC
     FieldDefinition.cpp
     FieldDefinition.h
     ImportExportProfile.h
+    PhoneCallLog.cpp
+    PhoneCallLog.h
     ReportDefinition.cpp
     ReportDefinition.h
 )

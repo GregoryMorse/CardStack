@@ -96,6 +96,8 @@ public:
     void markDirty();
     void clearDirty();
     void setDeckDescription(const QString& description);
+    void appendPhoneCallLogEntry(PhoneCallLogEntry entry);
+    int removePhoneCallLogEntries(const QVector<int>& entryIndexes);
 
     void showCardView();
     void showTableView();

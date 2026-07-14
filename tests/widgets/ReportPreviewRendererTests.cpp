@@ -9,6 +9,7 @@
 #include <QPdfWriter>
 #include <QTest>
 #include <QTemporaryDir>
+#include <QWheelEvent>
 
 #include "DeckTemplate.h"
 #include "LegacyReportReader.h"
@@ -548,6 +549,68 @@ private slots:
         nextPage->click();
         QVERIFY(firstPage->isEnabled());
         QVERIFY(!nextPage->isEnabled());
+    }
+
+    void previewRespondsToPageKeysAndMouseWheel()
+    {
+        const ReportDefinition report = makeReport();
+        UiBuilder::DialogContext context;
+        context.reportNames = {report.name};
+        QVector<ReportPreviewData> records;
+        records.resize(3);
+        const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+        QVERIFY(pages.size() >= 2);
+
+        std::unique_ptr<QDialog> dialog = ReportPreviewDialog::create(nullptr, context, report, records, pages);
+        QVERIFY(dialog != nullptr);
+        dialog->show();
+        QCoreApplication::processEvents();
+        QWidget* canvas = dialog->findChild<QWidget*>(QStringLiteral("reportPreviewCanvas"));
+        auto* status = qobject_cast<QLabel*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PreviewPageStatus));
+        QVERIFY(canvas != nullptr);
+        QVERIFY(status != nullptr);
+        canvas->setFocus();
+
+        QTest::keyClick(canvas, Qt::Key_PageDown);
+        QCOMPARE(status->text(), QStringLiteral("Page 2 of %1").arg(pages.size()));
+
+        const QPoint localPosition(10, 10);
+        QWheelEvent wheelUp(
+            QPointF(localPosition),
+            QPointF(canvas->mapToGlobal(localPosition)),
+            QPoint(),
+            QPoint(0, 120),
+            Qt::NoButton,
+            Qt::NoModifier,
+            Qt::NoScrollPhase,
+            false);
+        QCoreApplication::sendEvent(canvas, &wheelUp);
+        QCOMPARE(status->text(), QStringLiteral("Page 1 of %1").arg(pages.size()));
+        QTest::keyClick(canvas, Qt::Key_PageUp);
+        QCOMPARE(status->text(), QStringLiteral("Page 1 of %1").arg(pages.size()));
+    }
+
+    void previewPrintIsAffirmativeAndCancelIsNot()
+    {
+        const ReportDefinition report = makeReport();
+        UiBuilder::DialogContext context;
+        context.reportNames = {report.name};
+
+        std::unique_ptr<QDialog> printDialog = ReportPreviewDialog::create(nullptr, context, report);
+        QVERIFY(printDialog != nullptr);
+        auto* printButton = qobject_cast<QAbstractButton*>(
+            UiBuilder::controlById(printDialog.get(), UiIds::Control::Ok));
+        QVERIFY(printButton != nullptr);
+        printButton->click();
+        QCOMPARE(printDialog->result(), static_cast<int>(QDialog::Accepted));
+
+        std::unique_ptr<QDialog> cancelDialog = ReportPreviewDialog::create(nullptr, context, report);
+        QVERIFY(cancelDialog != nullptr);
+        auto* cancelButton = qobject_cast<QAbstractButton*>(
+            UiBuilder::controlById(cancelDialog.get(), UiIds::Control::Cancel));
+        QVERIFY(cancelButton != nullptr);
+        cancelButton->click();
+        QCOMPARE(cancelDialog->result(), static_cast<int>(QDialog::Rejected));
     }
 };
 

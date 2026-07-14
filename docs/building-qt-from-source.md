@@ -21,7 +21,7 @@ Suggested starting tag:
 
 ## Local Windows Build
 
-Run from an x64 Native Tools Command Prompt for VS 2022 or a PowerShell session
+Run from an x64 Native Tools Command Prompt for VS 2026 (or the VS 2022 fallback) or a PowerShell session
 that has the MSVC environment loaded.
 
 The repo script handles the Visual Studio environment and the bundled Visual
@@ -40,7 +40,7 @@ scripts\build-qt6-windows.ps1 -Clone -ConfigureCardStack -QtSourceDir C:\dev\qt6
 
 Without `-Clone`, the script expects an existing Qt checkout at
 `.deps\qt-src`. By default it builds into `.deps\qt-build`, installs into
-`.deps\qt-install`, then configures CardStack with the `vs2022` preset and
+`.deps\qt-install`, then configures CardStack with the `vs2026-local-qt` preset and
 `CMAKE_PREFIX_PATH` pointing at that install.
 
 ```powershell
@@ -59,8 +59,8 @@ cmake --install .
 Then configure CardStack:
 
 ```powershell
-cmake --preset vs2022-local-qt
-cmake --build --preset vs2022-local-qt
+cmake --preset vs2026-local-qt
+cmake --build --preset vs2026-local-qt
 ```
 
 ## Running The Windows Build
@@ -69,15 +69,15 @@ CardStack runs from the build output directory after Qt deployment. On Windows,
 the app target runs `windeployqt` after each successful build by default:
 
 ```powershell
-cmake --build build\vs2022 --config Debug
-.\build\vs2022\Debug\CardStackDeploy\CardStack.exe
+cmake --build build\vs2026 --config Debug
+.\build\vs2026\Debug\CardStackDeploy\CardStack.exe
 ```
 
 The deployment behavior is controlled by:
 
 ```powershell
-cmake -S . -B build\vs2022 -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=ON
-cmake --build build\vs2022 --config Debug --target CardStackDeploy
+cmake -S . -B build\vs2026 -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=ON
+cmake --build build\vs2026 --config Debug --target CardStackDeploy
 ```
 
 The deployed app is intentionally placed in `CardStackDeploy` instead of the
@@ -223,7 +223,7 @@ If `windeployqt` warns that `translations/catalogs.json` is missing, that is exp
 CardStack's CMake deployment path defaults to English-only bundles and passes `--no-translations` to `windeployqt`. For a multilingual bundle, configure CardStack with:
 
 ```powershell
-cmake -S . -B build\vs2022 -DCARDSTACK_DEPLOY_QT_TRANSLATIONS=ON
+cmake -S . -B build\vs2026 -DCARDSTACK_DEPLOY_QT_TRANSLATIONS=ON
 ```
 
 Then install Qt translations into the Qt prefix used by the build:
@@ -239,7 +239,7 @@ For the current Windows source tree, the generated Ninja target is `qttranslatio
 The `VCINSTALLDIR` warning is not fundamental. It means the deployment step was run outside a Visual Studio developer environment, so `windeployqt` may not find and bundle the MSVC runtime. For direct CardStack rebuilds from a plain PowerShell prompt, use:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\scripts\build-cardstack-vs2022.ps1 -BuildDir build\vs2022 -Config Debug -Target CardStack
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\build-cardstack-windows.ps1 -BuildDir build\vs2026 -Config Debug -Target CardStack
 ```
 
 That wrapper calls `VsDevCmd.bat` before invoking CMake.

@@ -14,8 +14,8 @@ Example:
 $env:CARDSTACK_REPORT_PREVIEW_IMAGE_DIR = "$PWD\build\manual-report-preview-gallery"
 $env:QT_PLUGIN_PATH = "C:\dev\qt6-install\plugins"
 $env:QT_QPA_PLATFORM = "windows"
-$env:PATH = "$PWD\build\vs2022-local-qt\Debug\CardStackDeploy;C:\dev\qt6-install\bin;$env:PATH"
-.\build\vs2022-local-qt\Debug\CardStackTests.exe --test ReportPreviewRendererTests writesManualInspectionPreviewImagesWhenConfigured
+$env:PATH = "$PWD\build\vs2026-local-qt\Debug\CardStackDeploy;C:\dev\qt6-install\bin;$env:PATH"
+.\build\vs2026-local-qt\Debug\CardStackTests.exe --test ReportPreviewRendererTests writesManualInspectionPreviewImagesWhenConfigured
 ```
 
 ## Findings from the current gallery

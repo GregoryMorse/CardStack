@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CardTemplateLayout.h"
+#include "Deck.h"
 #include "FieldDefinition.h"
 
 #include <QStringList>
@@ -26,7 +27,8 @@ public:
     explicit TemplateDesignerWidget(
         CardTemplateLayout layout,
         QVector<FieldDefinition> fields,
-        QWidget* parent = nullptr);
+        QWidget* parent = nullptr,
+        DeckAppearance appearance = {});
 
     const CardTemplateLayout& layoutDefinition() const;
     const QVector<FieldDefinition>& fieldDefinitions() const;
@@ -41,6 +43,7 @@ public:
     void markDirty();
 
 signals:
+    void commandRequested(int commandId);
     void saveRequested(const CardTemplateLayout& layout);
     void dirtyChanged(bool dirty);
     void selectedFieldChanged();
@@ -66,6 +69,7 @@ public slots:
         int lineStyle,
         int fillPattern,
         int cornerRadius);
+    void setAppearance(DeckAppearance appearance);
     void save();
 
 protected:
@@ -90,6 +94,7 @@ private:
 
     CardTemplateLayout m_layout;
     QVector<FieldDefinition> m_fields;
+    DeckAppearance m_appearance;
     bool m_dirty = false;
     int m_selectedFrameIndex = -1;
     std::optional<CardTemplateFrame> m_copiedFrame;

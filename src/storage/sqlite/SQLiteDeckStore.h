@@ -32,6 +32,8 @@ private:
     bool loadCardTemplateLayout(Deck* deck, int templateId, QString* errorMessage);
     bool saveReports(const Deck& deck, QString* errorMessage);
     bool loadReports(Deck* deck, QString* errorMessage);
+    bool savePhoneCallLog(const Deck& deck, QString* errorMessage);
+    bool loadPhoneCallLog(Deck* deck, QString* errorMessage);
     bool exec(const QString& sql, QString* errorMessage);
 
     QString m_connectionName;

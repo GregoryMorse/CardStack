@@ -63,6 +63,11 @@ int Deck::importExportProfileCount() const
     return m_importExportProfiles.size();
 }
 
+int Deck::phoneCallLogEntryCount() const
+{
+    return m_phoneCallLogEntries.size();
+}
+
 const QVector<FieldDefinition>& Deck::fields() const
 {
     return m_fields;
@@ -86,6 +91,11 @@ const QVector<DeckSortKey>& Deck::sortKeys() const
 const QVector<ImportExportProfile>& Deck::importExportProfiles() const
 {
     return m_importExportProfiles;
+}
+
+const QVector<PhoneCallLogEntry>& Deck::phoneCallLogEntries() const
+{
+    return m_phoneCallLogEntries;
 }
 
 const CardTemplateLayout& Deck::cardTemplateLayout() const
@@ -206,6 +216,37 @@ void Deck::clearImportExportProfiles()
     m_importExportProfiles.clear();
 }
 
+void Deck::addPhoneCallLogEntry(PhoneCallLogEntry entry)
+{
+    m_phoneCallLogEntries.append(std::move(entry));
+}
+
+void Deck::setPhoneCallLogEntries(QVector<PhoneCallLogEntry> entries)
+{
+    m_phoneCallLogEntries = std::move(entries);
+}
+
+int Deck::removePhoneCallLogEntries(QVector<int> entryIndexes)
+{
+    std::sort(entryIndexes.begin(), entryIndexes.end());
+
+    int removed = 0;
+    for (int position = entryIndexes.size() - 1; position >= 0; --position) {
+        if (position + 1 < entryIndexes.size() && entryIndexes.at(position) == entryIndexes.at(position + 1)) {
+            continue;
+        }
+
+        const int entryIndex = entryIndexes.at(position);
+        if (entryIndex < 0 || entryIndex >= m_phoneCallLogEntries.size()) {
+            continue;
+        }
+
+        m_phoneCallLogEntries.removeAt(entryIndex);
+        ++removed;
+    }
+    return removed;
+}
+
 void Deck::setCardTemplateLayout(CardTemplateLayout layout)
 {
     m_cardTemplateLayout = std::move(layout);
@@ -257,6 +298,7 @@ void Deck::clear()
     m_cards.clear();
     m_sortKeys.clear();
     m_importExportProfiles.clear();
+    m_phoneCallLogEntries.clear();
     m_reports.clear();
     m_cardTemplateLayout = {};
     m_legacyControlRecord.clear();

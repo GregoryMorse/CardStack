@@ -50,6 +50,7 @@ inline constexpr int SearchFindNext = 2401;
 inline constexpr int SearchReplace = 2402;
 
 inline constexpr int PhoneDial = 2450;
+inline constexpr int PhoneCallLog = 2451;
 
 inline constexpr int ConfigureDataFont = 2500;
 inline constexpr int ConfigureNameFont = 2501;
@@ -152,6 +153,7 @@ inline constexpr int PrintSummary3 = 102;
 inline constexpr int PrintPrinterName = 2000;
 inline constexpr int PrintReportName = 2001;
 inline constexpr int PrintCopyCount = 2002;
+inline constexpr int PrintCopyCountSpin = 2003;
 inline constexpr int PrintThisCard = 2004;
 inline constexpr int PrintAllCards = 2005;
 inline constexpr int PrintSelectedCards = 2006;
@@ -214,6 +216,9 @@ inline constexpr int SaveDesignName = 800;
 inline constexpr int SaveDesignList = 802;
 
 inline constexpr int FrameText = 4206;
+inline constexpr int TemplateFieldPhone = 4208;
+inline constexpr int TemplateFieldShowName = 4209;
+inline constexpr int TemplateFieldLength = 4210;
 inline constexpr int FrameAlignmentLeft = 4203;
 inline constexpr int FrameAlignmentCenter = 4204;
 inline constexpr int FrameAlignmentRight = 4205;
@@ -228,6 +233,13 @@ inline constexpr int LineFrameBox = 4413;
 inline constexpr int LineFrameHorizontal = 4414;
 inline constexpr int LineFrameVertical = 4415;
 inline constexpr int LineFrameCornerRadius = 4317;
+inline constexpr int LineFrameCornerRadiusSpin = 4318;
+inline constexpr int LineFramePreview = 2100;
+
+inline constexpr int ImportEditFieldName = 704;
+inline constexpr int ImportEditSample = 705;
+inline constexpr int ImportEditLength = 706;
+inline constexpr int ImportEditNotes = 707;
 
 inline constexpr int ColorCustomGrid = 950;
 inline constexpr int ColorRoleCombo = 952;

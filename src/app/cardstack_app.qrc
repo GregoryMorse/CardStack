@@ -9,6 +9,15 @@
     <file alias="icons/icon-64.png">assets/icons/cardstack-icon-64.png</file>
     <file alias="icons/icon-128.png">assets/icons/cardstack-icon-128.png</file>
     <file alias="icons/icon-256.png">assets/icons/cardstack-icon-256.png</file>
+    <file alias="window-icons/deck.svg">assets/window-icons/deck.svg</file>
+    <file alias="window-icons/template-designer.svg">assets/window-icons/template-designer.svg</file>
+    <file alias="window-icons/report-designer.svg">assets/window-icons/report-designer.svg</file>
+    <file alias="window-icons/png-24/deck.png">assets/window-icons/png-24/deck.png</file>
+    <file alias="window-icons/png-24/template-designer.png">assets/window-icons/png-24/template-designer.png</file>
+    <file alias="window-icons/png-24/report-designer.png">assets/window-icons/png-24/report-designer.png</file>
+    <file alias="window-icons/png-48/deck.png">assets/window-icons/png-48/deck.png</file>
+    <file alias="window-icons/png-48/template-designer.png">assets/window-icons/png-48/template-designer.png</file>
+    <file alias="window-icons/png-48/report-designer.png">assets/window-icons/png-48/report-designer.png</file>
     <file alias="toolbar/card-add.svg">assets/toolbar/card-add.svg</file>
     <file alias="toolbar/card-delete.svg">assets/toolbar/card-delete.svg</file>
     <file alias="toolbar/card-duplicate.svg">assets/toolbar/card-duplicate.svg</file>

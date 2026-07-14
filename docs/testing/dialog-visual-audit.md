@@ -17,8 +17,8 @@ On Windows, run with the normal Qt platform plugin so captured text uses the sam
 $env:CARDSTACK_DIALOG_GALLERY_DIR = "$PWD\build\manual-dialog-gallery"
 $env:QT_PLUGIN_PATH = "C:\dev\qt6-install\plugins"
 $env:QT_QPA_PLATFORM = "windows"
-$env:PATH = "$PWD\build\vs2022-local-qt\Debug\CardStackDeploy;C:\dev\qt6-install\bin;$env:PATH"
-.\build\vs2022-local-qt\Debug\CardStackTests.exe --test UiBuilderTests writesManualDialogInspectionImagesWhenConfigured
+$env:PATH = "$PWD\build\vs2026-local-qt\Debug\CardStackDeploy;C:\dev\qt6-install\bin;$env:PATH"
+.\build\vs2026-local-qt\Debug\CardStackTests.exe --test UiBuilderTests writesManualDialogInspectionImagesWhenConfigured
 ```
 
 For CI/headless smoke coverage, leave `CARDSTACK_DIALOG_GALLERY_DIR` unset. The test will skip instead of generating files.

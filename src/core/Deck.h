@@ -42,6 +42,15 @@ struct DeckAppearance {
     bool operator==(const DeckAppearance&) const = default;
 };
 
+struct PhoneCallLogEntry {
+    QString calledAtUtc;
+    QString phoneNumber;
+    QVector<QString> cardSummaryValues;
+    QByteArray rawLegacyBytes;
+
+    bool operator==(const PhoneCallLogEntry&) const = default;
+};
+
 class Deck {
 public:
     explicit Deck(QString name = {});
@@ -56,12 +65,14 @@ public:
     int reportCount() const;
     int sortKeyCount() const;
     int importExportProfileCount() const;
+    int phoneCallLogEntryCount() const;
 
     const QVector<FieldDefinition>& fields() const;
     const QVector<CardRecord>& cards() const;
     const QVector<ReportDefinition>& reports() const;
     const QVector<DeckSortKey>& sortKeys() const;
     const QVector<ImportExportProfile>& importExportProfiles() const;
+    const QVector<PhoneCallLogEntry>& phoneCallLogEntries() const;
     const CardTemplateLayout& cardTemplateLayout() const;
     const QByteArray& legacyControlRecord() const;
     const DeckAppearance& appearance() const;
@@ -85,6 +96,9 @@ public:
     void setImportExportProfiles(QVector<ImportExportProfile> profiles);
     void addImportExportProfile(ImportExportProfile profile);
     void clearImportExportProfiles();
+    void addPhoneCallLogEntry(PhoneCallLogEntry entry);
+    void setPhoneCallLogEntries(QVector<PhoneCallLogEntry> entries);
+    int removePhoneCallLogEntries(QVector<int> entryIndexes);
     void setCardTemplateLayout(CardTemplateLayout layout);
     void setLegacyControlRecord(QByteArray record);
     void setAppearance(DeckAppearance appearance);
@@ -101,6 +115,7 @@ private:
     QVector<CardRecord> m_cards;
     QVector<DeckSortKey> m_sortKeys;
     QVector<ImportExportProfile> m_importExportProfiles;
+    QVector<PhoneCallLogEntry> m_phoneCallLogEntries;
     QVector<ReportDefinition> m_reports;
     CardTemplateLayout m_cardTemplateLayout;
     QByteArray m_legacyControlRecord;

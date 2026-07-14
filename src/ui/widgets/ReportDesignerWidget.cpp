@@ -130,6 +130,7 @@ public:
         setObjectName(QStringLiteral("reportDesignCanvas"));
         setMinimumSize(360, 420);
         setMouseTracking(true);
+        setFocusPolicy(Qt::StrongFocus);
     }
 
     void setReport(const ReportDefinition* report)
@@ -145,6 +146,8 @@ public:
     }
 
     std::function<void(int)> frameSelected;
+    std::function<void(int)> frameActivated;
+    std::function<void(int)> frameBoundsChangeStarted;
     std::function<void(int, QRect)> frameBoundsChanged;
 
 protected:
@@ -188,6 +191,10 @@ protected:
 
     void mousePressEvent(QMouseEvent* event) override
     {
+        if (event->button() != Qt::LeftButton) {
+            QWidget::mousePressEvent(event);
+            return;
+        }
         if (m_report == nullptr) {
             return;
         }
@@ -203,12 +210,37 @@ protected:
                 m_dragStartPosition = event->position();
                 m_dragStartBounds = m_report->frames.at(index).bounds;
                 m_dragMode = resizeHandle(frameRect).contains(event->position()) ? DragMode::Resize : DragMode::Move;
+                m_dragChanged = false;
                 return;
             }
         }
         if (frameSelected) {
             frameSelected(-1);
         }
+    }
+
+    void mouseDoubleClickEvent(QMouseEvent* event) override
+    {
+        if (event->button() != Qt::LeftButton || m_report == nullptr) {
+            QWidget::mouseDoubleClickEvent(event);
+            return;
+        }
+
+        const QRectF page = pageRect();
+        for (int index = m_report->frames.size() - 1; index >= 0; --index) {
+            if (!scaledBounds(m_report->frames.at(index).bounds, *m_report, page).contains(event->position())) {
+                continue;
+            }
+            if (frameSelected) {
+                frameSelected(index);
+            }
+            if (frameActivated) {
+                frameActivated(index);
+            }
+            event->accept();
+            return;
+        }
+        QWidget::mouseDoubleClickEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent* event) override
@@ -218,6 +250,12 @@ protected:
         }
 
         if (m_dragMode != DragMode::None && m_dragFrameIndex >= 0) {
+            if (!m_dragChanged) {
+                if (frameBoundsChangeStarted) {
+                    frameBoundsChangeStarted(m_dragFrameIndex);
+                }
+                m_dragChanged = true;
+            }
             const QRectF page = pageRect();
             const QPointF delta = event->position() - m_dragStartPosition;
             QRectF visual = scaledBounds(m_dragStartBounds, *m_report, page);
@@ -242,6 +280,7 @@ protected:
     {
         m_dragMode = DragMode::None;
         m_dragFrameIndex = -1;
+        m_dragChanged = false;
         updateCursor(mapFromGlobal(QCursor::pos()));
     }
 
@@ -306,6 +345,7 @@ private:
     int m_selectedFrameIndex = -1;
     int m_dragFrameIndex = -1;
     DragMode m_dragMode = DragMode::None;
+    bool m_dragChanged = false;
     QPointF m_dragStartPosition;
     QRect m_dragStartBounds;
 };
@@ -789,6 +829,13 @@ void ReportDesignerWidget::buildUi()
     });
     m_canvas->frameSelected = [this](int frameIndex) {
         selectFrame(frameIndex);
+    };
+    m_canvas->frameActivated = [this](int frameIndex) {
+        selectFrame(frameIndex);
+        emit commandRequested(UiIds::Command::ToolFrameAttributes);
+    };
+    m_canvas->frameBoundsChangeStarted = [this](int) {
+        pushUndoState();
     };
     m_canvas->frameBoundsChanged = [this](int frameIndex, const QRect& bounds) {
         if (frameIndex < 0 || frameIndex >= m_report.frames.size()) {

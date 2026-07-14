@@ -44,11 +44,80 @@
 #include <limits>
 #include <tuple>
 
+void qt_set_sequence_auto_mnemonic(bool enabled);
+
 namespace CardStack {
 namespace {
 
 namespace Control = UiIds::Control;
 namespace StringId = UiIds::StringId;
+
+void enableLegacyMnemonics()
+{
+    static const bool enabled = [] {
+        qt_set_sequence_auto_mnemonic(true);
+        return true;
+    }();
+    Q_UNUSED(enabled);
+}
+
+QKeySequence legacyMenuShortcut(QString shortcutText)
+{
+    shortcutText = shortcutText.trimmed();
+    shortcutText.replace(QStringLiteral("PageUp"), QStringLiteral("PgUp"), Qt::CaseInsensitive);
+    shortcutText.replace(QStringLiteral("PageDn"), QStringLiteral("PgDown"), Qt::CaseInsensitive);
+    if (shortcutText.compare(QStringLiteral("Del"), Qt::CaseInsensitive) == 0) {
+        return QKeySequence(Qt::Key_Delete);
+    }
+    const QKeySequence shortcut = QKeySequence::fromString(shortcutText, QKeySequence::PortableText);
+    Q_ASSERT_X(!shortcut.isEmpty(), "legacyMenuShortcut", qPrintable(QStringLiteral("Unrecognized shortcut: %1").arg(shortcutText)));
+    return shortcut;
+}
+
+void bindDialogLabelMnemonics(QWidget* dialog)
+{
+    const QList<QWidget*> candidates = dialog->findChildren<QWidget*>();
+    for (QLabel* label : dialog->findChildren<QLabel*>()) {
+        if (label->buddy() != nullptr || QKeySequence::mnemonic(label->text()).isEmpty()) {
+            continue;
+        }
+
+        const QRect labelRect(label->mapTo(dialog, QPoint(0, 0)), label->size());
+        QWidget* bestCandidate = nullptr;
+        int bestScore = std::numeric_limits<int>::max();
+        for (QWidget* candidate : candidates) {
+            if (candidate == label || candidate->focusPolicy() == Qt::NoFocus
+                || qobject_cast<QAbstractButton*>(candidate) != nullptr) {
+                continue;
+            }
+
+            const QRect candidateRect(candidate->mapTo(dialog, QPoint(0, 0)), candidate->size());
+            const int verticalDistance = std::abs(candidateRect.center().y() - labelRect.center().y());
+            const bool besideLabel = candidateRect.left() >= labelRect.right() - 2
+                && verticalDistance <= std::max(labelRect.height(), candidateRect.height());
+            const int horizontalOverlap = std::min(labelRect.right(), candidateRect.right())
+                - std::max(labelRect.left(), candidateRect.left());
+            const bool belowLabel = candidateRect.top() >= labelRect.bottom() - 2
+                && horizontalOverlap > 0
+                && candidateRect.top() - labelRect.bottom() <= labelRect.height();
+            if (!besideLabel && !belowLabel) {
+                continue;
+            }
+
+            const int score = besideLabel
+                ? std::max(0, candidateRect.left() - labelRect.right()) + verticalDistance * 4
+                : candidateRect.top() - labelRect.bottom()
+                    + std::abs(candidateRect.center().x() - labelRect.center().x()) * 2;
+            if (score < bestScore) {
+                bestScore = score;
+                bestCandidate = candidate;
+            }
+        }
+        if (bestCandidate != nullptr) {
+            label->setBuddy(bestCandidate);
+        }
+    }
+}
 
 constexpr int NarrowStaticDluWidth = 6;
 constexpr int ComboMinimumContentsLength = 10;
@@ -86,6 +155,40 @@ constexpr int Simple = 0x01;
 constexpr int DropDown = 0x02;
 constexpr int DropDownList = 0x03;
 } // namespace WinComboBoxStyle
+
+namespace WinStaticStyle {
+constexpr quint32 TypeMask = 0x001fU;
+constexpr int Icon = 0x03;
+} // namespace WinStaticStyle
+
+QPixmap legacyStaticIcon(const QString& resourceName, const QSize& requestedSize)
+{
+    const QSize size(std::max(20, requestedSize.width()), std::max(20, requestedSize.height()));
+    QPixmap pixmap(size);
+    pixmap.fill(Qt::transparent);
+    if (resourceName.compare(QStringLiteral("IDPHONE"), Qt::CaseInsensitive) != 0) {
+        return pixmap;
+    }
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const qreal scale = std::min(size.width(), size.height()) / 24.0;
+    painter.scale(scale, scale);
+    const QColor outline(35, 82, 91);
+    const QColor body(221, 239, 236);
+    painter.setPen(QPen(outline, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(body);
+    painter.drawRoundedRect(QRectF(4.0, 9.0, 16.0, 11.0), 2.2, 2.2);
+    painter.setBrush(QColor(248, 252, 250));
+    painter.drawEllipse(QRectF(8.0, 11.0, 8.0, 7.0));
+    painter.setBrush(outline);
+    painter.drawEllipse(QRectF(10.9, 13.4, 2.2, 2.2));
+    painter.setBrush(body);
+    painter.drawRoundedRect(QRectF(2.5, 4.0, 19.0, 5.8), 2.5, 2.5);
+    painter.drawLine(QPointF(6.0, 9.5), QPointF(6.0, 12.0));
+    painter.drawLine(QPointF(18.0, 9.5), QPointF(18.0, 12.0));
+    return pixmap;
+}
 
 QString modernizedVisibleText(QString text)
 {
@@ -304,7 +407,7 @@ QString displayTextAndShortcut(const QString& rawText, QKeySequence* shortcut)
     if (shortcut != nullptr && parts.size() > 1) {
         const QString shortcutText = parts.last().trimmed();
         if (!shortcutText.isEmpty()) {
-            *shortcut = QKeySequence(shortcutText);
+            *shortcut = legacyMenuShortcut(shortcutText);
         }
     }
 
@@ -577,6 +680,50 @@ protected:
             return;
         }
 
+        if (property("lineFrameSample").toBool()) {
+            const int shape = property("lineFrameShape").toInt();
+            const int lineStyle = property("lineFrameLineStyle").toInt();
+            const int fillPattern = property("lineFrameFillPattern").toInt();
+            const int cornerRadius = property("lineFrameCornerRadius").toInt();
+            static constexpr Qt::PenStyle PenStyles[] = {
+                Qt::SolidLine,
+                Qt::DashLine,
+                Qt::DotLine,
+                Qt::DashDotLine,
+                Qt::DashDotDotLine,
+            };
+            static constexpr Qt::BrushStyle FillStyles[] = {
+                Qt::NoBrush,
+                Qt::Dense7Pattern,
+                Qt::Dense6Pattern,
+                Qt::Dense5Pattern,
+                Qt::Dense4Pattern,
+                Qt::Dense3Pattern,
+                Qt::Dense2Pattern,
+                Qt::Dense1Pattern,
+            };
+            const QRectF sampleRect = rect().adjusted(16, 14, -16, -14);
+            painter.setRenderHint(QPainter::Antialiasing, true);
+            painter.setPen(QPen(
+                palette().text().color(),
+                2,
+                PenStyles[std::clamp(lineStyle, 0, 4)]));
+            painter.setBrush(QBrush(
+                palette().base().color(),
+                FillStyles[std::clamp(fillPattern, 0, 7)]));
+            if (shape == 1) {
+                painter.drawLine(sampleRect.left(), sampleRect.center().y(), sampleRect.right(), sampleRect.center().y());
+            } else if (shape == 2) {
+                painter.drawLine(sampleRect.center().x(), sampleRect.top(), sampleRect.center().x(), sampleRect.bottom());
+            } else {
+                const qreal radius = std::min<qreal>(
+                    std::clamp(cornerRadius, 0, 200) / 4.0,
+                    std::min(sampleRect.width(), sampleRect.height()) / 2.0);
+                painter.drawRoundedRect(sampleRect, radius, radius);
+            }
+            return;
+        }
+
         QFont sampleFont = font();
         sampleFont.setBold(m_bold);
         sampleFont.setItalic(m_italic);
@@ -712,7 +859,17 @@ QWidget* createControl(QWidget* parent, const UiResourceData::UiControl& control
 
     QWidget* widget = nullptr;
     if (className == QStringLiteral("static")) {
-        if (text.isEmpty() && control.width <= NarrowStaticDluWidth) {
+        const int staticType = static_cast<int>(style & WinStaticStyle::TypeMask);
+        if (staticType == WinStaticStyle::Icon) {
+            auto* label = new QLabel(parent);
+            label->setAlignment(Qt::AlignCenter);
+            label->setPixmap(legacyStaticIcon(text, QSize(control.width, control.height)));
+            label->setAccessibleName(text.compare(QStringLiteral("IDPHONE"), Qt::CaseInsensitive) == 0
+                    ? QObject::tr("Phone")
+                    : QObject::tr("Icon"));
+            label->setProperty("legacyIconResource", text);
+            widget = label;
+        } else if (text.isEmpty() && control.width <= NarrowStaticDluWidth) {
             auto* frame = new QFrame(parent);
             frame->setFrameShape(QFrame::VLine);
             frame->setFrameShadow(QFrame::Sunken);
@@ -751,7 +908,9 @@ QWidget* createControl(QWidget* parent, const UiResourceData::UiControl& control
     widget->setProperty("originalControlId", id);
     widget->setProperty("uiControlClass", className);
     widget->setObjectName(QStringLiteral("ui_%1_%2").arg(id).arg(className));
+#ifndef NDEBUG
     widget->setToolTip(QStringLiteral("%1: %2").arg(id).arg(className));
+#endif
     return widget;
 }
 
@@ -1141,9 +1300,9 @@ void refinePrintDialog(QDialog* dialog)
         const int radioLeft = selectionRect.left() + 162;
         const int firstRadioTop = selectionRect.top() + 42;
         const std::pair<int, int> printRadios[] = {
-            {2004, firstRadioTop},
-            {2005, firstRadioTop + 30},
-            {2006, firstRadioTop + 60},
+            {Control::PrintThisCard, firstRadioTop},
+            {Control::PrintAllCards, firstRadioTop + 30},
+            {Control::PrintSelectedCards, firstRadioTop + 60},
         };
         for (const auto& [id, top] : printRadios) {
             if (QWidget* radio = directControlById(dialog, id)) {
@@ -1161,7 +1320,7 @@ void refinePrintDialog(QDialog* dialog)
             summaryRect.moveTop(selectionRect.bottom() + 12);
             summaryGroup->setGeometry(summaryRect);
             const int deltaY = summaryRect.top() - oldTop;
-            for (int controlId : {100, 101, 102}) {
+            for (int controlId : {Control::PrintSummary1, Control::PrintSummary2, Control::PrintSummary3}) {
                 if (QWidget* label = directControlById(dialog, controlId)) {
                     QRect rect = label->geometry();
                     rect.translate(0, deltaY);
@@ -1938,8 +2097,8 @@ void refineImportEditDialog(QDialog* dialog)
         return;
     }
 
-    QWidget* sizeEdit = directControlById(dialog, 706);
-    QWidget* notesCheck = directControlById(dialog, 707);
+    QWidget* sizeEdit = directControlById(dialog, Control::ImportEditLength);
+    QWidget* notesCheck = directControlById(dialog, Control::ImportEditNotes);
     if (sizeEdit == nullptr || notesCheck == nullptr) {
         return;
     }
@@ -1956,10 +2115,10 @@ void refineImportEditDialog(QDialog* dialog)
     notesCheck->setGeometry(notesRect);
     dialog->resize(std::max(dialog->width(), notesRect.right() + 24), dialog->height());
 
-    if (auto* fieldNameEdit = qobject_cast<QLineEdit*>(directControlById(dialog, 704))) {
+    if (auto* fieldNameEdit = qobject_cast<QLineEdit*>(directControlById(dialog, Control::ImportEditFieldName))) {
         fieldNameEdit->setMaxLength(64);
     }
-    if (auto* sampleEdit = qobject_cast<QLineEdit*>(directControlById(dialog, 705))) {
+    if (auto* sampleEdit = qobject_cast<QLineEdit*>(directControlById(dialog, Control::ImportEditSample))) {
         sampleEdit->setMaxLength(64);
         sampleEdit->setReadOnly(true);
     }
@@ -2929,7 +3088,7 @@ void refineLineFrameDialog(QDialog* dialog)
         cornerRadius->setMaximumWidth(ShortNumericEditWidthPx);
         cornerRadius->setGeometry(rect);
     }
-    if (QWidget* cornerSpin = directControlById(dialog, 4318)) {
+    if (QWidget* cornerSpin = directControlById(dialog, Control::LineFrameCornerRadiusSpin)) {
         if (QWidget* cornerRadius = directControlById(dialog, Control::LineFrameCornerRadius)) {
             QRect rect = cornerSpin->geometry();
             rect.moveLeft(cornerRadius->geometry().right() + 1);
@@ -2943,7 +3102,7 @@ void refineLineFrameDialog(QDialog* dialog)
         rect.moveLeft(250);
         rect.setWidth(std::max(rect.width(), 140));
         example->setGeometry(rect);
-        if (QWidget* picture = directControlById(dialog, Control::DefineFormSample)) {
+        if (QWidget* picture = directControlById(dialog, Control::LineFramePreview)) {
             QRect pictureRect = picture->geometry();
             pictureRect.moveLeft(rect.left() + 16);
             pictureRect.setWidth(std::max(pictureRect.width(), rect.width() - 32));
@@ -3168,6 +3327,19 @@ void setSearchSecondClauseVisible(QDialog* dialog, bool visible)
             widget->setVisible(visible);
         }
     }
+}
+
+void resizeDialogToVisibleContent(QDialog* dialog)
+{
+    int contentBottom = 0;
+    for (QWidget* child : dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (!child->isHidden()) {
+            contentBottom = std::max(contentBottom, child->geometry().bottom());
+        }
+    }
+    const int targetHeight = contentBottom + DialogOuterMarginPx;
+    dialog->setMinimumHeight(targetHeight);
+    dialog->resize(dialog->width(), targetHeight);
 }
 
 QButtonGroup* createExclusiveButtonGroup(QWidget* parent, const QList<int>& controlIds, int checkedControlId)
@@ -3422,6 +3594,7 @@ void initializeSearchDialog(QDialog* dialog, const UiBuilder::DialogContext& con
         setControlsEnabled(dialog, secondClauseControls, enabled);
         setSearchSecondClauseVisible(dialog, enabled);
         refineFindReplaceDialog(dialog);
+        resizeDialogToVisibleContent(dialog);
     };
 
     for (int controlId : {Control::SearchCompareNone, Control::SearchCompareAnd, Control::SearchCompareOr}) {
@@ -3442,6 +3615,12 @@ void initializeReplaceDialog(QDialog* dialog, const UiBuilder::DialogContext& co
     populateComboBox(dialog, Control::SearchType, searchTypeItems(), false);
     populateComboBox(dialog, Control::SearchSecondText, context.recentReplacements, true);
     setLabelText(dialog, Control::ReplaceStatus, QObject::tr("Ready"));
+    if (auto* currentData = findUiControl<QLineEdit>(dialog, Control::ReplaceCurrentData)) {
+        currentData->setReadOnly(true);
+        if (auto* replaceButton = findUiControl<QAbstractButton>(dialog, Control::Ok)) {
+            currentData->setFocusProxy(replaceButton);
+        }
+    }
 }
 
 void initializePrintDialog(QDialog* dialog, const UiBuilder::DialogContext& context)
@@ -3451,8 +3630,35 @@ void initializePrintDialog(QDialog* dialog, const UiBuilder::DialogContext& cont
         {Control::PrintThisCard, Control::PrintAllCards, Control::PrintSelectedCards},
         Control::PrintThisCard);
 
-    if (auto* copyCount = findUiControl<QLineEdit>(dialog, Control::PrintCopyCount)) {
+    auto* copyCount = findUiControl<QLineEdit>(dialog, Control::PrintCopyCount);
+    if (copyCount != nullptr) {
         copyCount->setText(QStringLiteral("1"));
+        QObject::connect(copyCount, &QLineEdit::textChanged, dialog, [copyCount](const QString& text) {
+            bool valid = false;
+            const int requested = text.toInt(&valid);
+            const QString normalized = QString::number(std::clamp(valid ? requested : 1, 1, 10000));
+            if (text == normalized) {
+                return;
+            }
+            const QSignalBlocker blocker(copyCount);
+            copyCount->setText(normalized);
+            copyCount->setCursorPosition(normalized.size());
+        });
+    }
+    if (auto* spin = findUiControl<QSpinBox>(dialog, Control::PrintCopyCountSpin)) {
+        spin->setRange(-10000, 10000);
+        spin->setValue(0);
+        QObject::connect(spin, &QSpinBox::valueChanged, dialog, [copyCount, spin](int delta) {
+            if (delta == 0 || copyCount == nullptr) {
+                return;
+            }
+            bool valid = false;
+            const int current = copyCount->text().toInt(&valid);
+            copyCount->setText(QString::number(std::clamp((valid ? current : 1) + delta, 1, 10000)));
+            const QSignalBlocker blocker(spin);
+            spin->setValue(0);
+            copyCount->setFocus();
+        });
     }
     setLabelText(dialog, Control::PrintPrinterName, QObject::tr("Default printer"));
     setLabelText(
@@ -3462,6 +3668,113 @@ void initializePrintDialog(QDialog* dialog, const UiBuilder::DialogContext& cont
     setLabelText(dialog, Control::PrintSummary1, QObject::tr("All selected records are eligible for printing."));
     setLabelText(dialog, Control::PrintSummary2, QObject::tr("Use Define Search to change the selected-card set."));
     setLabelText(dialog, Control::PrintSummary3, QObject::tr("Print Preview opens the preview dialog."));
+
+    const auto updateScope = [dialog]() {
+        const auto* selected = findUiControl<QAbstractButton>(dialog, Control::PrintSelectedCards);
+        const auto* all = findUiControl<QAbstractButton>(dialog, Control::PrintAllCards);
+        const bool selectedCards = selected != nullptr && selected->isChecked();
+        const bool allCards = all != nullptr && all->isChecked();
+        setLabelText(
+            dialog,
+            Control::PrintSummary1,
+            selectedCards
+                ? QObject::tr("Cards matching the current selection will be printed.")
+                : (allCards ? QObject::tr("All cards will be printed.") : QObject::tr("The current card will be printed.")));
+        setLabelText(
+            dialog,
+            Control::PrintSummary2,
+            selectedCards ? QObject::tr("Use Define Search to change the selected-card set.") : QString());
+        if (auto* defineSearch = findUiControl<QAbstractButton>(dialog, Control::PrintDefineSearch)) {
+            defineSearch->setEnabled(selectedCards);
+        }
+    };
+    for (int controlId : {Control::PrintThisCard, Control::PrintAllCards, Control::PrintSelectedCards}) {
+        if (auto* button = findUiControl<QAbstractButton>(dialog, controlId)) {
+            QObject::connect(button, &QAbstractButton::toggled, dialog, [updateScope](bool checked) {
+                if (checked) {
+                    updateScope();
+                }
+            });
+        }
+    }
+    updateScope();
+}
+
+void initializeLineFrameDialog(QDialog* dialog)
+{
+    createExclusiveButtonGroup(
+        dialog,
+        {Control::LineFrameBox, Control::LineFrameHorizontal, Control::LineFrameVertical},
+        Control::LineFrameBox);
+
+    const auto updatePreview = [dialog]() {
+        QWidget* preview = findUiControl<QWidget>(dialog, Control::LineFramePreview);
+        if (preview == nullptr) {
+            return;
+        }
+        int shape = 0;
+        if (const auto* horizontal = findUiControl<QAbstractButton>(dialog, Control::LineFrameHorizontal);
+            horizontal != nullptr && horizontal->isChecked()) {
+            shape = 1;
+        } else if (const auto* vertical = findUiControl<QAbstractButton>(dialog, Control::LineFrameVertical);
+                   vertical != nullptr && vertical->isChecked()) {
+            shape = 2;
+        }
+        const auto* lineStyle = findUiControl<QComboBox>(dialog, Control::LineFrameLineStyle);
+        const auto* fillPattern = findUiControl<QComboBox>(dialog, Control::LineFrameFillPattern);
+        const auto* cornerRadius = findUiControl<QLineEdit>(dialog, Control::LineFrameCornerRadius);
+        preview->setProperty("lineFrameSample", true);
+        preview->setProperty("lineFrameShape", shape);
+        preview->setProperty("lineFrameLineStyle", lineStyle == nullptr ? 0 : std::max(0, lineStyle->currentIndex()));
+        preview->setProperty("lineFrameFillPattern", fillPattern == nullptr ? 0 : std::max(0, fillPattern->currentIndex()));
+        preview->setProperty("lineFrameCornerRadius", cornerRadius == nullptr ? 0 : cornerRadius->text().toInt());
+        preview->update();
+    };
+
+    for (int controlId : {Control::LineFrameBox, Control::LineFrameHorizontal, Control::LineFrameVertical}) {
+        if (auto* button = findUiControl<QAbstractButton>(dialog, controlId)) {
+            QObject::connect(button, &QAbstractButton::toggled, dialog, [updatePreview](bool checked) {
+                if (checked) {
+                    updatePreview();
+                }
+            });
+        }
+    }
+    for (int controlId : {Control::LineFrameLineStyle, Control::LineFrameFillPattern}) {
+        if (auto* combo = findUiControl<QComboBox>(dialog, controlId)) {
+            QObject::connect(combo, &QComboBox::currentIndexChanged, dialog, [updatePreview](int) {
+                updatePreview();
+            });
+        }
+    }
+    auto* cornerRadius = findUiControl<QLineEdit>(dialog, Control::LineFrameCornerRadius);
+    if (cornerRadius != nullptr) {
+        QObject::connect(cornerRadius, &QLineEdit::textChanged, dialog, [cornerRadius, updatePreview](const QString& text) {
+            bool valid = false;
+            const int requested = text.toInt(&valid);
+            const QString normalized = QString::number(std::clamp(valid ? requested : 0, 0, 200));
+            if (text != normalized) {
+                const QSignalBlocker blocker(cornerRadius);
+                cornerRadius->setText(normalized);
+                cornerRadius->setCursorPosition(normalized.size());
+            }
+            updatePreview();
+        });
+    }
+    if (auto* spin = findUiControl<QSpinBox>(dialog, Control::LineFrameCornerRadiusSpin)) {
+        spin->setRange(-200, 200);
+        spin->setValue(0);
+        QObject::connect(spin, &QSpinBox::valueChanged, dialog, [cornerRadius, spin](int delta) {
+            if (delta == 0 || cornerRadius == nullptr) {
+                return;
+            }
+            cornerRadius->setText(QString::number(std::clamp(cornerRadius->text().toInt() + delta * 5, 0, 200)));
+            const QSignalBlocker blocker(spin);
+            spin->setValue(0);
+            cornerRadius->setFocus();
+        });
+    }
+    updatePreview();
 }
 
 void initializeSortDialog(QDialog* dialog, const UiBuilder::DialogContext& context)
@@ -3557,10 +3870,18 @@ void initializeSaveDesignDialog(QDialog* dialog, const UiBuilder::DialogContext&
         });
     }
     if (nameEdit != nullptr && reportList != nullptr) {
-        QObject::connect(reportList, &QListWidget::itemClicked, dialog, [nameEdit](QListWidgetItem* item) {
+        auto copySelectedName = [nameEdit](QListWidgetItem* item) {
             if (item != nullptr) {
                 nameEdit->setText(item->text());
             }
+        };
+        QObject::connect(reportList, &QListWidget::currentItemChanged, dialog,
+                         [copySelectedName](QListWidgetItem* current, QListWidgetItem*) {
+            copySelectedName(current);
+        });
+        QObject::connect(reportList, &QListWidget::itemDoubleClicked, dialog,
+                         [copySelectedName](QListWidgetItem* item) {
+            copySelectedName(item);
         });
     }
 }
@@ -3772,6 +4093,11 @@ void initializeReportFormDialog(QDialog* dialog)
         dialog,
         {Control::ReportFormCard, Control::ReportFormLabel, Control::ReportFormReport},
         Control::ReportFormReport);
+    if (auto* formList = findUiControl<QListWidget>(dialog, Control::ReportFormList)) {
+        QObject::connect(formList, &QListWidget::itemDoubleClicked, dialog, [dialog](QListWidgetItem*) {
+            dialog->accept();
+        });
+    }
 }
 
 void initializeDefineFormDialog(QDialog* dialog)
@@ -3846,6 +4172,8 @@ void initializeUiDialog(
         initializeReportFormDialog(dialog);
     } else if (dialogName == QStringLiteral("DEFINEFORM")) {
         initializeDefineFormDialog(dialog);
+    } else if (dialogName == QStringLiteral("LINEFRAME")) {
+        initializeLineFrameDialog(dialog);
     } else if (dialogName == QStringLiteral("DATAFRAME")) {
         initializeDataFrameDialog(dialog, context);
     } else if (dialogName == QStringLiteral("TEXTFRAME") || dialogName == QStringLiteral("TPLTEXTFRAME")) {
@@ -3861,6 +4189,7 @@ bool UiBuilder::populateMenuBar(
     QObject* actionParent,
     const std::function<void(QAction*)>& configureAction)
 {
+    enableLegacyMnemonics();
     if (menuBar == nullptr) {
         return false;
     }
@@ -3899,6 +4228,7 @@ std::unique_ptr<QDialog> UiBuilder::createDialog(
     QWidget* parent,
     const DialogContext& context)
 {
+    enableLegacyMnemonics();
     const UiResourceData::UiDialog* dialogResource = findDialog(dialogName);
     if (dialogResource == nullptr || dialogResource->controls == nullptr || dialogResource->controlCount == 0) {
         return {};
@@ -3946,6 +4276,10 @@ std::unique_ptr<QDialog> UiBuilder::createDialog(
 
     initializeUiDialog(dialog.get(), dialogName, context);
     refineDialogGeometry(dialog.get());
+    if (dialogName == QStringLiteral("SEARCH")) {
+        resizeDialogToVisibleContent(dialog.get());
+    }
+    bindDialogLabelMnemonics(dialog.get());
 
     return dialog;
 }

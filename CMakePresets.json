@@ -11,6 +11,22 @@
       }
     },
     {
+      "name": "vs2026",
+      "displayName": "Visual Studio 2026 x64",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "vs2026-local-qt",
+      "displayName": "Visual Studio 2026 x64 with local Qt",
+      "inherits": "vs2026",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "${sourceDir}/.deps/qt-install"
+      }
+    },
+    {
       "name": "vs2022",
       "displayName": "Visual Studio 2022 x64",
       "generator": "Visual Studio 17 2022",
@@ -25,6 +41,13 @@
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "${sourceDir}/.deps/qt-install"
       }
+    },
+    {
+      "name": "vs2026-vcpkg",
+      "displayName": "Visual Studio 2026 x64 with vcpkg",
+      "inherits": "vs2026",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
     },
     {
       "name": "vcpkg",
@@ -47,6 +70,16 @@
       "configurePreset": "default"
     },
     {
+      "name": "vs2026",
+      "configurePreset": "vs2026",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs2026-local-qt",
+      "configurePreset": "vs2026-local-qt",
+      "configuration": "Debug"
+    },
+    {
       "name": "vs2022",
       "configurePreset": "vs2022",
       "configuration": "Debug"
@@ -54,6 +87,11 @@
     {
       "name": "vs2022-local-qt",
       "configurePreset": "vs2022-local-qt",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs2026-vcpkg",
+      "configurePreset": "vs2026-vcpkg",
       "configuration": "Debug"
     },
     {

@@ -20,6 +20,7 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
+#include <QJsonDocument>
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
@@ -28,6 +29,7 @@
 #include <QMdiSubWindow>
 #include <QPointer>
 #include <QPushButton>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTableWidget>
 #include <QTimer>
@@ -497,6 +499,76 @@ private slots:
         QTRY_COMPARE(mdiArea->subWindowList().size(), 0);
     }
 
+    void startupRestoresPersistedMainAndDeckWindowSession()
+    {
+        {
+            QSettings settings;
+            settings.remove(QStringLiteral("windowSession"));
+            settings.sync();
+        }
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString filePath = writeWorkflowDeck(&directory);
+        QVERIFY(!filePath.isEmpty());
+
+        QRect savedDeckGeometry;
+        QSize savedMainSize;
+        {
+            MainWindow window(nullptr, false, false);
+            window.resize(780, 690);
+            window.show();
+            QCoreApplication::processEvents();
+            DeckWorkspace* workspace = openWorkflowDeck(&window, filePath);
+            QVERIFY(workspace != nullptr);
+            QCOMPARE(
+                QFileInfo(workspace->property("cardstackFilePath").toString()).absoluteFilePath(),
+                QFileInfo(filePath).absoluteFilePath());
+            QMdiSubWindow* deckWindow = subWindowForWidget(window, workspace);
+            QVERIFY(deckWindow != nullptr);
+            deckWindow->showNormal();
+            deckWindow->setGeometry(37, 43, 720, 390);
+            QVERIFY(!deckWindow->isMinimized());
+            QVERIFY(!deckWindow->isMaximized());
+            savedDeckGeometry = deckWindow->geometry();
+            savedMainSize = window.size();
+            QVERIFY(window.close());
+        }
+
+        {
+            QSettings persisted;
+            QCOMPARE(persisted.value(QStringLiteral("windowSession/version")).toInt(), 1);
+            const QJsonDocument session = QJsonDocument::fromJson(
+                persisted.value(QStringLiteral("windowSession/deckWindows")).toByteArray());
+            QVERIFY(session.isArray());
+            QCOMPARE(session.array().size(), 1);
+        }
+
+        {
+            MainWindow restored(nullptr, false, true);
+            restored.show();
+            QCoreApplication::processEvents();
+            auto* mdiArea = restored.findChild<QMdiArea*>();
+            QVERIFY(mdiArea != nullptr);
+            QTRY_COMPARE(mdiArea->subWindowList().size(), 1);
+            auto* workspace = qobject_cast<DeckWorkspace*>(mdiArea->activeSubWindow()->widget());
+            QVERIFY(workspace != nullptr);
+            QCOMPARE(
+                QFileInfo(workspace->property("cardstackFilePath").toString()).absoluteFilePath(),
+                QFileInfo(filePath).absoluteFilePath());
+            QTRY_COMPARE(mdiArea->activeSubWindow()->geometry(), savedDeckGeometry);
+            QCOMPARE(restored.size(), savedMainSize);
+            QVERIFY(restored.property("cardstackMainGeometryRestored").toBool());
+            QVERIFY(restored.close());
+        }
+
+        {
+            QSettings settings;
+            settings.remove(QStringLiteral("windowSession"));
+            settings.sync();
+        }
+    }
+
     void windowArrangementCommandsKeepOpenWindowsReachable()
     {
         MainWindow window(nullptr, false);
@@ -520,7 +592,6 @@ private slots:
             UiIds::Command::WindowCascade,
             UiIds::Command::WindowTileVertical,
             UiIds::Command::WindowTileHorizontal,
-            UiIds::Command::WindowArrangeIcons,
         };
         for (int commandId : commands) {
             QAction* action = findCommandAction(window.menuBar(), commandId);
@@ -536,6 +607,24 @@ private slots:
                 QVERIFY(subWindow->widget() != nullptr);
             }
         }
+
+        const QList<QMdiSubWindow*> windows = mdiArea->subWindowList(QMdiArea::CreationOrder);
+        QCOMPARE(windows.size(), 2);
+        for (QMdiSubWindow* subWindow : windows) {
+            subWindow->showMinimized();
+            subWindow->move(32, 32);
+        }
+        QCoreApplication::processEvents();
+        QAction* arrangeIcons = findCommandAction(window.menuBar(), UiIds::Command::WindowArrangeIcons);
+        QVERIFY(arrangeIcons != nullptr);
+        QVERIFY(arrangeIcons->isEnabled());
+        arrangeIcons->trigger();
+        QCoreApplication::processEvents();
+        QVERIFY(windows.at(0)->isMinimized());
+        QVERIFY(windows.at(1)->isMinimized());
+        QVERIFY(!windows.at(0)->geometry().intersects(windows.at(1)->geometry()));
+        QVERIFY(mdiArea->viewport()->rect().contains(windows.at(0)->geometry()));
+        QVERIFY(mdiArea->viewport()->rect().contains(windows.at(1)->geometry()));
 
         QAction* closeAllAction = findCommandAction(window.menuBar(), UiIds::Command::WindowCloseAll);
         QVERIFY(closeAllAction != nullptr);

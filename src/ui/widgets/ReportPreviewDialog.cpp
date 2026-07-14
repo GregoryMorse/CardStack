@@ -3,8 +3,10 @@
 #include "UiIds.h"
 
 #include <QAbstractButton>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QPainter>
+#include <QWheelEvent>
 #include <QWidget>
 
 #include <algorithm>
@@ -30,7 +32,10 @@ public:
     {
         setObjectName(QStringLiteral("reportPreviewCanvas"));
         setAutoFillBackground(false);
+        setFocusPolicy(Qt::StrongFocus);
     }
+
+    std::function<void(int)> pageStepRequested;
 
     void setCurrentPageIndex(int pageIndex)
     {
@@ -40,6 +45,33 @@ public:
     }
 
 protected:
+    void keyPressEvent(QKeyEvent* event) override
+    {
+        int pageStep = 0;
+        if (event->key() == Qt::Key_PageDown || event->key() == Qt::Key_Down) {
+            pageStep = 1;
+        } else if (event->key() == Qt::Key_PageUp || event->key() == Qt::Key_Up) {
+            pageStep = -1;
+        }
+        if (pageStep != 0 && pageStepRequested) {
+            pageStepRequested(pageStep);
+            event->accept();
+            return;
+        }
+        QWidget::keyPressEvent(event);
+    }
+
+    void wheelEvent(QWheelEvent* event) override
+    {
+        const int pageStep = event->angleDelta().y() < 0 ? 1 : (event->angleDelta().y() > 0 ? -1 : 0);
+        if (pageStep != 0 && pageStepRequested) {
+            pageStepRequested(pageStep);
+            event->accept();
+            return;
+        }
+        QWidget::wheelEvent(event);
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QPainter painter(this);
@@ -148,6 +180,12 @@ std::unique_ptr<QDialog> ReportPreviewDialog::create(
             nextPage->setEnabled(safePageIndex + 1 < pageCount);
         }
     };
+    if (canvas != nullptr) {
+        canvas->pageStepRequested = [currentPageIndex, updatePageState](int pageStep) {
+            *currentPageIndex += pageStep;
+            updatePageState();
+        };
+    }
 
     if (auto* firstPage = uiControl<QAbstractButton>(dialog.get(), Control::PreviewFirstPage)) {
         QObject::connect(firstPage, &QAbstractButton::clicked, dialog.get(), [currentPageIndex, updatePageState]() {

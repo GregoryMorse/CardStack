@@ -7,6 +7,7 @@ set(CARDSTACK_TEST_SOURCES
     app/MainWindowWorkflowTests.cpp
     core/DeckMergeTests.cpp
     core/DelimitedTextTests.cpp
+    core/PhoneCallLogTests.cpp
     core/DeckTemplateTests.cpp
     legacy/LegacyDeckReaderTests.cpp
     legacy/LegacyInterchangeReaderTests.cpp
@@ -59,6 +60,7 @@ set(CARDSTACK_TEST_SUITE_NAMES
     MainWindowWorkflowTests
     DeckMergeTests
     DelimitedTextTests
+    PhoneCallLogTests
     DeckTemplateTests
     LegacyDeckReaderTests
     LegacyInterchangeReaderTests

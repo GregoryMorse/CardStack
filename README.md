@@ -39,7 +39,7 @@ third_party/     Vendored third-party source used by the migration layer
 - Qt 6 with Widgets, SQL, Test, and PrintSupport modules.
 - SQLite Qt SQL driver.
 
-Windows development is tested with Visual Studio 2022 and Qt 6.11.x.
+Windows development prefers Visual Studio 2026 and Qt 6.11.x. Visual Studio 2022 remains an explicit fallback.
 
 ## Build
 
@@ -53,8 +53,8 @@ cmake --build build/default
 Using the provided Visual Studio/local Qt preset:
 
 ```powershell
-cmake --preset vs2022-local-qt
-cmake --build --preset vs2022-local-qt
+cmake --preset vs2026-local-qt
+cmake --build --preset vs2026-local-qt
 ```
 
 To build Qt from source on Windows and configure CardStack against it:
@@ -68,13 +68,13 @@ scripts\build-qt6-windows.ps1 -Clone -ConfigureCardStack -QtSourceDir C:\dev\qt6
 CardStack uses one consolidated Qt test executable.
 
 ```powershell
-ctest --test-dir build\vs2022 -C Debug --output-on-failure
+ctest --test-dir build\vs2026 -C Debug --output-on-failure
 ```
 
 Run a single test group directly:
 
 ```powershell
-build\vs2022\Debug\CardStackTests.exe --test MainWindowActionTests
+build\vs2026\Debug\CardStackTests.exe --test MainWindowActionTests
 ```
 
 The GUI tests use Qt's offscreen platform and avoid focus-stealing mouse or
@@ -83,13 +83,13 @@ keyboard automation.
 ## Deploy a local Windows test build
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build-cardstack-vs2022.ps1 -BuildDir build\vs2022 -Config Debug -Target CardStack
+powershell -ExecutionPolicy Bypass -File scripts\build-cardstack-windows.ps1 -BuildDir build\vs2026 -Config Debug -Target CardStack
 ```
 
 The deployed executable is written beside the build output, for example:
 
 ```text
-build\vs2022\Debug\CardStackDeploy\CardStack.exe
+build\vs2026\Debug\CardStackDeploy\CardStack.exe
 ```
 
 ## Regenerate the Windows visual galleries

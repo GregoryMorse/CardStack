@@ -1,11 +1,14 @@
 #include "TemplateDesignerWidget.h"
 
+#include "UiIds.h"
+
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCursor>
 #include <QFormLayout>
+#include <QFont>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -73,6 +76,19 @@ QRect normalizedFrameBounds(QRect bounds, const CardTemplateLayout& layout)
     return bounds;
 }
 
+QFont storedFont(const QString& serialized, const QFont& fallback)
+{
+    QFont font;
+    return font.fromString(serialized) ? font : fallback;
+}
+
+void applyTemplateStyle(QFont* font, quint8 styleFlags)
+{
+    font->setBold((styleFlags & CardTemplateStyleFlagBold) != 0);
+    font->setItalic((styleFlags & CardTemplateStyleFlagItalic) != 0);
+    font->setUnderline((styleFlags & CardTemplateStyleFlagUnderline) != 0);
+}
+
 } // namespace
 
 class TemplateDesignCanvas : public QWidget {
@@ -83,6 +99,7 @@ public:
         setObjectName(QStringLiteral("templateDesignCanvas"));
         setMinimumSize(420, 360);
         setMouseTracking(true);
+        setFocusPolicy(Qt::StrongFocus);
     }
 
     void setLayoutDefinition(const CardTemplateLayout* layout)
@@ -97,6 +114,12 @@ public:
         update();
     }
 
+    void setAppearance(const DeckAppearance& appearance)
+    {
+        m_appearance = appearance;
+        update();
+    }
+
     void setSelectedFrameIndex(int frameIndex)
     {
         m_selectedFrameIndex = frameIndex;
@@ -104,6 +127,8 @@ public:
     }
 
     std::function<void(int)> frameSelected;
+    std::function<void(int)> frameActivated;
+    std::function<void(int)> frameBoundsChangeStarted;
     std::function<void(int, QRect)> frameBoundsChanged;
 
 protected:
@@ -121,21 +146,34 @@ protected:
         painter.setPen(palette().mid().color());
         painter.drawRect(page.adjusted(0, 0, -1, -1));
 
-        const QRect indexHeader(0, 0, m_layout->canvasWidth, 220);
+        const QRectF indexHeader = scaledBounds(QRect(0, 0, m_layout->canvasWidth, 220), *m_layout, page);
+        painter.save();
         painter.fillRect(indexHeader, palette().alternateBase());
-        painter.setPen(QPen(palette().mid().color(), 12));
-        painter.drawRect(indexHeader.adjusted(6, 6, -6, -6));
-        QFont indexFont = painter.font();
-        indexFont.setPixelSize(30);
+        const qreal logicalScale = page.width() / std::max(1, m_layout->canvasWidth);
+        painter.setPen(QPen(palette().mid().color(), std::max<qreal>(1.0, 12.0 * logicalScale)));
+        const qreal borderInset = std::max<qreal>(1.0, 6.0 * logicalScale);
+        painter.drawRect(indexHeader.adjusted(borderInset, borderInset, -borderInset, -borderInset));
+        QFont indexFont = storedFont(m_appearance.indexFont, painter.font());
+        if (m_appearance.indexFont.isEmpty()) {
+            indexFont.setPixelSize(std::max(8, qRound(indexHeader.height() * 0.55)));
+        }
         indexFont.setWeight(QFont::Medium);
         painter.setFont(indexFont);
         painter.setPen(palette().text().color());
-        painter.drawText(indexHeader.adjusted(30, 0, -30, 0), Qt::AlignLeft | Qt::AlignVCenter, tr("Index"));
+        const qreal textInset = std::max<qreal>(4.0, 30.0 * logicalScale);
+        painter.drawText(indexHeader.adjusted(textInset, 0, -textInset, 0), Qt::AlignLeft | Qt::AlignVCenter, tr("Index"));
+        painter.restore();
 
         for (int index = 0; index < m_layout->frames.size(); ++index) {
             const CardTemplateFrame& frame = m_layout->frames.at(index);
             const QRectF frameRect = scaledBounds(frame.bounds, *m_layout, page);
+            painter.save();
             painter.setPen(index == m_selectedFrameIndex ? palette().highlight().color() : QColor(50, 105, 145));
+            QFont frameFont = storedFont(
+                frame.kind == CardTemplateFrameKind::Text ? m_appearance.textFont : m_appearance.dataFont,
+                painter.font());
+            applyTemplateStyle(&frameFont, frame.styleFlags);
+            painter.setFont(frameFont);
 
             switch (frame.kind) {
             case CardTemplateFrameKind::LineOrBox:
@@ -170,7 +208,12 @@ protected:
                             return matchingText || adjacentCaption;
                         })) {
                     const QRectF labelRect(page.left(), frameRect.top(), std::max<qreal>(0.0, frameRect.left() - page.left() - 6.0), frameRect.height());
+                    painter.save();
+                    QFont nameFont = storedFont(m_appearance.nameFont, painter.font());
+                    applyTemplateStyle(&nameFont, frame.styleFlags);
+                    painter.setFont(nameFont);
                     painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, m_fields->at(frame.fieldIndex).name());
+                    painter.restore();
                 }
                 break;
             case CardTemplateFrameKind::Text:
@@ -192,11 +235,16 @@ protected:
                 painter.drawRect(resizeHandle(frameRect));
                 painter.setBrush(Qt::NoBrush);
             }
+            painter.restore();
         }
     }
 
     void mousePressEvent(QMouseEvent* event) override
     {
+        if (event->button() != Qt::LeftButton) {
+            QWidget::mousePressEvent(event);
+            return;
+        }
         if (m_layout == nullptr) {
             return;
         }
@@ -212,12 +260,37 @@ protected:
                 m_dragStartPosition = event->position();
                 m_dragStartBounds = m_layout->frames.at(index).bounds;
                 m_dragMode = resizeHandle(frameRect).contains(event->position()) ? DragMode::Resize : DragMode::Move;
+                m_dragChanged = false;
                 return;
             }
         }
         if (frameSelected) {
             frameSelected(-1);
         }
+    }
+
+    void mouseDoubleClickEvent(QMouseEvent* event) override
+    {
+        if (event->button() != Qt::LeftButton || m_layout == nullptr) {
+            QWidget::mouseDoubleClickEvent(event);
+            return;
+        }
+
+        const QRectF page = pageRect();
+        for (int index = m_layout->frames.size() - 1; index >= 0; --index) {
+            if (!scaledBounds(m_layout->frames.at(index).bounds, *m_layout, page).contains(event->position())) {
+                continue;
+            }
+            if (frameSelected) {
+                frameSelected(index);
+            }
+            if (frameActivated) {
+                frameActivated(index);
+            }
+            event->accept();
+            return;
+        }
+        QWidget::mouseDoubleClickEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent* event) override
@@ -227,6 +300,12 @@ protected:
         }
 
         if (m_dragMode != DragMode::None && m_dragFrameIndex >= 0) {
+            if (!m_dragChanged) {
+                if (frameBoundsChangeStarted) {
+                    frameBoundsChangeStarted(m_dragFrameIndex);
+                }
+                m_dragChanged = true;
+            }
             const QRectF page = pageRect();
             const QPointF delta = event->position() - m_dragStartPosition;
             QRectF visual = scaledBounds(m_dragStartBounds, *m_layout, page);
@@ -251,6 +330,7 @@ protected:
     {
         m_dragMode = DragMode::None;
         m_dragFrameIndex = -1;
+        m_dragChanged = false;
         updateCursor(mapFromGlobal(QCursor::pos()));
     }
 
@@ -303,17 +383,24 @@ private:
 
     const CardTemplateLayout* m_layout = nullptr;
     const QVector<FieldDefinition>* m_fields = nullptr;
+    DeckAppearance m_appearance;
     int m_selectedFrameIndex = -1;
     int m_dragFrameIndex = -1;
     DragMode m_dragMode = DragMode::None;
+    bool m_dragChanged = false;
     QPointF m_dragStartPosition;
     QRect m_dragStartBounds;
 };
 
-TemplateDesignerWidget::TemplateDesignerWidget(CardTemplateLayout layout, QVector<FieldDefinition> fields, QWidget* parent)
+TemplateDesignerWidget::TemplateDesignerWidget(
+    CardTemplateLayout layout,
+    QVector<FieldDefinition> fields,
+    QWidget* parent,
+    DeckAppearance appearance)
     : QWidget(parent)
     , m_layout(std::move(layout))
     , m_fields(std::move(fields))
+    , m_appearance(std::move(appearance))
 {
     for (CardTemplateFrame& frame : m_layout.frames) {
         const bool fieldFrame = frame.kind == CardTemplateFrameKind::DataBox
@@ -586,6 +673,14 @@ void TemplateDesignerWidget::updateSelectedFrameFromToolbar(
     markDirty();
 }
 
+void TemplateDesignerWidget::setAppearance(DeckAppearance appearance)
+{
+    m_appearance = std::move(appearance);
+    if (m_canvas != nullptr) {
+        m_canvas->setAppearance(m_appearance);
+    }
+}
+
 void TemplateDesignerWidget::save()
 {
     applyPropertyEdits();
@@ -628,6 +723,7 @@ void TemplateDesignerWidget::buildUi()
     m_canvas = new TemplateDesignCanvas(splitter);
     m_canvas->setLayoutDefinition(&m_layout);
     m_canvas->setFieldDefinitions(&m_fields);
+    m_canvas->setAppearance(m_appearance);
     splitter->addWidget(m_canvas);
 
     auto* side = new QWidget(splitter);
@@ -713,6 +809,13 @@ void TemplateDesignerWidget::buildUi()
 
     connect(m_frameTable, &QTableWidget::currentCellChanged, this, [this](int row) { selectFrame(row); });
     m_canvas->frameSelected = [this](int frameIndex) { selectFrame(frameIndex); };
+    m_canvas->frameActivated = [this](int frameIndex) {
+        selectFrame(frameIndex);
+        emit commandRequested(UiIds::Command::ToolFrameAttributes);
+    };
+    m_canvas->frameBoundsChangeStarted = [this](int) {
+        pushUndoState();
+    };
     m_canvas->frameBoundsChanged = [this](int frameIndex, const QRect& bounds) {
         if (frameIndex < 0 || frameIndex >= m_layout.frames.size()) {
             return;

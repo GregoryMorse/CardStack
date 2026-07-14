@@ -193,6 +193,8 @@ const UiMenuItem mainDeckConfigureMenuItems[] = {
 };
 const UiMenuItem mainDeckPhoneMenuItems[] = {
     {2450, "&Dial...\tF5", false, nullptr, 0},
+    {0, "", true, nullptr, 0},
+    {2451, "Call &Log...", false, nullptr, 0},
 };
 const UiMenuItem mainDeckWindowMenuItems[] = {
     {2700, "Tile &Vertical\tShift+F5", false, nullptr, 0},
@@ -214,7 +216,7 @@ const UiMenuItem mainDeckMenuItems[] = {
     {0, "&View", false, mainDeckViewMenuItems, 2},
     {0, "&Search", false, mainDeckSearchMenuItems, 4},
     {0, "C&onfigure", false, mainDeckConfigureMenuItems, 9},
-    {0, "&Phone", false, mainDeckPhoneMenuItems, 1},
+    {0, "&Phone", false, mainDeckPhoneMenuItems, 3},
     {0, "&Window", false, mainDeckWindowMenuItems, 6},
     {0, "&Help", false, mainDeckHelpMenuItems, 3},
 };

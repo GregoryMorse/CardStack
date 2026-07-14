@@ -70,6 +70,7 @@ Deck deckWithCards(const Deck& source, const QVector<CardRecord>& cards)
     updated.setSortKeys(source.sortKeys());
     updated.setImportExportProfiles(source.importExportProfiles());
     updated.setCardTemplateLayout(source.cardTemplateLayout());
+    updated.setAppearance(source.appearance());
     for (const CardRecord& record : cards) {
         updated.addCard(record);
     }
@@ -317,6 +318,21 @@ void DeckWorkspace::clearDirty()
 
     m_dirty = false;
     emit dirtyChanged(false);
+}
+
+void DeckWorkspace::appendPhoneCallLogEntry(PhoneCallLogEntry entry)
+{
+    m_deck.addPhoneCallLogEntry(std::move(entry));
+    markDirty();
+}
+
+int DeckWorkspace::removePhoneCallLogEntries(const QVector<int>& entryIndexes)
+{
+    const int removed = m_deck.removePhoneCallLogEntries(entryIndexes);
+    if (removed > 0) {
+        markDirty();
+    }
+    return removed;
 }
 
 void DeckWorkspace::setDeckDescription(const QString& description)

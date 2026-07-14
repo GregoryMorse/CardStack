@@ -1,6 +1,7 @@
 ﻿#include "TemplateDesignerWidget.h"
 
 #include "../support/ModalDialogDriver.h"
+#include "UiIds.h"
 
 #include <QCoreApplication>
 #include <QComboBox>
@@ -248,6 +249,77 @@ private slots:
         lineShapeCombo->setCurrentIndex(lineShapeCombo->findData(static_cast<int>(CardTemplateLineBoxShape::VerticalLine)));
         QCoreApplication::processEvents();
         QCOMPARE(designer.layoutDefinition().frames.at(2).lineBoxShape, CardTemplateLineBoxShape::VerticalLine);
+    }
+
+    void canvasMouseMessagesAndClipboardPreserveDesignerBehavior()
+    {
+        CardTemplateLayout layout;
+        layout.canvasWidth = 6400;
+        layout.canvasHeight = 4800;
+        layout.frames = {
+            {CardTemplateFrameKind::Text, QRect(900, 700, 1600, 500), QStringLiteral("Move me"), -1},
+        };
+
+        TemplateDesignerWidget designer(layout, makeFields());
+        designer.resize(1000, 700);
+        designer.show();
+        QCoreApplication::processEvents();
+        QWidget* canvas = designer.findChild<QWidget*>(QStringLiteral("templateDesignCanvas"));
+        QVERIFY(canvas != nullptr);
+
+        const QRectF available = canvas->rect().adjusted(16, 16, -20, -20);
+        const qreal aspect = static_cast<qreal>(layout.canvasWidth) / layout.canvasHeight;
+        qreal pageWidth = available.width();
+        qreal pageHeight = pageWidth / aspect;
+        if (pageHeight > available.height()) {
+            pageHeight = available.height();
+            pageWidth = pageHeight * aspect;
+        }
+        const QRectF page(available.center().x() - pageWidth / 2.0,
+                          available.center().y() - pageHeight / 2.0,
+                          pageWidth,
+                          pageHeight);
+        const auto visualBounds = [&page, &layout](const QRect& bounds) {
+            return QRectF(page.left() + bounds.left() * page.width() / layout.canvasWidth,
+                          page.top() + bounds.top() * page.height() / layout.canvasHeight,
+                          bounds.width() * page.width() / layout.canvasWidth,
+                          bounds.height() * page.height() / layout.canvasHeight);
+        };
+
+        const QPoint initialCenter = visualBounds(layout.frames.first().bounds).center().toPoint();
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, initialCenter);
+        QCOMPARE(designer.selectedFrameIndex(), 0);
+        QVERIFY(canvas->hasFocus());
+
+        const QRect beforeMove = designer.layoutDefinition().frames.first().bounds;
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, initialCenter);
+        QTest::mouseMove(canvas, initialCenter + QPoint(24, 18));
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, initialCenter + QPoint(24, 18));
+        const QRect afterMove = designer.layoutDefinition().frames.first().bounds;
+        QVERIFY(afterMove.topLeft() != beforeMove.topLeft());
+
+        const QPoint resizePoint = visualBounds(afterMove).bottomRight().toPoint() - QPoint(2, 2);
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, resizePoint);
+        QTest::mouseMove(canvas, resizePoint + QPoint(22, 16));
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, resizePoint + QPoint(22, 16));
+        const QRect afterResize = designer.layoutDefinition().frames.first().bounds;
+        QVERIFY(afterResize.width() > afterMove.width());
+        QVERIFY(afterResize.height() > afterMove.height());
+
+        designer.copySelectedFrame();
+        QVERIFY(designer.canPasteFrame());
+        designer.pasteFrame();
+        QCOMPARE(designer.layoutDefinition().frames.size(), 2);
+        QCOMPARE(designer.selectedFrameIndex(), 1);
+        QVERIFY(designer.layoutDefinition().frames.last().bounds.topLeft() != afterResize.topLeft());
+        designer.undo();
+        QCOMPARE(designer.layoutDefinition().frames.size(), 1);
+        QCOMPARE(designer.layoutDefinition().frames.first().bounds, afterResize);
+
+        QSignalSpy commandSpy(&designer, &TemplateDesignerWidget::commandRequested);
+        QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, visualBounds(afterResize).center().toPoint());
+        QCOMPARE(commandSpy.size(), 1);
+        QCOMPARE(commandSpy.takeFirst().first().toInt(), UiIds::Command::ToolFrameAttributes);
     }
 
     void writesManualDesignerInspectionImagesWhenConfigured()

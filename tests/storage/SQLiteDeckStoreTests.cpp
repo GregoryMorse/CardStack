@@ -356,14 +356,14 @@ private slots:
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ("
             "'schema_migrations', 'app_settings', 'decks', 'templates', 'template_fields',"
             "'template_frames', 'cards', 'card_values', 'deck_sort_keys', 'deck_formatting', 'reports',"
-            "'report_frames', 'import_export_profiles', 'phone_profiles')")));
+            "'report_frames', 'import_export_profiles', 'phone_profiles', 'phone_call_log')")));
 
         QStringList tables;
         while (query.next()) {
             tables.append(query.value(0).toString());
         }
 
-        QCOMPARE(tables.size(), 14);
+        QCOMPARE(tables.size(), 15);
         QVERIFY(tables.contains(QStringLiteral("decks")));
         QVERIFY(tables.contains(QStringLiteral("templates")));
         QVERIFY(tables.contains(QStringLiteral("template_fields")));
@@ -372,14 +372,15 @@ private slots:
         QVERIFY(tables.contains(QStringLiteral("deck_formatting")));
         QVERIFY(tables.contains(QStringLiteral("import_export_profiles")));
         QVERIFY(tables.contains(QStringLiteral("phone_profiles")));
+        QVERIFY(tables.contains(QStringLiteral("phone_call_log")));
 
         QVERIFY(query.exec(QStringLiteral("SELECT value FROM app_settings WHERE key = 'schema_version'")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toString(), QStringLiteral("1"));
+        QCOMPARE(query.value(0).toString(), QStringLiteral("2"));
 
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 1);
+        QCOMPARE(query.value(0).toInt(), 2);
 
         database.close();
         QSqlDatabase::removeDatabase(connectionName);

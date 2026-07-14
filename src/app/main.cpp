@@ -7,6 +7,8 @@
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("CardStack"));
+    QCoreApplication::setApplicationName(QStringLiteral("CardStack"));
 
     app.setStyleSheet(QStringLiteral(R"(
         QPushButton {
@@ -42,9 +44,11 @@ int main(int argc, char* argv[])
     appIcon.addFile(QStringLiteral(":/cardstack/icons/icon-256.png"), QSize(256, 256));
     app.setWindowIcon(appIcon);
 
-    CardStack::MainWindow mainWindow(nullptr, false);
+    CardStack::MainWindow mainWindow(nullptr, false, true);
     mainWindow.setWindowIcon(appIcon);
-    mainWindow.resize(1100, 720);
+    if (!mainWindow.property("cardstackMainGeometryRestored").toBool()) {
+        mainWindow.resize(1100, 720);
+    }
     mainWindow.show();
 
     return app.exec();

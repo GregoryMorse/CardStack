@@ -725,6 +725,182 @@ private slots:
         QCOMPARE(password->echoMode(), QLineEdit::Password);
     }
 
+    void recoveredListActivationNotificationsUseTheirLegacyCommandPaths()
+    {
+        const UiBuilder::DialogContext context = populatedContext();
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("REPORTFORM"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* formList = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::ReportFormList));
+            QVERIFY(formList != nullptr);
+            formList->addItem(QStringLiteral("Letter"));
+            formList->setCurrentRow(0);
+            QVERIFY(QMetaObject::invokeMethod(
+                formList,
+                "itemDoubleClicked",
+                Qt::DirectConnection,
+                Q_ARG(QListWidgetItem*, formList->currentItem())));
+            QCOMPARE(dialog->result(), static_cast<int>(QDialog::Accepted));
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("SAVEDESIGN"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* reportList = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SaveDesignList));
+            auto* nameEdit = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SaveDesignName));
+            QVERIFY(reportList != nullptr);
+            QVERIFY(nameEdit != nullptr);
+            QVERIFY(reportList->count() > 1);
+
+            reportList->setCurrentRow(1);
+            QCOMPARE(nameEdit->text(), reportList->currentItem()->text());
+        }
+    }
+
+    void recoveredControlChangeNotificationsUseTheirLegacyCommandPaths()
+    {
+        const UiBuilder::DialogContext context = populatedContext();
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("PRINT"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* copies = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PrintCopyCount));
+            auto* copySpin = qobject_cast<QSpinBox*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PrintCopyCountSpin));
+            auto* selected = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PrintSelectedCards));
+            auto* all = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PrintAllCards));
+            auto* defineSearch = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PrintDefineSearch));
+            auto* summary = qobject_cast<QLabel*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PrintSummary1));
+            QVERIFY(copies != nullptr);
+            QVERIFY(copySpin != nullptr);
+            QVERIFY(selected != nullptr);
+            QVERIFY(all != nullptr);
+            QVERIFY(defineSearch != nullptr);
+            QVERIFY(summary != nullptr);
+
+            copies->setText(QStringLiteral("0"));
+            QCOMPARE(copies->text(), QStringLiteral("1"));
+            copies->setText(QStringLiteral("10001"));
+            QCOMPARE(copies->text(), QStringLiteral("10000"));
+            copies->setText(QStringLiteral("9"));
+            copySpin->setValue(1);
+            QCOMPARE(copies->text(), QStringLiteral("10"));
+
+            QVERIFY(!defineSearch->isEnabled());
+            selected->setChecked(true);
+            QVERIFY(defineSearch->isEnabled());
+            QVERIFY(summary->text().contains(QStringLiteral("selection"), Qt::CaseInsensitive));
+            all->setChecked(true);
+            QVERIFY(!defineSearch->isEnabled());
+            QVERIFY(summary->text().contains(QStringLiteral("all cards"), Qt::CaseInsensitive));
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("NEWFILE"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* source = qobject_cast<QComboBox*>(UiBuilder::controlById(dialog.get(), UiIds::Control::NewFileSourceCombo));
+            auto* templates = qobject_cast<QListWidget*>(UiBuilder::controlById(dialog.get(), UiIds::Control::NewFileTemplateList));
+            QVERIFY(source != nullptr);
+            QVERIFY(templates != nullptr);
+            source->setCurrentIndex(1);
+            QVERIFY(!templates->isEnabled());
+            source->setCurrentIndex(2);
+            QVERIFY(templates->isEnabled());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("SEARCH"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* none = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::SearchCompareNone));
+            auto* andButton = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::SearchCompareAnd));
+            QWidget* secondText = UiBuilder::controlById(dialog.get(), UiIds::Control::SearchSecondText);
+            QVERIFY(none != nullptr);
+            QVERIFY(andButton != nullptr);
+            QVERIFY(secondText != nullptr);
+            andButton->setChecked(true);
+            QVERIFY(!secondText->isHidden());
+            QVERIFY(secondText->isEnabled());
+            none->setChecked(true);
+            QVERIFY(secondText->isHidden());
+            QVERIFY(!secondText->isEnabled());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("REPLACE"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* currentData = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog.get(), UiIds::Control::ReplaceCurrentData));
+            QWidget* replaceButton = UiBuilder::controlById(dialog.get(), UiIds::Control::Ok);
+            QVERIFY(currentData != nullptr);
+            QVERIFY(replaceButton != nullptr);
+            QVERIFY(currentData->isReadOnly());
+            QCOMPARE(currentData->focusProxy(), replaceButton);
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("IMPEDIT"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* notes = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::ImportEditNotes));
+            QWidget* length = UiBuilder::controlById(dialog.get(), UiIds::Control::ImportEditLength);
+            QVERIFY(notes != nullptr);
+            QVERIFY(length != nullptr);
+            notes->setChecked(true);
+            QVERIFY(!length->isEnabled());
+            notes->setChecked(false);
+            QVERIFY(length->isEnabled());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("LINEFRAME"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* horizontal = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::LineFrameHorizontal));
+            auto* lineStyle = qobject_cast<QComboBox*>(UiBuilder::controlById(dialog.get(), UiIds::Control::LineFrameLineStyle));
+            auto* fillPattern = qobject_cast<QComboBox*>(UiBuilder::controlById(dialog.get(), UiIds::Control::LineFrameFillPattern));
+            auto* radius = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog.get(), UiIds::Control::LineFrameCornerRadius));
+            QWidget* preview = UiBuilder::controlById(dialog.get(), UiIds::Control::LineFramePreview);
+            QVERIFY(horizontal != nullptr);
+            QVERIFY(lineStyle != nullptr);
+            QVERIFY(fillPattern != nullptr);
+            QVERIFY(radius != nullptr);
+            QVERIFY(preview != nullptr);
+            lineStyle->addItems({QStringLiteral("Solid"), QStringLiteral("Dash")});
+            fillPattern->addItems({QStringLiteral("Clear"), QStringLiteral("10%")});
+            horizontal->setChecked(true);
+            lineStyle->setCurrentIndex(1);
+            fillPattern->setCurrentIndex(1);
+            radius->setText(QStringLiteral("250"));
+            QCOMPARE(radius->text(), QStringLiteral("200"));
+            QCOMPARE(preview->property("lineFrameShape").toInt(), 1);
+            QCOMPARE(preview->property("lineFrameLineStyle").toInt(), 1);
+            QCOMPARE(preview->property("lineFrameFillPattern").toInt(), 1);
+            QCOMPARE(preview->property("lineFrameCornerRadius").toInt(), 200);
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("ADDSECURITY"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* password = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog.get(), UiIds::Control::SecurityPassword));
+            QVERIFY(password != nullptr);
+            password->setText(QStringLiteral("mixedCase"));
+            QCOMPARE(password->text(), QStringLiteral("MIXEDCAS"));
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("DESIGNREPORTS"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* reports = qobject_cast<QListWidget*>(UiBuilder::controlById(dialog.get(), UiIds::Control::ReportsList));
+            auto* modify = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::ReportsModify));
+            QVERIFY(reports != nullptr);
+            QVERIFY(modify != nullptr);
+            reports->setCurrentRow(-1);
+            QVERIFY(!modify->isEnabled());
+            reports->setCurrentRow(0);
+            QVERIFY(modify->isEnabled());
+        }
+    }
+
     void initializesExpectedRadioButtonDefaults()
     {
         const UiBuilder::DialogContext context = populatedContext();
@@ -779,16 +955,41 @@ private slots:
             QVERIFY(typeCombo->width() >= 180);
             QVERIFY(typeCombo->width() <= 190);
             QVERIFY(secondText->isHidden());
+            const int compactHeight = dialog->height();
 
             andCompare->click();
             QCoreApplication::processEvents();
             QVERIFY(andCompare->isChecked());
             QVERIFY(!secondText->isHidden());
+            const int expandedHeight = dialog->height();
+            QVERIFY(expandedHeight > compactHeight);
 
             orCompare->click();
             QCoreApplication::processEvents();
             QVERIFY(orCompare->isChecked());
             QVERIFY(!secondText->isHidden());
+
+            noCompare->click();
+            QCoreApplication::processEvents();
+            QVERIFY(noCompare->isChecked());
+            QVERIFY(secondText->isHidden());
+            QCOMPARE(dialog->height(), compactHeight);
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CALL"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            QLabel* phoneIcon = nullptr;
+            for (QLabel* label : dialog->findChildren<QLabel*>()) {
+                if (label->property("legacyIconResource").toString() == QStringLiteral("IDPHONE")) {
+                    phoneIcon = label;
+                    break;
+                }
+            }
+            QVERIFY(phoneIcon != nullptr);
+            QVERIFY(phoneIcon->text().isEmpty());
+            QVERIFY(!phoneIcon->pixmap().isNull());
+            QCOMPARE(phoneIcon->accessibleName(), QStringLiteral("Phone"));
         }
 
         {

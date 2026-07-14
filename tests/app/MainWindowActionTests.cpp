@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QGroupBox>
 #include <QLabel>
+#include <QKeySequence>
 #include <QMessageBox>
 #include <QMdiArea>
 #include <QMdiSubWindow>
@@ -18,9 +19,12 @@
 #include <QMenuBar>
 #include <QLineEdit>
 #include <QPointer>
+#include <QPushButton>
 #include <QSet>
+#include <QScrollBar>
 #include <QTest>
 #include <QTemporaryDir>
+#include <QTableView>
 #include <QToolBar>
 #include <QCheckBox>
 #include <QComboBox>
@@ -40,6 +44,7 @@
 #include "SQLiteDeckStore.h"
 #include "SQLitePackageStore.h"
 #include "TemplateDesignerWidget.h"
+#include "UiBuilder.h"
 #include "UiIds.h"
 
 using namespace CardStack;
@@ -527,30 +532,35 @@ private slots:
         QVERIFY(phoneDialerAction->isEnabled());
     }
 
-    void initializesShowButtonBarMenuStateAndTracksToolbar()
+    void initializesShowButtonBarMenuStateAndTracksAllButtonBars()
     {
-        MainWindow window(nullptr, false);
+        MainWindow window(nullptr, true);
         window.show();
         QCoreApplication::processEvents();
 
         auto* showButtonBarAction = findCommandAction(window.menuBar(), UiIds::Command::ConfigureShowButtonBar);
         auto* toolBar = window.findChild<QToolBar*>(QStringLiteral("buttonBar"));
+        auto* indexBar = window.findChild<QToolBar*>(QStringLiteral("indexBar"));
         QVERIFY(showButtonBarAction != nullptr);
         QVERIFY(toolBar != nullptr);
+        QVERIFY(indexBar != nullptr);
 
         QVERIFY(showButtonBarAction->isCheckable());
         QVERIFY(showButtonBarAction->isChecked());
         QVERIFY(toolBar->isVisible());
+        QVERIFY(indexBar->isVisible());
 
         showButtonBarAction->trigger();
         QCoreApplication::processEvents();
         QVERIFY(!showButtonBarAction->isChecked());
         QVERIFY(!toolBar->isVisible());
+        QVERIFY(!indexBar->isVisible());
 
         showButtonBarAction->trigger();
         QCoreApplication::processEvents();
         QVERIFY(showButtonBarAction->isChecked());
         QVERIFY(toolBar->isVisible());
+        QVERIFY(indexBar->isVisible());
     }
 
     void exposesStartupToolbarCommands()
@@ -615,6 +625,71 @@ private slots:
         QCOMPARE(deckMode->text(), QStringLiteral("Card View"));
     }
 
+    void indexBarShrinksLikeLegacyButtonBarWithoutConstrainingMainWindow()
+    {
+        MainWindow window(nullptr, true);
+        window.resize(1040, 700);
+        window.show();
+        QCoreApplication::processEvents();
+
+        auto* indexBar = window.findChild<QToolBar*>(QStringLiteral("indexBar"));
+        auto* container = window.findChild<QWidget*>(QStringLiteral("indexBarContainer"));
+        auto* mdiArea = window.findChild<QMdiArea*>();
+        QVERIFY(indexBar != nullptr);
+        QVERIFY(container != nullptr);
+        QVERIFY(mdiArea != nullptr);
+
+        const QList<QPushButton*> buttons =
+            container->findChildren<QPushButton*>(QString(), Qt::FindDirectChildrenOnly);
+        QCOMPARE(buttons.size(), 37);
+        QVERIFY(container->width() > 0);
+        QVERIFY(!buttons.first()->visibleRegion().isEmpty());
+        QVERIFY(!buttons.last()->visibleRegion().isEmpty());
+        QVERIFY(buttons.last()->geometry().right() < container->width());
+        int widestIndexGlyphWidth = 1;
+        for (const QPushButton* button : buttons) {
+            if (!button->text().isEmpty()) {
+                widestIndexGlyphWidth = std::max(
+                    widestIndexGlyphWidth,
+                    button->fontMetrics().horizontalAdvance(button->text()));
+            }
+        }
+        const int wideButtonWidth = buttons.first()->width();
+
+        QTest::keyClick(&window, Qt::Key_F9);
+        QCoreApplication::processEvents();
+        QVERIFY(indexBar->isVisible());
+        QVERIFY(!buttons.first()->visibleRegion().isEmpty());
+        QVERIFY(!buttons.last()->visibleRegion().isEmpty());
+
+        QTest::keyClick(&window, Qt::Key_F9);
+        QCoreApplication::processEvents();
+
+        window.resize(430, 420);
+        QCoreApplication::processEvents();
+
+        QVERIFY(window.width() <= 430);
+        QVERIFY(buttons.first()->width() < wideButtonWidth);
+        for (const QPushButton* button : buttons) {
+            QVERIFY(button->width() >= widestIndexGlyphWidth + 2);
+        }
+        QCOMPARE(mdiArea->horizontalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
+        QCOMPARE(mdiArea->verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
+
+        const int indexOverflow = container->property("indexContentWidth").toInt() - container->width();
+        if (indexOverflow > 0) {
+            QScrollBar* horizontalScrollBar = mdiArea->horizontalScrollBar();
+            QTRY_VERIFY(horizontalScrollBar->maximum() > horizontalScrollBar->minimum());
+            horizontalScrollBar->setValue(horizontalScrollBar->maximum());
+            QCoreApplication::processEvents();
+            QVERIFY(!buttons.last()->visibleRegion().isEmpty());
+
+            horizontalScrollBar->setValue(horizontalScrollBar->minimum());
+            QCoreApplication::processEvents();
+            QVERIFY(!buttons.first()->visibleRegion().isEmpty());
+        }
+    }
+
     void deckViewShortcutsAndCheckmarksFollowActiveView()
     {
         MainWindow window(nullptr, true);
@@ -626,13 +701,124 @@ private slots:
 
         auto* viewCardAction = findCommandAction(window.menuBar(), UiIds::Command::ViewCard);
         auto* viewTableAction = findCommandAction(window.menuBar(), UiIds::Command::ViewTable);
+        auto* previousWindowfulAction = findCommandAction(window.menuBar(), UiIds::Command::NavigatePreviousWindowful);
         auto* previousAction = findCommandAction(window.menuBar(), UiIds::Command::NavigatePreviousCard);
         auto* nextAction = findCommandAction(window.menuBar(), UiIds::Command::NavigateNextCard);
+        auto* nextWindowfulAction = findCommandAction(window.menuBar(), UiIds::Command::NavigateNextWindowful);
         auto* deckMode = window.findChild<QLabel*>(QStringLiteral("toolbarDeckModeLabel"));
         QVERIFY(viewCardAction != nullptr);
         QVERIFY(viewTableAction != nullptr);
+        QVERIFY(previousWindowfulAction != nullptr);
         QVERIFY(previousAction != nullptr);
         QVERIFY(nextAction != nullptr);
+        QVERIFY(nextWindowfulAction != nullptr);
+
+        const auto verifyMenuShortcuts = [](int menuId,
+                                            std::initializer_list<std::pair<int, QKeySequence>> expected) {
+            QMenuBar menuBar;
+            QVERIFY(UiBuilder::populateMenuBar(&menuBar, menuId, &menuBar, {}));
+            for (const auto& [commandId, shortcut] : expected) {
+                QAction* action = findCommandAction(&menuBar, commandId);
+                QVERIFY2(action != nullptr, qPrintable(QStringLiteral("Missing command %1 in menu %2").arg(commandId).arg(menuId)));
+                QCOMPARE(action->shortcut(), shortcut);
+            }
+        };
+        verifyMenuShortcuts(UiIds::Menu::Startup, {
+            {UiIds::Command::FileOpen, QKeySequence(Qt::CTRL | Qt::Key_O)},
+            {UiIds::Command::FileExit, QKeySequence(Qt::ALT | Qt::Key_F4)},
+            {UiIds::Command::PhoneDial, QKeySequence(Qt::Key_F5)},
+            {UiIds::Command::HelpContents, QKeySequence(Qt::Key_F1)},
+        });
+        verifyMenuShortcuts(UiIds::Menu::MainDeck, {
+            {UiIds::Command::FileOpen, QKeySequence(Qt::CTRL | Qt::Key_O)},
+            {UiIds::Command::FileSave, QKeySequence(Qt::CTRL | Qt::Key_S)},
+            {UiIds::Command::FilePrintReport, QKeySequence(Qt::CTRL | Qt::Key_P)},
+            {UiIds::Command::FileExit, QKeySequence(Qt::ALT | Qt::Key_F4)},
+            {UiIds::Command::EditUndo, QKeySequence(Qt::CTRL | Qt::Key_Z)},
+            {UiIds::Command::EditCut, QKeySequence(Qt::CTRL | Qt::Key_X)},
+            {UiIds::Command::EditCopy, QKeySequence(Qt::CTRL | Qt::Key_C)},
+            {UiIds::Command::EditPaste, QKeySequence(Qt::CTRL | Qt::Key_V)},
+            {UiIds::Command::EditSmartPaste, QKeySequence(Qt::CTRL | Qt::Key_W)},
+            {UiIds::Command::EditClear, QKeySequence(Qt::Key_Delete)},
+            {UiIds::Command::CardAdd, QKeySequence(Qt::CTRL | Qt::Key_A)},
+            {UiIds::Command::CardDelete, QKeySequence(Qt::CTRL | Qt::Key_D)},
+            {UiIds::Command::CardDuplicate, QKeySequence(Qt::CTRL | Qt::Key_U)},
+            {UiIds::Command::CardUndelete, QKeySequence(Qt::ALT | Qt::Key_F7)},
+            {UiIds::Command::ViewCard, QKeySequence(Qt::Key_F9)},
+            {UiIds::Command::ViewTable, QKeySequence(Qt::Key_F9)},
+            {UiIds::Command::SearchFind, QKeySequence(Qt::CTRL | Qt::Key_F)},
+            {UiIds::Command::SearchFindNext, QKeySequence(Qt::CTRL | Qt::Key_N)},
+            {UiIds::Command::SearchReplace, QKeySequence(Qt::CTRL | Qt::Key_R)},
+            {UiIds::Command::NavigateFirstCard, QKeySequence(Qt::CTRL | Qt::Key_Home)},
+            {UiIds::Command::NavigateLastCard, QKeySequence(Qt::CTRL | Qt::Key_End)},
+            {UiIds::Command::ConfigureIndex, QKeySequence(Qt::CTRL | Qt::Key_I)},
+            {UiIds::Command::PhoneDial, QKeySequence(Qt::Key_F5)},
+            {UiIds::Command::WindowTileVertical, QKeySequence(Qt::SHIFT | Qt::Key_F5)},
+            {UiIds::Command::WindowTileHorizontal, QKeySequence(Qt::SHIFT | Qt::Key_F4)},
+            {UiIds::Command::HelpContents, QKeySequence(Qt::Key_F1)},
+        });
+        verifyMenuShortcuts(UiIds::Menu::TemplateDesigner, {
+            {UiIds::Command::FileOpen, QKeySequence(Qt::CTRL | Qt::Key_O)},
+            {UiIds::Command::FileSave, QKeySequence(Qt::CTRL | Qt::Key_S)},
+            {UiIds::Command::FileExit, QKeySequence(Qt::ALT | Qt::Key_F4)},
+            {UiIds::Command::EditUndo, QKeySequence(Qt::CTRL | Qt::Key_Z)},
+            {UiIds::Command::EditCut, QKeySequence(Qt::CTRL | Qt::Key_X)},
+            {UiIds::Command::EditCopy, QKeySequence(Qt::CTRL | Qt::Key_C)},
+            {UiIds::Command::EditPaste, QKeySequence(Qt::CTRL | Qt::Key_V)},
+            {UiIds::Command::EditClear, QKeySequence(Qt::Key_Delete)},
+            {UiIds::Command::ToolAddText, QKeySequence(Qt::CTRL | Qt::Key_T)},
+            {UiIds::Command::ToolAddDataBox, QKeySequence(Qt::CTRL | Qt::Key_D)},
+            {UiIds::Command::ToolAddNotesBox, QKeySequence(Qt::CTRL | Qt::Key_N)},
+        });
+        verifyMenuShortcuts(UiIds::Menu::ReportDesigner, {
+            {UiIds::Command::FileOpen, QKeySequence(Qt::CTRL | Qt::Key_O)},
+            {UiIds::Command::FileSaveReport, QKeySequence(Qt::CTRL | Qt::Key_S)},
+            {UiIds::Command::FilePrintReport, QKeySequence(Qt::CTRL | Qt::Key_P)},
+            {UiIds::Command::FileExit, QKeySequence(Qt::ALT | Qt::Key_F4)},
+            {UiIds::Command::EditUndo, QKeySequence(Qt::CTRL | Qt::Key_Z)},
+            {UiIds::Command::EditCut, QKeySequence(Qt::CTRL | Qt::Key_X)},
+            {UiIds::Command::EditCopy, QKeySequence(Qt::CTRL | Qt::Key_C)},
+            {UiIds::Command::EditPaste, QKeySequence(Qt::CTRL | Qt::Key_V)},
+            {UiIds::Command::EditClear, QKeySequence(Qt::Key_Delete)},
+            {UiIds::Command::ToolAddDataBox, QKeySequence(Qt::CTRL | Qt::Key_D)},
+            {UiIds::Command::ToolAddText, QKeySequence(Qt::CTRL | Qt::Key_T)},
+            {UiIds::Command::ToolAddLineOrBox, QKeySequence(Qt::CTRL | Qt::Key_L)},
+            {UiIds::Command::ToolChangeForm, QKeySequence(Qt::CTRL | Qt::Key_F)},
+        });
+
+        for (const QString& dialogName : UiBuilder::dialogNames()) {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(dialogName);
+            QVERIFY2(dialog != nullptr, qPrintable(QStringLiteral("Could not construct dialog %1").arg(dialogName)));
+            for (QLabel* label : dialog->findChildren<QLabel*>()) {
+                if (!QKeySequence::mnemonic(label->text()).isEmpty()) {
+                    QVERIFY2(label->buddy() != nullptr,
+                             qPrintable(QStringLiteral("Dialog %1 has an unbound mnemonic label: %2")
+                                            .arg(dialogName, label->text())));
+                }
+            }
+            for (QAbstractButton* button : dialog->findChildren<QAbstractButton*>()) {
+                if (button->text().contains(QLatin1Char('&'))) {
+                    QVERIFY2(!QKeySequence::mnemonic(button->text()).isEmpty(),
+                             qPrintable(QStringLiteral("Dialog %1 has an invalid button mnemonic: %2")
+                                            .arg(dialogName, button->text())));
+                }
+            }
+        }
+
+        QCOMPARE(previousAction->shortcut(), QKeySequence(Qt::Key_PageUp));
+        QCOMPARE(nextAction->shortcut(), QKeySequence(Qt::Key_PageDown));
+        QCOMPARE(previousWindowfulAction->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_PageUp));
+        QCOMPARE(nextWindowfulAction->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_PageDown));
+
+        viewTableAction->trigger();
+        QCoreApplication::processEvents();
+        QCOMPARE(previousAction->shortcut(), QKeySequence(Qt::Key_Up));
+        QCOMPARE(nextAction->shortcut(), QKeySequence(Qt::Key_Down));
+        QCOMPARE(previousWindowfulAction->shortcut(), QKeySequence(Qt::Key_PageUp));
+        QCOMPARE(nextWindowfulAction->shortcut(), QKeySequence(Qt::Key_PageDown));
+
+        viewCardAction->trigger();
+        QCoreApplication::processEvents();
         QVERIFY(deckMode != nullptr);
         QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Card);
         QVERIFY(viewCardAction->isChecked());
@@ -673,6 +859,50 @@ private slots:
 
         QTest::keyClick(&window, Qt::Key_PageUp, Qt::ControlModifier);
         QCoreApplication::processEvents();
+        QCOMPARE(workspace->currentCardIndex(), 0);
+    }
+
+    void windowfulMovesByTheVisibleTablePage()
+    {
+        MainWindow window(nullptr, true);
+        window.resize(900, 520);
+        window.show();
+        QCoreApplication::processEvents();
+
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        QVERIFY(workspace != nullptr);
+        for (int index = 0; index < 48; ++index) {
+            workspace->addCard();
+        }
+        workspace->firstCard();
+
+        QAction* tableAction = findCommandAction(window.menuBar(), UiIds::Command::ViewTable);
+        QAction* nextWindowful = findCommandAction(window.menuBar(), UiIds::Command::NavigateNextWindowful);
+        QAction* previousWindowful = findCommandAction(window.menuBar(), UiIds::Command::NavigatePreviousWindowful);
+        QVERIFY(tableAction != nullptr);
+        QVERIFY(nextWindowful != nullptr);
+        QVERIFY(previousWindowful != nullptr);
+        tableAction->trigger();
+        QCoreApplication::processEvents();
+
+        auto* table = workspace->findChild<QTableView*>(QStringLiteral("deckTableView"));
+        QVERIFY(table != nullptr);
+        int visibleRows = 1;
+        if (table->verticalScrollMode() == QAbstractItemView::ScrollPerItem) {
+            visibleRows = table->verticalScrollBar()->pageStep();
+        } else {
+            int firstRow = table->rowAt(0);
+            int lastRow = table->rowAt(table->viewport()->height() - 1);
+            firstRow = firstRow < 0 ? 0 : firstRow;
+            lastRow = lastRow < 0 ? firstRow : lastRow;
+            visibleRows = lastRow - firstRow + 1;
+        }
+        visibleRows = std::clamp(visibleRows, 1, 31);
+        QVERIFY(visibleRows > 1);
+
+        nextWindowful->trigger();
+        QCOMPARE(workspace->currentCardIndex(), visibleRows);
+        previousWindowful->trigger();
         QCOMPARE(workspace->currentCardIndex(), 0);
     }
 

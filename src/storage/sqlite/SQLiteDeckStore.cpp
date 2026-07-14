@@ -197,7 +197,8 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
     };
 
     SQLiteDeckRepository repository(m_database);
-    if (!repository.clearDeckGraph(errorMessage)
+    if (!exec(QStringLiteral("DELETE FROM phone_call_log"), errorMessage)
+        || !repository.clearDeckGraph(errorMessage)
         || !repository.saveDeckShell(deck, errorMessage)
         || !repository.saveDefaultTemplate(deck, errorMessage)
         || !repository.saveFields(deck, 1, errorMessage)
@@ -205,7 +206,8 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
         || !repository.saveSortKeys(deck, errorMessage)
         || !repository.saveAppearance(deck, errorMessage)
         || !repository.saveImportExportProfiles(deck, errorMessage)
-        || !repository.saveCards(deck, errorMessage)) {
+        || !repository.saveCards(deck, errorMessage)
+        || !savePhoneCallLog(deck, errorMessage)) {
         rollback();
         return false;
     }
@@ -251,7 +253,8 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
         || !repository.loadSortKeys(&loaded, errorMessage)
         || !repository.loadAppearance(&loaded, errorMessage)
         || !repository.loadImportExportProfiles(&loaded, errorMessage)
-        || !repository.loadCards(templateId, &loaded, errorMessage)) {
+        || !repository.loadCards(templateId, &loaded, errorMessage)
+        || !loadPhoneCallLog(&loaded, errorMessage)) {
         return false;
     }
 
@@ -661,21 +664,38 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
         "dial_suffix TEXT NOT NULL DEFAULT '',"
         "options_json TEXT NOT NULL DEFAULT '{}'"
         ")"), errorMessage)
+        || !exec(QStringLiteral(
+        "CREATE TABLE IF NOT EXISTS phone_call_log("
+        "id INTEGER PRIMARY KEY,"
+        "deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,"
+        "ordinal INTEGER NOT NULL,"
+        "called_at_utc TEXT NOT NULL,"
+        "phone_number TEXT NOT NULL,"
+        "card_summary_1 TEXT NOT NULL DEFAULT '',"
+        "card_summary_2 TEXT NOT NULL DEFAULT '',"
+        "card_summary_3 TEXT NOT NULL DEFAULT '',"
+        "raw_legacy_bytes BLOB NOT NULL DEFAULT X'',"
+        "UNIQUE(deck_id, ordinal)"
+        ")"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_templates_deck ON templates(deck_id, ordinal)"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_template_fields_template ON template_fields(template_id, ordinal)"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_template_frames_template ON template_frames(template_id, ordinal)"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_cards_deck ON cards(deck_id, ordinal)"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_card_values_field ON card_values(field_id)"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_reports_deck ON reports(deck_id, ordinal)"), errorMessage)
+        || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_phone_call_log_deck ON phone_call_log(deck_id, ordinal)"), errorMessage)
         || !migrateEarlySchema(errorMessage)
         || !exec(QStringLiteral(
             "INSERT OR IGNORE INTO schema_migrations(version, name) VALUES(1, 'initial_cardstack_sqlite_schema')"),
             errorMessage)
         || !exec(QStringLiteral(
-            "INSERT OR REPLACE INTO app_settings(key, value, updated_at)"
-            " VALUES('schema_version', '1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
+            "INSERT OR IGNORE INTO schema_migrations(version, name) VALUES(2, 'phone_call_log')"),
             errorMessage)
-        || !exec(QStringLiteral("PRAGMA user_version = 1"), errorMessage)) {
+        || !exec(QStringLiteral(
+            "INSERT OR REPLACE INTO app_settings(key, value, updated_at)"
+            " VALUES('schema_version', '2', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
+            errorMessage)
+        || !exec(QStringLiteral("PRAGMA user_version = 2"), errorMessage)) {
         return false;
     }
 
@@ -1102,6 +1122,60 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         deck->addReport(std::move(report));
     }
 
+    return true;
+}
+
+bool SQLiteDeckStore::savePhoneCallLog(const Deck& deck, QString* errorMessage)
+{
+    QSqlQuery query(m_database);
+    query.prepare(QStringLiteral(
+        "INSERT INTO phone_call_log("
+        "deck_id, ordinal, called_at_utc, phone_number, card_summary_1, card_summary_2, card_summary_3, raw_legacy_bytes"
+        ") VALUES(1, ?, ?, ?, ?, ?, ?, ?)"));
+
+    const QVector<PhoneCallLogEntry>& entries = deck.phoneCallLogEntries();
+    for (int index = 0; index < entries.size(); ++index) {
+        const PhoneCallLogEntry& entry = entries.at(index);
+        query.bindValue(0, index);
+        query.bindValue(1, entry.calledAtUtc);
+        query.bindValue(2, entry.phoneNumber);
+        for (int summaryIndex = 0; summaryIndex < 3; ++summaryIndex) {
+            query.bindValue(3 + summaryIndex,
+                summaryIndex < entry.cardSummaryValues.size() ? entry.cardSummaryValues.at(summaryIndex) : QString());
+        }
+        query.bindValue(6, entry.rawLegacyBytes);
+        if (!query.exec()) {
+            setError(errorMessage, query.lastError());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SQLiteDeckStore::loadPhoneCallLog(Deck* deck, QString* errorMessage)
+{
+    QSqlQuery query(m_database);
+    if (!query.exec(QStringLiteral(
+            "SELECT called_at_utc, phone_number, card_summary_1, card_summary_2, card_summary_3, raw_legacy_bytes "
+            "FROM phone_call_log WHERE deck_id = 1 ORDER BY ordinal"))) {
+        setError(errorMessage, query.lastError());
+        return false;
+    }
+
+    QVector<PhoneCallLogEntry> entries;
+    while (query.next()) {
+        PhoneCallLogEntry entry;
+        entry.calledAtUtc = query.value(0).toString();
+        entry.phoneNumber = query.value(1).toString();
+        entry.cardSummaryValues = {
+            query.value(2).toString(),
+            query.value(3).toString(),
+            query.value(4).toString(),
+        };
+        entry.rawLegacyBytes = query.value(5).toByteArray();
+        entries.append(std::move(entry));
+    }
+    deck->setPhoneCallLogEntries(std::move(entries));
     return true;
 }
 

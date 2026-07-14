@@ -2,6 +2,7 @@
 
 #include "BuiltInReportTemplates.h"
 #include "DelimitedText.h"
+#include "PhoneCallLog.h"
 #include "DeckTemplate.h"
 #include "LegacyDeckReader.h"
 #include "LegacyInterchangeReader.h"
@@ -29,6 +30,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDate>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -41,12 +43,18 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QIcon>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QList>
 #include <QListWidget>
+#include <QLocale>
 #include <QLineEdit>
 #include <QMarginsF>
 #include <QMdiArea>
@@ -64,16 +72,23 @@
 #include <QPushButton>
 #include <QRect>
 #include <QRegularExpression>
+#include <QScrollBar>
+#include <QSettings>
 #include <QSize>
 #include <QSizePolicy>
 #include <QSignalBlocker>
+#include <QShowEvent>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QStyleOptionButton>
 #include <QTableView>
 #include <QTableWidget>
 #include <QTextBrowser>
 #include <QTime>
+#include <QTimer>
 #include <QToolBar>
+#include <QTableView>
+#include <QScrollBar>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -89,6 +104,13 @@
 extern int qInitResources_cardstack_app();
 
 namespace {
+
+constexpr auto WindowSessionGroup = "windowSession";
+constexpr auto WindowSessionVersionKey = "version";
+constexpr auto WindowSessionMainGeometryKey = "mainGeometry";
+constexpr auto WindowSessionMainStateKey = "mainState";
+constexpr auto WindowSessionDeckWindowsKey = "deckWindows";
+constexpr int CurrentWindowSessionVersion = 1;
 
 void initializeCardStackApplicationResources()
 {
@@ -118,6 +140,39 @@ QIcon cardStackIcon()
     icon.addFile(QStringLiteral(":/cardstack/icons/icon-128.png"), QSize(128, 128));
     icon.addFile(QStringLiteral(":/cardstack/icons/icon-256.png"), QSize(256, 256));
     return icon;
+}
+
+QIcon cardStackToolbarIcon(const QString& iconName)
+{
+    QIcon icon;
+    icon.addFile(QStringLiteral(":/cardstack/toolbar/%1.svg").arg(iconName));
+    icon.addFile(QStringLiteral(":/cardstack/toolbar/png-24/%1.png").arg(iconName), QSize(24, 24));
+    icon.addFile(QStringLiteral(":/cardstack/toolbar/png-48/%1.png").arg(iconName), QSize(48, 48));
+    return icon;
+}
+
+QIcon cardStackWindowIcon(const QString& iconName)
+{
+    QIcon icon;
+    icon.addFile(QStringLiteral(":/cardstack/window-icons/%1.svg").arg(iconName));
+    icon.addFile(QStringLiteral(":/cardstack/window-icons/png-24/%1.png").arg(iconName), QSize(24, 24));
+    icon.addFile(QStringLiteral(":/cardstack/window-icons/png-48/%1.png").arg(iconName), QSize(48, 48));
+    return icon;
+}
+
+QIcon deckWindowIcon()
+{
+    return cardStackWindowIcon(QStringLiteral("deck"));
+}
+
+QIcon templateDesignerWindowIcon()
+{
+    return cardStackWindowIcon(QStringLiteral("template-designer"));
+}
+
+QIcon reportDesignerWindowIcon()
+{
+    return cardStackWindowIcon(QStringLiteral("report-designer"));
 }
 
 bool fieldNameLooksLikePhone(const QString& fieldName)
@@ -211,6 +266,7 @@ constexpr int IndexBarButtonMaxHeightPx = 24;
 constexpr int IndexBarHorizontalMarginPx = 2;
 constexpr int IndexBarVerticalMarginPx = 1;
 constexpr int IndexBarButtonGapPx = 1;
+constexpr int IndexBarNativeTextPaddingPx = 2;
 constexpr int ReportFormListMinimumHeightPx = 116;
 constexpr int ReportFormDialogBottomPaddingPx = 54;
 constexpr int ReportDesignerWindowWidthPx = 920;
@@ -233,6 +289,48 @@ struct ReportFormPreset {
     int marginBottom = DefaultReportMarginMils;
     int horizontalGutter = 0;
     int verticalGutter = 0;
+};
+
+class IndexBarContainer final : public QWidget {
+public:
+    using QWidget::QWidget;
+
+    QSize sizeHint() const override
+    {
+        return QSize(1, IndexBarButtonMaxHeightPx + IndexBarVerticalMarginPx * 2);
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        return QSize(0, IndexBarButtonMinHeightPx + IndexBarVerticalMarginPx * 2);
+    }
+};
+
+class IndexBarButton final : public QPushButton {
+public:
+    using QPushButton::QPushButton;
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        const QString label = option.text;
+        option.text.clear();
+
+        QPainter painter(this);
+        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+
+        const bool pressed = option.state.testFlag(QStyle::State_Sunken);
+        const int shiftX = pressed ? style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, &option, this) : 0;
+        const int shiftY = pressed ? style()->pixelMetric(QStyle::PM_ButtonShiftVertical, &option, this) : 0;
+        const QPalette::ColorGroup colorGroup = isEnabled() ? QPalette::Active : QPalette::Disabled;
+        painter.setPen(option.palette.color(colorGroup, QPalette::ButtonText));
+        painter.drawText(
+            rect().adjusted(1 + shiftX, shiftY, -1 + shiftX, shiftY),
+            Qt::AlignCenter | Qt::TextSingleLine,
+            label);
+    }
 };
 
 QVector<ReportFormPreset> reportFormPresets(ReportFormType type)
@@ -419,6 +517,29 @@ void setChecked(QDialog& dialog, int controlId, bool checked)
     }
 }
 
+void setComboIndex(QDialog& dialog, int controlId, int index)
+{
+    if (auto* comboBox = uiControl<QComboBox>(dialog, controlId); comboBox != nullptr && comboBox->count() > 0) {
+        comboBox->setCurrentIndex(std::clamp(index, 0, comboBox->count() - 1));
+    }
+}
+
+void initializeFrameStyleDialog(QDialog& dialog, quint8 styleFlags)
+{
+    setChecked(dialog, Control::FrameBold, (styleFlags & ReportStyleFlagBold) != 0);
+    setChecked(dialog, Control::FrameItalic, (styleFlags & ReportStyleFlagItalic) != 0);
+    setChecked(dialog, Control::FrameUnderline, (styleFlags & ReportStyleFlagUnderline) != 0);
+    setChecked(dialog, Control::FrameAlignmentRight, (styleFlags & ReportStyleFlagAlignRight) != 0);
+    setChecked(dialog, Control::FrameAlignmentCenter, (styleFlags & ReportStyleFlagAlignCenter) != 0);
+    setChecked(dialog, Control::FrameAlignmentLeft, (styleFlags & (ReportStyleFlagAlignCenter | ReportStyleFlagAlignRight)) == 0);
+    setChecked(dialog, Control::SystemBoxBold, (styleFlags & ReportStyleFlagBold) != 0);
+    setChecked(dialog, Control::SystemBoxItalic, (styleFlags & ReportStyleFlagItalic) != 0);
+    setChecked(dialog, Control::SystemBoxUnderline, (styleFlags & ReportStyleFlagUnderline) != 0);
+    setChecked(dialog, Control::SystemBoxRight, (styleFlags & ReportStyleFlagAlignRight) != 0);
+    setChecked(dialog, Control::SystemBoxCenter, (styleFlags & ReportStyleFlagAlignCenter) != 0);
+    setChecked(dialog, Control::SystemBoxLeft, (styleFlags & (ReportStyleFlagAlignCenter | ReportStyleFlagAlignRight)) == 0);
+}
+
 void setLabelText(QDialog& dialog, int controlId, const QString& text)
 {
     if (auto* label = uiControl<QLabel>(dialog, controlId)) {
@@ -478,6 +599,17 @@ void initializeLineFrameDialog(QDialog& dialog)
     setEditText(dialog, Control::LineFrameCornerRadius, QStringLiteral("0"));
 }
 
+void initializeLineFrameDialog(QDialog& dialog, int shape, int lineStyle, int fillPattern, int cornerRadius)
+{
+    initializeLineFrameDialog(dialog);
+    setChecked(dialog, Control::LineFrameBox, shape == ReportLineShapeBox);
+    setChecked(dialog, Control::LineFrameHorizontal, shape == ReportLineShapeHorizontal);
+    setChecked(dialog, Control::LineFrameVertical, shape == ReportLineShapeVertical);
+    setComboIndex(dialog, Control::LineFrameLineStyle, lineStyle);
+    setComboIndex(dialog, Control::LineFrameFillPattern, fillPattern);
+    setEditText(dialog, Control::LineFrameCornerRadius, QString::number(std::max(0, cornerRadius)));
+}
+
 void initializeSystemBoxDialog(QDialog& dialog)
 {
     populateComboIfEmpty(
@@ -522,6 +654,39 @@ void initializeSystemBoxDialog(QDialog& dialog)
         && !checked(Control::SystemBoxSystemCategory)) {
         setChecked(dialog, Control::SystemBoxDateCategory, true);
     }
+}
+
+void initializeSystemBoxDialogToken(QDialog& dialog, QString token)
+{
+    token = token.trimmed().toLower();
+    if (token.startsWith(QLatin1Char('{')) && token.endsWith(QLatin1Char('}'))) {
+        token = token.mid(1, token.size() - 2);
+    }
+    const QMap<QString, int> dateIndexes = {
+        {QStringLiteral("longdate"), 0}, {QStringLiteral("date"), 0}, {QStringLiteral("shortdate"), 1},
+        {QStringLiteral("longday"), 2}, {QStringLiteral("shortday"), 3},
+        {QStringLiteral("long weekday"), 4}, {QStringLiteral("short weekday"), 5},
+        {QStringLiteral("longmonth"), 6}, {QStringLiteral("shortmonth"), 7},
+        {QStringLiteral("longyear"), 8}, {QStringLiteral("shortyear"), 9},
+        {QStringLiteral("longtime"), 10}, {QStringLiteral("time"), 11},
+        {QStringLiteral("hour"), 12}, {QStringLiteral("minutes"), 13}, {QStringLiteral("am/pm"), 14},
+    };
+    if (dateIndexes.contains(token)) {
+        setChecked(dialog, Control::SystemBoxDateCategory, true);
+        setComboIndex(dialog, Control::SystemBoxDateFormats, dateIndexes.value(token));
+        return;
+    }
+    if (token == QStringLiteral("page") || token == QStringLiteral("cardtotal")) {
+        setChecked(dialog, Control::SystemBoxNumberCategory, true);
+        setComboIndex(dialog, Control::SystemBoxNumberFormats, token == QStringLiteral("page") ? 0 : 1);
+        return;
+    }
+    setChecked(dialog, Control::SystemBoxSystemCategory, true);
+    const QMap<QString, int> systemIndexes = {
+        {QStringLiteral("reportname"), 0}, {QStringLiteral("deckname"), 1},
+        {QStringLiteral("description"), 2}, {QStringLiteral("path"), 3},
+    };
+    setComboIndex(dialog, Control::SystemBoxSystemFields, systemIndexes.value(token, 0));
 }
 
 bool isChecked(const QDialog& dialog, int controlId)
@@ -715,6 +880,8 @@ ReportDefinition createDefaultReportDefinition(const Deck& deck, QString name = 
     report.marginBottom = DefaultReportMarginMils;
     report.textFont.faceName = QStringLiteral("Arial");
     report.dataFont.faceName = QStringLiteral("Arial");
+    report.textFont.legacyHeight = -10;
+    report.dataFont.legacyHeight = -10;
 
     ReportFrameDefinition title;
     title.signature = 0xabcd;
@@ -736,6 +903,22 @@ ReportDefinition createDefaultReportDefinition(const Deck& deck, QString name = 
     }
 
     return report;
+}
+
+void fitNewReportFramesToForm(ReportDefinition* report)
+{
+    if (report == nullptr || report->frames.isEmpty()) {
+        return;
+    }
+    const int inset = std::clamp(std::min(report->formWidth, report->formHeight) / 20, 40, 500);
+    const int frameHeight = std::clamp(report->formHeight / 18, 120, 360);
+    const int frameWidth = std::max(200, report->formWidth - inset * 2);
+    int top = inset;
+    report->frames[0].bounds = QRect(inset, top, frameWidth, frameHeight);
+    if (report->frames.size() > 1) {
+        top += frameHeight + std::max(40, frameHeight / 2);
+        report->frames[1].bounds = QRect(inset, top, frameWidth, frameHeight);
+    }
 }
 
 int addStandardReportDefinitions(DeckWorkspace* workspace)
@@ -958,19 +1141,18 @@ bool renderReportToPrinter(
 
 } // namespace
 
-MainWindow::MainWindow(QWidget* parent, bool openInitialSample)
+MainWindow::MainWindow(QWidget* parent, bool openInitialSample, bool restorePreviousSession)
     : QMainWindow(parent)
     , m_mdiArea(new QMdiArea(this))
 {
     initializeCardStackApplicationResources();
     setWindowTitle(QStringLiteral("CardStack"));
-    m_quickDials = {
-        {tr("Operator"), QStringLiteral("0")},
-        {tr("Information"), QStringLiteral("411")},
-    };
+    loadPhoneDialerSettings();
     if (windowIcon().isNull()) {
         setWindowIcon(cardStackIcon());
     }
+    m_mdiArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_mdiArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setCentralWidget(m_mdiArea);
     connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this]() {
         refreshMenuForActiveWindow();
@@ -980,8 +1162,15 @@ MainWindow::MainWindow(QWidget* parent, bool openInitialSample)
     createMenus();
     createToolBar();
     createIndexBar();
+    connect(m_mdiArea->horizontalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+        resizeIndexBarButtons();
+    });
+    connect(m_mdiArea->horizontalScrollBar(), &QScrollBar::rangeChanged, this, [this]() {
+        resizeIndexBarButtons();
+    });
     qApp->installEventFilter(this);
-    if (openInitialSample) {
+    const bool restoredDeckSession = restorePreviousSession && restoreWindowSession();
+    if (openInitialSample && !restoredDeckSession) {
         openSampleDeck();
     }
     updateCommandState();
@@ -1005,16 +1194,69 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    const QByteArray deckWindows = captureDeckWindowSession();
     if (!closeAllSubWindowsWithPrompts()) {
         event->ignore();
         return;
     }
 
+    saveWindowSession(deckWindows);
     QMainWindow::closeEvent(event);
+}
+
+void MainWindow::showEvent(QShowEvent* event)
+{
+    QMainWindow::showEvent(event);
+    if (m_pendingDeckWindowSession.isEmpty()) {
+        return;
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(m_pendingDeckWindowSession);
+    m_pendingDeckWindowSession.clear();
+    if (!document.isArray()) {
+        return;
+    }
+
+    QMdiSubWindow* activeWindow = nullptr;
+    for (const QJsonValue& value : document.array()) {
+        const QJsonObject object = value.toObject();
+        const QString filePath = object.value(QStringLiteral("path")).toString();
+        if (filePath.isEmpty() || !QFileInfo::exists(filePath) || !openDeckFromPath(filePath)) {
+            continue;
+        }
+
+        QMdiSubWindow* subWindow = m_mdiArea->activeSubWindow();
+        if (subWindow == nullptr || qobject_cast<DeckWorkspace*>(subWindow->widget()) == nullptr) {
+            continue;
+        }
+        const QRect geometry(
+            object.value(QStringLiteral("x")).toInt(),
+            object.value(QStringLiteral("y")).toInt(),
+            std::max(1, object.value(QStringLiteral("width")).toInt()),
+            std::max(1, object.value(QStringLiteral("height")).toInt()));
+        subWindow->showNormal();
+        subWindow->setGeometry(geometry);
+        if (object.value(QStringLiteral("minimized")).toBool()) {
+            subWindow->showMinimized();
+        } else if (object.value(QStringLiteral("maximized")).toBool()) {
+            subWindow->showMaximized();
+        }
+        if (object.value(QStringLiteral("active")).toBool()) {
+            activeWindow = subWindow;
+        }
+    }
+    if (activeWindow != nullptr) {
+        m_mdiArea->setActiveSubWindow(activeWindow);
+    }
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
+    if (event->type() == QEvent::Resize
+        && (watched == m_indexBar || watched->objectName() == QStringLiteral("indexBarContainer"))) {
+        resizeIndexBarButtons();
+    }
+
     if (event->type() == QEvent::Close) {
         if (auto* subWindow = qobject_cast<QMdiSubWindow*>(watched)) {
             if (!confirmCloseDeckWindow(subWindow)) {
@@ -1026,6 +1268,26 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 
     if (event->type() == QEvent::KeyPress) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if ((keyEvent->key() == Qt::Key_PageUp || keyEvent->key() == Qt::Key_PageDown)
+            && (keyEvent->modifiers() == Qt::NoModifier
+                || keyEvent->modifiers() == Qt::ControlModifier)) {
+            DeckWorkspace* workspace = activeDeckWorkspace();
+            if (workspace != nullptr) {
+                const bool tableMode = workspace->viewMode() == DeckWorkspace::ViewMode::Table;
+                if (tableMode && keyEvent->modifiers() == Qt::ControlModifier) {
+                    return QMainWindow::eventFilter(watched, event);
+                }
+
+                const bool windowful = tableMode || keyEvent->modifiers() == Qt::ControlModifier;
+                const int commandId = keyEvent->key() == Qt::Key_PageUp
+                    ? (windowful ? Command::NavigatePreviousWindowful : Command::NavigatePreviousCard)
+                    : (windowful ? Command::NavigateNextWindowful : Command::NavigateNextCard);
+                if (QAction* action = findUiAction(commandId); action != nullptr && action->isEnabled()) {
+                    action->trigger();
+                    return true;
+                }
+            }
+        }
         if (DeckWorkspace* workspace = activeDeckWorkspace()) {
             if (keyEvent->key() == Qt::Key_PageUp && keyEvent->modifiers() == Qt::NoModifier) {
                 workspace->previousCard();
@@ -1120,7 +1382,7 @@ void MainWindow::rebuildMenus(int menuId)
             if (title.compare(tr("Edit"), Qt::CaseInsensitive) == 0) {
                 QAction* smartPaste = menu->addAction(tr("Smart Paste"));
                 smartPaste->setData(Command::EditSmartPaste);
-                smartPaste->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+                smartPaste->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_W));
                 connect(smartPaste, &QAction::triggered, this, &MainWindow::handleUiAction);
                 break;
             }
@@ -1159,7 +1421,8 @@ void MainWindow::updateIndexBarVisibility()
         return;
     }
 
-    m_indexBar->setVisible(activeDeckWorkspace() != nullptr);
+    const bool buttonBarsVisible = m_buttonBar == nullptr || !m_buttonBar->isHidden();
+    m_indexBar->setVisible(buttonBarsVisible && activeDeckWorkspace() != nullptr);
     resizeIndexBarButtons();
 }
 
@@ -1265,12 +1528,12 @@ void MainWindow::configureSubWindowSystemMenu(QMdiSubWindow* subWindow)
     }
 
     menu->addSeparator()->setProperty("cardstackWindowCycleAction", true);
-    QAction* next = menu->addAction(tr("&Next\tCtrl+F6"));
+    QAction* next = menu->addAction(tr("&Next"));
     next->setProperty("cardstackWindowCycleAction", true);
     next->setShortcut(QKeySequence(QStringLiteral("Ctrl+F6")));
     connect(next, &QAction::triggered, m_mdiArea, &QMdiArea::activateNextSubWindow);
 
-    QAction* previous = menu->addAction(tr("&Previous\tAlt+F6"));
+    QAction* previous = menu->addAction(tr("&Previous"));
     previous->setProperty("cardstackWindowCycleAction", true);
     previous->setShortcut(QKeySequence(QStringLiteral("Alt+F6")));
     connect(previous, &QAction::triggered, m_mdiArea, &QMdiArea::activatePreviousSubWindow);
@@ -1310,6 +1573,45 @@ void MainWindow::tileSubWindowsHorizontal()
     }
 }
 
+void MainWindow::arrangeMinimizedSubWindows()
+{
+    QList<QMdiSubWindow*> minimizedWindows;
+    for (QMdiSubWindow* subWindow : m_mdiArea->subWindowList(QMdiArea::CreationOrder)) {
+        if (subWindow != nullptr && subWindow->isVisible() && subWindow->isMinimized()) {
+            minimizedWindows.append(subWindow);
+        }
+    }
+    if (minimizedWindows.isEmpty()) {
+        return;
+    }
+
+    constexpr int IconMarginPx = 4;
+    constexpr int IconSpacingPx = 4;
+    constexpr int MinimumIconWidthPx = 160;
+    constexpr int MaximumIconWidthPx = 240;
+    constexpr int MinimumIconHeightPx = 28;
+    constexpr int MaximumIconHeightPx = 48;
+    const QRect area = m_mdiArea->viewport()->rect().adjusted(
+        IconMarginPx, IconMarginPx, -IconMarginPx, -IconMarginPx);
+    const int maximumWidth = std::max(1, std::min(MaximumIconWidthPx, area.width()));
+    int left = area.left();
+    int rowBottom = area.bottom();
+    int rowHeight = 0;
+
+    for (QMdiSubWindow* subWindow : minimizedWindows) {
+        const int width = std::clamp(subWindow->width(), std::min(MinimumIconWidthPx, maximumWidth), maximumWidth);
+        const int height = std::clamp(subWindow->height(), MinimumIconHeightPx, MaximumIconHeightPx);
+        if (left > area.left() && left + width - 1 > area.right()) {
+            left = area.left();
+            rowBottom -= rowHeight + IconSpacingPx;
+            rowHeight = 0;
+        }
+        subWindow->setGeometry(left, rowBottom - height + 1, width, height);
+        left += width + IconSpacingPx;
+        rowHeight = std::max(rowHeight, height);
+    }
+}
+
 void MainWindow::createToolBar()
 {
     m_buttonBar = addToolBar(tr("Button Bar"));
@@ -1329,15 +1631,13 @@ void MainWindow::createIndexBar()
     m_indexBar->setMovable(false);
     m_indexBar->setFloatable(false);
 
-    auto* container = new QWidget(m_indexBar);
+    m_indexBar->setMinimumWidth(0);
+    m_indexBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    auto* container = new IndexBarContainer(m_indexBar);
     container->setObjectName(QStringLiteral("indexBarContainer"));
-    auto* layout = new QHBoxLayout(container);
-    layout->setContentsMargins(
-        IndexBarHorizontalMarginPx,
-        IndexBarVerticalMarginPx,
-        IndexBarHorizontalMarginPx,
-        IndexBarVerticalMarginPx);
-    layout->setSpacing(IndexBarButtonGapPx);
+    container->setMinimumWidth(0);
+    container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     struct IndexButtonDefinition {
         QString label;
@@ -1358,11 +1658,13 @@ void MainWindow::createIndexBar()
     }();
 
     for (const IndexButtonDefinition& definition : indexButtons) {
-        auto* button = new QPushButton(definition.label, container);
+        auto* button = new IndexBarButton(definition.label, container);
         button->setObjectName(QStringLiteral("index_%1").arg(definition.key));
         button->setFocusPolicy(Qt::NoFocus);
         button->setFlat(false);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        button->setMinimumWidth(0);
+        button->setMaximumWidth(QWIDGETSIZE_MAX);
         button->setMinimumHeight(IndexBarButtonMinHeightPx);
         button->setMaximumHeight(IndexBarButtonMaxHeightPx);
         connect(button, &QPushButton::clicked, this, [this, key = definition.key, statusText = definition.statusText]() {
@@ -1375,7 +1677,6 @@ void MainWindow::createIndexBar()
             }
             updateCommandState();
         });
-        layout->addWidget(button);
     }
 
     m_indexBar->addWidget(container);
@@ -1400,18 +1701,45 @@ void MainWindow::resizeIndexBarButtons()
     }
 
     const int buttonCount = static_cast<int>(buttons.size());
-    const int availableWidth = std::max(
-        m_indexBar->contentsRect().width(),
-        std::max(m_indexBar->width(), width()));
+    const int availableWidth = std::max(1, container->contentsRect().width());
     const int marginWidth = IndexBarHorizontalMarginPx * 2;
     const int gapWidth = IndexBarButtonGapPx * std::max(0, buttonCount - 1);
-    const int buttonWidth = std::max(1, (availableWidth - marginWidth - gapWidth) / buttonCount);
+    int widestIndexGlyphWidth = 1;
+    const QFontMetrics indexMetrics = buttons.first()->fontMetrics();
+    for (const QPushButton* button : buttons) {
+        if (!button->text().isEmpty()) {
+            widestIndexGlyphWidth = std::max(widestIndexGlyphWidth, indexMetrics.horizontalAdvance(button->text()));
+        }
+    }
+    const int minimumButtonWidth = widestIndexGlyphWidth + IndexBarNativeTextPaddingPx;
+    const int buttonWidth = std::max(
+        minimumButtonWidth,
+        (availableWidth - marginWidth - gapWidth) / buttonCount);
     const int usedWidth = buttonWidth * buttonCount + gapWidth + marginWidth;
+    const int overflowWidth = std::max(0, usedWidth - availableWidth);
+    int scrollOffset = 0;
+    if (overflowWidth > 0 && m_mdiArea != nullptr) {
+        const QScrollBar* horizontalScrollBar = m_mdiArea->horizontalScrollBar();
+        const int scrollRange = horizontalScrollBar->maximum() - horizontalScrollBar->minimum();
+        if (scrollRange > 0) {
+            scrollOffset = overflowWidth
+                * (horizontalScrollBar->value() - horizontalScrollBar->minimum())
+                / scrollRange;
+        }
+    }
+    const int buttonHeight = std::clamp(
+        m_indexBar->contentsRect().height() - IndexBarVerticalMarginPx * 2,
+        IndexBarButtonMinHeightPx,
+        IndexBarButtonMaxHeightPx);
 
-    container->setFixedWidth(usedWidth);
-    for (QPushButton* button : buttons) {
-        button->setMinimumWidth(buttonWidth);
-        button->setMaximumWidth(buttonWidth);
+    container->setProperty("indexContentWidth", usedWidth);
+    for (int index = 0; index < buttonCount; ++index) {
+        QPushButton* button = buttons.at(index);
+        button->setGeometry(
+            IndexBarHorizontalMarginPx + index * (buttonWidth + IndexBarButtonGapPx) - scrollOffset,
+            IndexBarVerticalMarginPx,
+            buttonWidth,
+            buttonHeight);
     }
 }
 
@@ -1434,14 +1762,6 @@ void MainWindow::configureToolBarForMenu(int menuId)
     m_deckModeLabel = nullptr;
     m_buttonBar->setProperty("cardstackToolbarMenuId", menuId);
 
-    const auto toolbarIcon = [](const QString& iconName) {
-        QIcon icon;
-        icon.addFile(QStringLiteral(":/cardstack/toolbar/%1.svg").arg(iconName));
-        icon.addFile(QStringLiteral(":/cardstack/toolbar/png-24/%1.png").arg(iconName), QSize(24, 24));
-        icon.addFile(QStringLiteral(":/cardstack/toolbar/png-48/%1.png").arg(iconName), QSize(48, 48));
-        return icon;
-    };
-
     const auto findPersistentAction = [this](int commandId) -> QAction* {
         if (QAction* action = findUiAction(commandId)) {
             return action;
@@ -1454,7 +1774,7 @@ void MainWindow::configureToolBarForMenu(int menuId)
         return nullptr;
     };
 
-    const auto addUiToolAction = [this, toolbarIcon, findPersistentAction](int commandId, const QString& iconName, const QString& toolTip) {
+    const auto addUiToolAction = [this, findPersistentAction](int commandId, const QString& iconName, const QString& toolTip) {
         QAction* action = findPersistentAction(commandId);
         if (action == nullptr) {
             action = new QAction(toolTip, this);
@@ -1462,7 +1782,7 @@ void MainWindow::configureToolBarForMenu(int menuId)
             action->setEnabled(false);
             connect(action, &QAction::triggered, this, &MainWindow::handleUiAction);
         }
-        action->setIcon(toolbarIcon(iconName));
+        action->setIcon(cardStackToolbarIcon(iconName));
         action->setToolTip(toolTip);
         action->setIconText(QString());
         m_buttonBar->addAction(action);
@@ -1855,7 +2175,7 @@ void MainWindow::handleUiAction()
         m_mdiArea->cascadeSubWindows();
         return;
     case Command::WindowArrangeIcons:
-        statusBar()->showMessage(tr("Arrange Icons is retained for menu parity; minimized MDI icon layout has no Qt equivalent yet."), StatusMessageTimeoutMs);
+        arrangeMinimizedSubWindows();
         return;
     case Command::WindowCloseAll:
         closeAllSubWindowsWithPrompts();
@@ -1867,6 +2187,9 @@ void MainWindow::handleUiAction()
     case Command::PhoneDial:
         handlePhoneDialCommand();
         return;
+    case Command::PhoneCallLog:
+        handlePhoneCallLogCommand();
+        return;
     case Command::ConfigureAddSecurity:
         handleSecurityCommand();
         return;
@@ -1875,7 +2198,11 @@ void MainWindow::handleUiAction()
         return;
     case Command::ConfigureShowButtonBar:
         if (m_buttonBar != nullptr) {
-            m_buttonBar->setVisible(!m_buttonBar->isVisible());
+            const bool showButtonBars = m_buttonBar->isHidden();
+            m_buttonBar->setVisible(showButtonBars);
+            if (m_indexBar != nullptr) {
+                m_indexBar->setVisible(showButtonBars && activeDeckWorkspace() != nullptr);
+            }
         }
         updateCommandState();
         return;
@@ -2053,14 +2380,54 @@ void MainWindow::handleDeckCommand(int commandId)
     case Command::NavigateLastCard:
         workspace->lastCard();
         return;
-    case Command::NavigatePreviousWindowful:
+    case Command::NavigatePreviousWindowful: {
+        int pageSize = 1;
+        if (workspace->viewMode() == DeckWorkspace::ViewMode::Table) {
+            if (QTableView* table = workspace->findChild<QTableView*>()) {
+                if (table->verticalScrollMode() == QAbstractItemView::ScrollPerItem) {
+                    pageSize = table->verticalScrollBar()->pageStep();
+                } else {
+                    const int firstRow = table->rowAt(0);
+                    const int lastRow = table->rowAt(std::max(0, table->viewport()->height() - 1));
+                    if (firstRow >= 0 && lastRow >= firstRow) {
+                        pageSize = lastRow - firstRow + 1;
+                    }
+                }
+            }
+        }
+        pageSize = std::clamp(pageSize, 1, 31);
+        for (int step = 0; step < pageSize; ++step) {
+            workspace->previousCard();
+        }
+        return;
+    }
     case Command::NavigatePreviousCard:
         workspace->previousCard();
         return;
     case Command::NavigateNextCard:
-    case Command::NavigateNextWindowful:
         workspace->nextCard();
         return;
+    case Command::NavigateNextWindowful: {
+        int pageSize = 1;
+        if (workspace->viewMode() == DeckWorkspace::ViewMode::Table) {
+            if (QTableView* table = workspace->findChild<QTableView*>()) {
+                if (table->verticalScrollMode() == QAbstractItemView::ScrollPerItem) {
+                    pageSize = table->verticalScrollBar()->pageStep();
+                } else {
+                    const int firstRow = table->rowAt(0);
+                    const int lastRow = table->rowAt(std::max(0, table->viewport()->height() - 1));
+                    if (firstRow >= 0 && lastRow >= firstRow) {
+                        pageSize = lastRow - firstRow + 1;
+                    }
+                }
+            }
+        }
+        pageSize = std::clamp(pageSize, 1, 31);
+        for (int step = 0; step < pageSize; ++step) {
+            workspace->nextCard();
+        }
+        return;
+    }
     default:
         break;
     }
@@ -2371,6 +2738,8 @@ void MainWindow::handleNewReportCommand()
         return;
     }
 
+    fitNewReportFramesToForm(&report);
+
     openReportDesigner(workspace, -1, report);
 }
 
@@ -2505,14 +2874,16 @@ void MainWindow::handlePrintReportCommand()
         const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records);
         if (records.isEmpty() || pages.isEmpty()) {
             QMessageBox::information(this, tr("CardStack Reports"), tr("No cards are available for this report."));
-            return;
+            return false;
         }
-        ReportPreviewDialog::exec(this, printContext, report, records, pages);
+        return ReportPreviewDialog::exec(this, printContext, report, records, pages) == QDialog::Accepted;
     };
 
     if (auto* previewButton = uiControl<QAbstractButton>(*optionsDialog, Control::PrintPreview)) {
         connect(previewButton, &QAbstractButton::clicked, optionsDialog.get(), [previewSelectedScope, dialog = optionsDialog.get()]() {
-            previewSelectedScope(*dialog);
+            if (previewSelectedScope(*dialog)) {
+                dialog->accept();
+            }
         });
     }
     if (auto* setupButton = uiControl<QAbstractButton>(*optionsDialog, Control::PrintPrinterSetup)) {
@@ -2544,6 +2915,11 @@ void MainWindow::handlePrintReportCommand()
         QMessageBox::information(this, tr("CardStack Reports"), tr("No cards are available for this report."));
         return;
     }
+
+    printer->setCopyCount(std::clamp(
+        positiveEditValue(*optionsDialog, Control::PrintCopyCount, 1),
+        1,
+        10000));
 
     QPrintDialog nativePrintDialog(printer.get(), this);
     nativePrintDialog.setWindowTitle(tr("Print %1").arg(report.name));
@@ -2749,9 +3125,79 @@ void MainWindow::handleReportDesignerCommand(int commandId)
         return;
     }
     case Command::ToolFrameAttributes:
-        designer->selectCurrentFrameText();
-        statusBar()->showMessage(tr("Frame attributes are edited in the report designer side panel."), StatusMessageTimeoutMs);
+    {
+        const ReportFrameDefinition* selected = designer->selectedFrameDefinition();
+        if (selected == nullptr) {
+            statusBar()->showMessage(tr("Select a report frame first."), StatusMessageTimeoutMs);
+            return;
+        }
+        const ReportFrameDefinition frame = *selected;
+        std::unique_ptr<QDialog> dialog;
+        if (frame.kind == ReportFrameKind::Text) {
+            dialog = UiBuilder::createDialog(QStringLiteral("TEXTFRAME"), this, dialogContext());
+            if (dialog) {
+                setEditText(*dialog, Control::FrameText, frame.text);
+                initializeFrameStyleDialog(*dialog, frame.styleFlags);
+            }
+        } else if (frame.kind == ReportFrameKind::Data) {
+            dialog = UiBuilder::createDialog(QStringLiteral("DATAFRAME"), this, dialogContext());
+            if (dialog) {
+                if (auto* fields = uiControl<QComboBox>(*dialog, Control::DataFrameFieldList)) {
+                    fields->clear();
+                    fields->addItems(designer->fieldNames());
+                    const int currentIndex = fields->findText(frame.fieldPlaceholders.value(0), Qt::MatchFixedString);
+                    if (currentIndex >= 0) {
+                        fields->setCurrentIndex(currentIndex);
+                    }
+                }
+                setChecked(*dialog, Control::DataFramePrintEntireContents, frame.printEntireContentsFlag != 0);
+                initializeFrameStyleDialog(*dialog, frame.styleFlags);
+            }
+        } else if (frame.kind == ReportFrameKind::SystemText) {
+            dialog = UiBuilder::createDialog(QStringLiteral("ADDSYSTEMBOX"), this, dialogContext());
+            if (dialog) {
+                initializeSystemBoxDialog(*dialog);
+                initializeSystemBoxDialogToken(*dialog, frame.text);
+                initializeFrameStyleDialog(*dialog, frame.styleFlags);
+            }
+        } else if (frame.kind == ReportFrameKind::LineOrBox) {
+            dialog = UiBuilder::createDialog(QStringLiteral("LINEFRAME"), this, dialogContext());
+            if (dialog) {
+                initializeLineFrameDialog(*dialog, frame.lineBoxShape, frame.lineStyle, frame.fillPattern, frame.cornerRadius);
+            }
+        }
+        if (!dialog || dialog->exec() != QDialog::Accepted) {
+            return;
+        }
+        if (frame.kind == ReportFrameKind::LineOrBox) {
+            int shape = ReportLineShapeBox;
+            if (isChecked(*dialog, Control::LineFrameHorizontal)) {
+                shape = ReportLineShapeHorizontal;
+            } else if (isChecked(*dialog, Control::LineFrameVertical)) {
+                shape = ReportLineShapeVertical;
+            }
+            designer->updateSelectedFrameFromToolbar(
+                frame.text, frame.styleFlags, frame.printEntireContentsFlag != 0, shape,
+                comboIndex(*dialog, Control::LineFrameLineStyle),
+                comboIndex(*dialog, Control::LineFrameFillPattern),
+                positiveEditValue(*dialog, Control::LineFrameCornerRadius, 0));
+        } else {
+            QString text = frame.text;
+            if (frame.kind == ReportFrameKind::Text) {
+                text = editText(*dialog, Control::FrameText);
+            } else if (frame.kind == ReportFrameKind::Data) {
+                text = QStringLiteral("[%1]").arg(comboText(*dialog, Control::DataFrameFieldList));
+            } else if (frame.kind == ReportFrameKind::SystemText) {
+                text = tokenForSystemBoxDialog(*dialog);
+            }
+            designer->updateSelectedFrameFromToolbar(
+                text,
+                frameStyleFlagsFromDialog(*dialog),
+                frame.kind == ReportFrameKind::Data && isChecked(*dialog, Control::DataFramePrintEntireContents),
+                frame.lineBoxShape, frame.lineStyle, frame.fillPattern, frame.cornerRadius);
+        }
         return;
+    }
     case Command::ConfigureDataFont:
     case Command::ConfigureTextFont: {
         const bool dataFont = commandId == Command::ConfigureDataFont;
@@ -2904,8 +3350,75 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
         return;
     }
     case Command::ToolFrameAttributes:
-        statusBar()->showMessage(tr("Frame attributes are edited in the template designer side panel."), StatusMessageTimeoutMs);
+    {
+        const CardTemplateFrame* selected = designer->selectedFrameDefinition();
+        if (selected == nullptr) {
+            statusBar()->showMessage(tr("Select a template frame first."), StatusMessageTimeoutMs);
+            return;
+        }
+        const CardTemplateFrame frame = *selected;
+        if (frame.kind == CardTemplateFrameKind::Text) {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("TPLTEXTFRAME"), this, dialogContext());
+            if (!dialog) {
+                return;
+            }
+            setEditText(*dialog, Control::FrameText, frame.text);
+            initializeFrameStyleDialog(*dialog, frame.styleFlags);
+            if (dialog->exec() == QDialog::Accepted) {
+                designer->updateSelectedFrameFromToolbar(
+                    editText(*dialog, Control::FrameText), frameStyleFlagsFromDialog(*dialog),
+                    frame.lineBoxShape, frame.lineStyle, frame.fillPattern, frame.cornerRadius);
+            }
+            return;
+        }
+        if (frame.kind == CardTemplateFrameKind::DataBox || frame.kind == CardTemplateFrameKind::NotesBox) {
+            const int fieldIndex = designer->selectedFieldIndex();
+            if (fieldIndex < 0 || fieldIndex >= designer->fieldDefinitions().size()) {
+                return;
+            }
+            const FieldDefinition field = designer->fieldDefinitions().at(fieldIndex);
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("TPLDATAFRAME"), this, dialogContext());
+            if (!dialog) {
+                return;
+            }
+            setEditText(*dialog, Control::FrameText, field.name());
+            setEditText(*dialog, Control::TemplateFieldLength, QString::number(field.maxLength()));
+            setChecked(*dialog, Control::TemplateFieldPhone, field.isPhone());
+            setChecked(*dialog, Control::TemplateFieldShowName, field.showName());
+            if (dialog->exec() == QDialog::Accepted) {
+                designer->updateSelectedFieldDefinition(
+                    editText(*dialog, Control::FrameText),
+                    positiveEditValue(*dialog, Control::TemplateFieldLength, field.maxLength()),
+                    isChecked(*dialog, Control::TemplateFieldPhone),
+                    isChecked(*dialog, Control::TemplateFieldShowName));
+            }
+            return;
+        }
+        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("LINEFRAME"), this, dialogContext());
+        if (!dialog) {
+            return;
+        }
+        initializeLineFrameDialog(
+            *dialog,
+            frame.lineBoxShape == CardTemplateLineBoxShape::HorizontalLine
+                ? ReportLineShapeHorizontal
+                : (frame.lineBoxShape == CardTemplateLineBoxShape::VerticalLine ? ReportLineShapeVertical : ReportLineShapeBox),
+            frame.lineStyle, frame.fillPattern, frame.cornerRadius);
+        if (dialog->exec() == QDialog::Accepted) {
+            CardTemplateLineBoxShape shape = CardTemplateLineBoxShape::Box;
+            if (isChecked(*dialog, Control::LineFrameHorizontal)) {
+                shape = CardTemplateLineBoxShape::HorizontalLine;
+            } else if (isChecked(*dialog, Control::LineFrameVertical)) {
+                shape = CardTemplateLineBoxShape::VerticalLine;
+            }
+            designer->updateSelectedFrameFromToolbar(
+                frame.text, frame.styleFlags, shape,
+                comboIndex(*dialog, Control::LineFrameLineStyle),
+                comboIndex(*dialog, Control::LineFrameFillPattern),
+                positiveEditValue(*dialog, Control::LineFrameCornerRadius, 0));
+        }
         return;
+    }
     case Command::ConfigureDataFont:
     case Command::ConfigureNameFont:
     case Command::ConfigureTextFont:
@@ -2929,6 +3442,7 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
         } else {
             owner->applyIndexFont(selected);
         }
+        designer->setAppearance(owner->deck().appearance());
         return;
     }
     case Command::ConfigureColors: {
@@ -3338,6 +3852,33 @@ void MainWindow::handlePhoneDialCommand()
     QApplication::clipboard()->setText(number);
     const bool opened = QDesktopServices::openUrl(QUrl(QStringLiteral("tel:%1").arg(dialString)));
     if (opened) {
+        if (workspace != nullptr && isChecked(*dialog, Control::PhoneLogCall)) {
+            workspace->commitPendingEdits();
+            PhoneCallLogEntry entry;
+            entry.calledAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+            entry.phoneNumber = number;
+            const int cardIndex = workspace->currentCardIndex();
+            if (cardIndex >= 0 && cardIndex < workspace->deck().cardCount()) {
+                const CardRecord& card = workspace->deck().cardAt(cardIndex);
+                for (int index = 0; index < 3; ++index) {
+                    entry.cardSummaryValues.append(card.valueAt(index));
+                }
+            }
+            workspace->appendPhoneCallLogEntry(std::move(entry));
+
+            const QString filePath = activeDeckPath();
+            if (!filePath.isEmpty()) {
+                QString error;
+                if (SQLitePackageStore::saveDeckPackage(workspace->deck(), filePath, &error)) {
+                    workspace->clearDirty();
+                } else {
+                    QMessageBox::warning(
+                        this,
+                        tr("Phone Call Log"),
+                        tr("The call remains in the open deck, but its call log could not be saved:\n%1").arg(error));
+                }
+            }
+        }
         statusBar()->showMessage(tr("Phone number copied and sent to the system phone handler."), StatusMessageTimeoutMs);
     } else {
         QMessageBox::information(
@@ -3345,6 +3886,234 @@ void MainWindow::handlePhoneDialCommand()
             tr("Dial Phone Number"),
             tr("The phone number was copied to the clipboard, but no system phone handler accepted the tel: link."));
     }
+}
+
+void MainWindow::handlePhoneCallLogCommand()
+{
+    DeckWorkspace* workspace = activeDeckWorkspace();
+    if (workspace == nullptr) {
+        QMessageBox::information(this, tr("Phone Call Log"), tr("Open a deck to view its phone call log."));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Phone Call Log - %1").arg(workspace->deck().name()));
+    dialog.resize(900, 420);
+    auto* layout = new QVBoxLayout(&dialog);
+
+    auto* guidance = new QLabel(
+        tr("Calls recorded for this deck. Select one or more rows to delete them, or import and export legacy .LOG files."),
+        &dialog);
+    guidance->setWordWrap(true);
+    layout->addWidget(guidance);
+
+    constexpr int SummaryColumnCount = 3;
+    auto* table = new QTableWidget(workspace->deck().phoneCallLogEntryCount(), 5, &dialog);
+    table->setObjectName(QStringLiteral("phoneCallLogTable"));
+    QStringList headers{tr("Called"), tr("Phone number")};
+    for (int index = 0; index < SummaryColumnCount; ++index) {
+        const QString fieldName = index < workspace->deck().fields().size()
+            ? workspace->deck().fields().at(index).name().trimmed()
+            : QString();
+        headers.append(fieldName.isEmpty() ? tr("Card detail %1").arg(index + 1) : fieldName);
+    }
+    table->setHorizontalHeaderLabels(headers);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    table->setAlternatingRowColors(true);
+    table->setWordWrap(false);
+    table->verticalHeader()->setVisible(false);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setStretchLastSection(true);
+    layout->addWidget(table, 1);
+
+    auto* actionLayout = new QHBoxLayout;
+    auto* importButton = new QPushButton(tr("&Import .LOG..."), &dialog);
+    auto* exportButton = new QPushButton(tr("&Export .LOG..."), &dialog);
+    auto* deleteButton = new QPushButton(tr("&Delete Selected"), &dialog);
+    auto* closeButton = new QPushButton(tr("&Close"), &dialog);
+    importButton->setObjectName(QStringLiteral("phoneCallLogImportButton"));
+    exportButton->setObjectName(QStringLiteral("phoneCallLogExportButton"));
+    deleteButton->setObjectName(QStringLiteral("phoneCallLogDeleteButton"));
+    closeButton->setObjectName(QStringLiteral("phoneCallLogCloseButton"));
+    deleteButton->setShortcut(QKeySequence::Delete);
+    closeButton->setDefault(true);
+    actionLayout->addWidget(importButton);
+    actionLayout->addWidget(exportButton);
+    actionLayout->addStretch(1);
+    actionLayout->addWidget(deleteButton);
+    actionLayout->addWidget(closeButton);
+    layout->addLayout(actionLayout);
+
+    const auto updateActionState = [table, workspace, exportButton, deleteButton]() {
+        const bool hasEntries = workspace->deck().phoneCallLogEntryCount() > 0;
+        exportButton->setEnabled(hasEntries);
+        deleteButton->setEnabled(
+            hasEntries && table->selectionModel() != nullptr && !table->selectionModel()->selectedRows().isEmpty());
+    };
+
+    const auto refreshTable = [this, table, workspace, updateActionState]() {
+        const QVector<PhoneCallLogEntry>& entries = workspace->deck().phoneCallLogEntries();
+        table->clearContents();
+        table->setRowCount(entries.size());
+        for (int row = 0; row < entries.size(); ++row) {
+            const PhoneCallLogEntry& entry = entries.at(row);
+            const QDateTime calledAt = QDateTime::fromString(entry.calledAtUtc, Qt::ISODateWithMs).toLocalTime();
+            const QString calledText = calledAt.isValid()
+                ? QLocale().toString(calledAt, QLocale::ShortFormat)
+                : tr("Legacy record");
+            table->setItem(row, 0, new QTableWidgetItem(calledText));
+            table->setItem(row, 1, new QTableWidgetItem(entry.phoneNumber));
+            for (int index = 0; index < SummaryColumnCount; ++index) {
+                table->setItem(row, index + 2, new QTableWidgetItem(
+                    index < entry.cardSummaryValues.size() ? entry.cardSummaryValues.at(index) : QString()));
+            }
+        }
+        table->clearSelection();
+        updateActionState();
+    };
+    refreshTable();
+    connect(table->selectionModel(), &QItemSelectionModel::selectionChanged, &dialog, updateActionState);
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    connect(importButton, &QPushButton::clicked, &dialog, [this, workspace, refreshTable]() {
+        const QString filePath = QFileDialog::getOpenFileName(
+            this, tr("Import Phone Call Log"), QString(), tr("Legacy phone call logs (*.LOG *.log);;All files (*)"));
+        if (filePath.isEmpty()) {
+            return;
+        }
+
+        Deck importedLog;
+        QString warning;
+        const int parsed = PhoneCallLog::importLegacyFile(filePath, &importedLog, &warning);
+        if (!warning.isEmpty()) {
+            QMessageBox::warning(this, tr("Phone Call Log"), warning);
+            return;
+        }
+
+        workspace->commitPendingEdits();
+        int added = 0;
+        QVector<PhoneCallLogEntry> knownEntries = workspace->deck().phoneCallLogEntries();
+        for (const PhoneCallLogEntry& entry : importedLog.phoneCallLogEntries()) {
+            const bool duplicate = std::any_of(
+                knownEntries.cbegin(),
+                knownEntries.cend(),
+                [&entry](const PhoneCallLogEntry& known) {
+                    if (!entry.rawLegacyBytes.isEmpty() && entry.rawLegacyBytes == known.rawLegacyBytes) {
+                        return true;
+                    }
+                    if (entry.phoneNumber != known.phoneNumber
+                        || entry.cardSummaryValues != known.cardSummaryValues) {
+                        return false;
+                    }
+                    const QDateTime importedTime = QDateTime::fromString(entry.calledAtUtc, Qt::ISODateWithMs);
+                    const QDateTime knownTime = QDateTime::fromString(known.calledAtUtc, Qt::ISODateWithMs);
+                    return importedTime.isValid() && knownTime.isValid()
+                        && importedTime.toSecsSinceEpoch() / 60 == knownTime.toSecsSinceEpoch() / 60;
+                });
+            if (!duplicate) {
+                workspace->appendPhoneCallLogEntry(entry);
+                knownEntries.append(entry);
+                ++added;
+            }
+        }
+
+        if (added > 0) {
+            const QString deckPath = activeDeckPath();
+            if (!deckPath.isEmpty()) {
+                QString error;
+                if (SQLitePackageStore::saveDeckPackage(workspace->deck(), deckPath, &error)) {
+                    workspace->clearDirty();
+                } else {
+                    QMessageBox::warning(
+                        this,
+                        tr("Phone Call Log"),
+                        tr("The imported calls remain in the open deck, but could not be saved:\n%1").arg(error));
+                }
+            }
+            refreshTable();
+        }
+
+        QMessageBox::information(
+            this,
+            tr("Phone Call Log"),
+            parsed == 0
+                ? tr("The selected file did not contain any call-log records.")
+                : added > 0
+                ? tr("Imported %1 call-log record(s).%2")
+                      .arg(added)
+                      .arg(parsed > added ? tr(" %1 duplicate(s) were skipped.").arg(parsed - added) : QString())
+                : tr("No new call-log records were found; all %1 record(s) were already present.").arg(parsed));
+    });
+    connect(exportButton, &QPushButton::clicked, &dialog, [this, workspace]() {
+        QString suggested = activeDeckPath();
+        if (suggested.isEmpty()) {
+            suggested = workspace->deck().name();
+        }
+        suggested = QFileInfo(suggested).absolutePath() + QDir::separator()
+            + QFileInfo(suggested).completeBaseName() + QStringLiteral(".LOG");
+        const QString filePath = QFileDialog::getSaveFileName(
+            this, tr("Export Phone Call Log"), suggested, tr("Legacy phone call logs (*.LOG *.log)"));
+        if (filePath.isEmpty()) {
+            return;
+        }
+        QString error;
+        if (!PhoneCallLog::writeLegacyFile(workspace->deck(), filePath, &error)) {
+            QMessageBox::critical(this, tr("Phone Call Log"), tr("Could not export the call log:\n%1").arg(error));
+        }
+    });
+    connect(deleteButton, &QPushButton::clicked, &dialog, [this, table, workspace, refreshTable]() {
+        const QModelIndexList selectedRows = table->selectionModel()->selectedRows();
+        if (selectedRows.isEmpty()) {
+            return;
+        }
+
+        const int selectedCount = selectedRows.size();
+        QMessageBox confirmation(
+            QMessageBox::Question,
+            tr("Delete Call Log Entries"),
+            selectedCount == 1
+                ? tr("Delete the selected call-log entry?")
+                : tr("Delete the %1 selected call-log entries?").arg(selectedCount),
+            QMessageBox::NoButton,
+            this);
+        QPushButton* confirmDeleteButton = confirmation.addButton(tr("&Delete"), QMessageBox::DestructiveRole);
+        QPushButton* cancelButton = confirmation.addButton(QMessageBox::Cancel);
+        confirmation.setDefaultButton(cancelButton);
+        confirmation.exec();
+        if (confirmation.clickedButton() != confirmDeleteButton) {
+            return;
+        }
+
+        workspace->commitPendingEdits();
+        QVector<int> entryIndexes;
+        entryIndexes.reserve(selectedRows.size());
+        for (const QModelIndex& index : selectedRows) {
+            entryIndexes.append(index.row());
+        }
+
+        const int removed = workspace->removePhoneCallLogEntries(entryIndexes);
+        if (removed == 0) {
+            return;
+        }
+
+        const QString deckPath = activeDeckPath();
+        if (!deckPath.isEmpty()) {
+            QString error;
+            if (SQLitePackageStore::saveDeckPackage(workspace->deck(), deckPath, &error)) {
+                workspace->clearDirty();
+            } else {
+                QMessageBox::warning(
+                    this,
+                    tr("Phone Call Log"),
+                    tr("The calls remain deleted in the open deck, but the changes could not be saved:\n%1").arg(error));
+            }
+        }
+        refreshTable();
+    });
+    dialog.exec();
 }
 
 void MainWindow::handlePhoneDialerConfigCommand()
@@ -3442,7 +4211,63 @@ void MainWindow::handlePhoneDialerConfigCommand()
     m_phoneLongDistancePrefix = editText(*dialog, Control::PhoneLongDistancePrefix).trimmed();
     m_phoneOutsideLinePrefix = editText(*dialog, Control::PhoneOutsideLinePrefix).trimmed();
     m_phoneLocalAreaCode = editText(*dialog, Control::PhoneLocalAreaCode).trimmed();
+    savePhoneDialerSettings();
     statusBar()->showMessage(tr("Phone dialer settings updated."), StatusMessageTimeoutMs);
+}
+
+void MainWindow::loadPhoneDialerSettings()
+{
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("phoneDialer"));
+    const int settingsVersion = settings.value(QStringLiteral("settingsVersion"), 0).toInt();
+    m_phoneUseLongDistance = settings.value(QStringLiteral("useLongDistance"), m_phoneUseLongDistance).toBool();
+    m_phoneGetOutsideLine = settings.value(QStringLiteral("getOutsideLine"), m_phoneGetOutsideLine).toBool();
+    m_phoneLogCalls = settings.value(QStringLiteral("logCalls"), m_phoneLogCalls).toBool();
+    m_phoneLongDistancePrefix = settings.value(QStringLiteral("longDistancePrefix"), m_phoneLongDistancePrefix).toString();
+    m_phoneOutsideLinePrefix = settings.value(QStringLiteral("outsideLinePrefix"), m_phoneOutsideLinePrefix).toString();
+    m_phoneLocalAreaCode = settings.value(QStringLiteral("localAreaCode"), m_phoneLocalAreaCode).toString();
+
+    const QJsonDocument document = QJsonDocument::fromJson(settings.value(QStringLiteral("quickDials")).toByteArray());
+    if (document.isArray()) {
+        QVector<QuickDial> quickDials;
+        for (const QJsonValue& value : document.array()) {
+            const QJsonObject object = value.toObject();
+            const QString phoneNumber = object.value(QStringLiteral("phoneNumber")).toString();
+            if (!phoneNumber.isEmpty()) {
+                quickDials.append({object.value(QStringLiteral("description")).toString(), phoneNumber});
+            }
+        }
+        m_quickDials = std::move(quickDials);
+    }
+    if (settingsVersion < 2
+        && m_quickDials.size() == 2
+        && m_quickDials.at(0).phoneNumber == QStringLiteral("0")
+        && m_quickDials.at(1).phoneNumber == QStringLiteral("411")) {
+        m_quickDials.clear();
+    }
+    settings.endGroup();
+}
+
+void MainWindow::savePhoneDialerSettings() const
+{
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("phoneDialer"));
+    settings.setValue(QStringLiteral("settingsVersion"), 2);
+    settings.setValue(QStringLiteral("useLongDistance"), m_phoneUseLongDistance);
+    settings.setValue(QStringLiteral("getOutsideLine"), m_phoneGetOutsideLine);
+    settings.setValue(QStringLiteral("logCalls"), m_phoneLogCalls);
+    settings.setValue(QStringLiteral("longDistancePrefix"), m_phoneLongDistancePrefix);
+    settings.setValue(QStringLiteral("outsideLinePrefix"), m_phoneOutsideLinePrefix);
+    settings.setValue(QStringLiteral("localAreaCode"), m_phoneLocalAreaCode);
+    QJsonArray quickDials;
+    for (const QuickDial& quickDial : m_quickDials) {
+        quickDials.append(QJsonObject{
+            {QStringLiteral("description"), quickDial.description},
+            {QStringLiteral("phoneNumber"), quickDial.phoneNumber},
+        });
+    }
+    settings.setValue(QStringLiteral("quickDials"), QJsonDocument(quickDials).toJson(QJsonDocument::Compact));
+    settings.endGroup();
 }
 
 int MainWindow::showUiDialog(const QString& dialogName)
@@ -4467,6 +5292,13 @@ LegacyDeckReader::Result MainWindow::readLegacyDeckFromPath(const QString& fileP
             tr("CardStack Migration"),
             message);
     }
+    if (result.ok() && !result.warningMessages.isEmpty()) {
+        QMessageBox::warning(
+            this,
+            tr("CardStack Migration"),
+            tr("The deck was imported, but some related data needs attention:\n%1")
+                .arg(result.warningMessages.join(QLatin1Char('\n'))));
+    }
     return result;
 }
 
@@ -4705,6 +5537,94 @@ bool MainWindow::closeAllSubWindowsWithPrompts()
         }
     }
     return true;
+}
+
+QByteArray MainWindow::captureDeckWindowSession() const
+{
+    QJsonArray windows;
+    const DeckWorkspace* activeWorkspace = activeDeckWorkspace();
+    for (QMdiSubWindow* subWindow : m_mdiArea->subWindowList(QMdiArea::CreationOrder)) {
+        const auto* workspace = subWindow == nullptr
+            ? nullptr
+            : qobject_cast<DeckWorkspace*>(subWindow->widget());
+        if (workspace == nullptr) {
+            continue;
+        }
+
+        const QString filePath = workspace->property("cardstackFilePath").toString().trimmed();
+        if (filePath.isEmpty()) {
+            continue;
+        }
+
+        QRect geometry = subWindow->isMinimized() || subWindow->isMaximized()
+            ? subWindow->normalGeometry()
+            : subWindow->geometry();
+        if (!geometry.isValid()) {
+            geometry = subWindow->geometry();
+        }
+        windows.append(QJsonObject{
+            {QStringLiteral("path"), QFileInfo(filePath).absoluteFilePath()},
+            {QStringLiteral("x"), geometry.x()},
+            {QStringLiteral("y"), geometry.y()},
+            {QStringLiteral("width"), geometry.width()},
+            {QStringLiteral("height"), geometry.height()},
+            {QStringLiteral("minimized"), subWindow->isMinimized()},
+            {QStringLiteral("maximized"), subWindow->isMaximized()},
+            {QStringLiteral("active"), workspace == activeWorkspace},
+        });
+    }
+    return QJsonDocument(windows).toJson(QJsonDocument::Compact);
+}
+
+void MainWindow::saveWindowSession(const QByteArray& deckWindows)
+{
+    QSettings settings;
+    settings.beginGroup(QString::fromLatin1(WindowSessionGroup));
+    settings.setValue(QString::fromLatin1(WindowSessionVersionKey), CurrentWindowSessionVersion);
+    settings.setValue(QString::fromLatin1(WindowSessionMainGeometryKey), saveGeometry());
+    settings.setValue(QString::fromLatin1(WindowSessionMainStateKey), saveState());
+    settings.setValue(QString::fromLatin1(WindowSessionDeckWindowsKey), deckWindows);
+    settings.endGroup();
+    settings.sync();
+}
+
+bool MainWindow::restoreWindowSession()
+{
+    QSettings settings;
+    settings.beginGroup(QString::fromLatin1(WindowSessionGroup));
+    const int version = settings.value(QString::fromLatin1(WindowSessionVersionKey), 0).toInt();
+    if (version != CurrentWindowSessionVersion) {
+        settings.endGroup();
+        return false;
+    }
+
+    const QByteArray mainGeometry = settings.value(
+        QString::fromLatin1(WindowSessionMainGeometryKey)).toByteArray();
+    if (!mainGeometry.isEmpty() && restoreGeometry(mainGeometry)) {
+        setProperty("cardstackMainGeometryRestored", true);
+    }
+    const QByteArray mainState = settings.value(
+        QString::fromLatin1(WindowSessionMainStateKey)).toByteArray();
+    if (!mainState.isEmpty()) {
+        restoreState(mainState);
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(settings.value(
+        QString::fromLatin1(WindowSessionDeckWindowsKey)).toByteArray());
+    settings.endGroup();
+
+    if (!document.isArray()) {
+        return false;
+    }
+
+    QJsonArray restorableWindows;
+    for (const QJsonValue& value : document.array()) {
+        const QString filePath = value.toObject().value(QStringLiteral("path")).toString();
+        if (!filePath.isEmpty() && QFileInfo::exists(filePath)) {
+            restorableWindows.append(value);
+        }
+    }
+    m_pendingDeckWindowSession = QJsonDocument(restorableWindows).toJson(QJsonDocument::Compact);
+    return !restorableWindows.isEmpty();
 }
 
 void MainWindow::updateDeckWindowTitle(QMdiSubWindow* subWindow, const DeckWorkspace* workspace) const
@@ -5001,6 +5921,30 @@ void MainWindow::updateCommandState()
     if (QAction* action = findUiAction(Command::CardUndelete)) {
         action->setEnabled(workspace != nullptr && workspace->canUndelete());
     }
+    const bool tableNavigation = workspace != nullptr
+        && workspace->viewMode() == DeckWorkspace::ViewMode::Table;
+    const auto setNavigationAction = [this](int commandId, const QString& text, const QKeySequence& shortcut) {
+        if (QAction* action = findUiAction(commandId)) {
+            action->setText(text);
+            action->setShortcut(shortcut);
+        }
+    };
+    if (tableNavigation) {
+        setNavigationAction(Command::NavigatePreviousCard, tr("&Previous Card"), QKeySequence(Qt::Key_Up));
+        setNavigationAction(Command::NavigateNextCard, tr("&Next Card"), QKeySequence(Qt::Key_Down));
+        setNavigationAction(Command::NavigatePreviousWindowful, tr("Pre&vious Windowful"), QKeySequence(Qt::Key_PageUp));
+        setNavigationAction(Command::NavigateNextWindowful, tr("Ne&xt Windowful"), QKeySequence(Qt::Key_PageDown));
+    } else {
+        setNavigationAction(Command::NavigatePreviousCard, tr("&Previous Card"), QKeySequence(Qt::Key_PageUp));
+        setNavigationAction(Command::NavigateNextCard, tr("&Next Card"), QKeySequence(Qt::Key_PageDown));
+        setNavigationAction(Command::NavigatePreviousWindowful,
+                            tr("Pre&vious Windowful"),
+                            QKeySequence(Qt::CTRL | Qt::Key_PageUp));
+        setNavigationAction(Command::NavigateNextWindowful,
+                            tr("Ne&xt Windowful"),
+                            QKeySequence(Qt::CTRL | Qt::Key_PageDown));
+    }
+
     if (QAction* action = findUiAction(Command::ViewCard)) {
         action->setCheckable(true);
         action->setChecked(workspace != nullptr && workspace->viewMode() == DeckWorkspace::ViewMode::Card);
@@ -5028,7 +5972,7 @@ DeckWorkspace* MainWindow::openDeckWindow(const Deck& deck, const QString& fileP
     workspace->setProperty("cardstackFilePath", filePath);
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(workspace);
     subWindow->setAttribute(Qt::WA_DeleteOnClose);
-    subWindow->setWindowIcon(windowIcon().isNull() ? cardStackIcon() : windowIcon());
+    subWindow->setWindowIcon(deckWindowIcon());
     const QString title = filePath.isEmpty() ? deck.name() : QFileInfo(filePath).completeBaseName();
     subWindow->setProperty("cardstackBaseTitle", title.isEmpty() ? deck.name() : title);
     updateDeckWindowTitle(subWindow, workspace);
@@ -5072,7 +6016,7 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
 
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(designer);
     subWindow->setAttribute(Qt::WA_DeleteOnClose);
-    subWindow->setWindowIcon(windowIcon().isNull() ? cardStackIcon() : windowIcon());
+    subWindow->setWindowIcon(reportDesignerWindowIcon());
     subWindow->setWindowTitle(report.name.trimmed().isEmpty() ? tr("Untitled Report") : report.name);
     subWindow->resize(ReportDesignerWindowWidthPx, ReportDesignerWindowHeightPx);
     configureSubWindowSystemMenu(subWindow);
@@ -5131,13 +6075,14 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
         }
     }
 
-    auto* designer = new TemplateDesignerWidget(workspace->deck().cardTemplateLayout(), workspace->deck().fields());
+    auto* designer = new TemplateDesignerWidget(
+        workspace->deck().cardTemplateLayout(), workspace->deck().fields(), nullptr, workspace->deck().appearance());
     designer->setProperty("ownerDeckWorkspace", QVariant::fromValue<QObject*>(workspace));
     designer->setProperty("ownerDeckSubWindow", QVariant::fromValue<QObject*>(ownerSubWindow.data()));
 
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(designer);
     subWindow->setAttribute(Qt::WA_DeleteOnClose);
-    subWindow->setWindowIcon(windowIcon().isNull() ? cardStackIcon() : windowIcon());
+    subWindow->setWindowIcon(templateDesignerWindowIcon());
     const QString deckName = workspace->deck().name().trimmed().isEmpty()
         ? tr("Untitled Deck")
         : workspace->deck().name();
@@ -5154,6 +6099,10 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
             ? QObject::tr("%1 Template Design *").arg(deckName)
             : QObject::tr("%1 Template Design").arg(deckName));
         updateWindowMenuEntries();
+    });
+    connect(designer, &TemplateDesignerWidget::commandRequested, this, [this](int commandId) {
+        handleTemplateDesignerCommand(commandId);
+        updateCommandState();
     });
     connect(designer, &TemplateDesignerWidget::selectedFieldChanged, this, [this]() {
         rebuildDesignerPropertyToolbar();
@@ -5220,12 +6169,13 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
 void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
 {
     auto draftDeck = std::make_shared<Deck>(std::move(deck));
-    auto* designer = new TemplateDesignerWidget(draftDeck->cardTemplateLayout(), draftDeck->fields());
+    auto* designer = new TemplateDesignerWidget(
+        draftDeck->cardTemplateLayout(), draftDeck->fields(), nullptr, draftDeck->appearance());
     designer->setProperty("draftTemplateDesigner", true);
 
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(designer);
     subWindow->setAttribute(Qt::WA_DeleteOnClose);
-    subWindow->setWindowIcon(windowIcon().isNull() ? cardStackIcon() : windowIcon());
+    subWindow->setWindowIcon(templateDesignerWindowIcon());
     const QString deckName = draftDeck->name().trimmed().isEmpty()
         ? tr("Untitled Deck")
         : draftDeck->name();
@@ -5239,6 +6189,10 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
             ? QObject::tr("%1 Template Design *").arg(deckName)
             : QObject::tr("%1 Template Design").arg(deckName));
         updateWindowMenuEntries();
+    });
+    connect(designer, &TemplateDesignerWidget::commandRequested, this, [this](int commandId) {
+        handleTemplateDesignerCommand(commandId);
+        updateCommandState();
     });
     connect(designer, &TemplateDesignerWidget::selectedFieldChanged, this, [this]() {
         rebuildDesignerPropertyToolbar();

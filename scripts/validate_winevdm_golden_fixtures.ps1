@@ -13,10 +13,13 @@ if ([string]::IsNullOrWhiteSpace($FixtureDir)) {
     $FixtureDir = Join-Path $repoRoot "tests\fixtures\legacy\winevdm"
 }
 if ([string]::IsNullOrWhiteSpace($BuildDir)) {
-    $vsBuild = Join-Path $repoRoot "build\vs2022"
+    $vsBuild = Join-Path $repoRoot "build\vs2026"
+    $vsFallbackBuild = Join-Path $repoRoot "build\vs2022"
     $defaultBuild = Join-Path $repoRoot "build\default"
     if (Test-Path -LiteralPath (Join-Path $vsBuild "CMakeCache.txt")) {
         $BuildDir = $vsBuild
+    } elseif (Test-Path -LiteralPath (Join-Path $vsFallbackBuild "CMakeCache.txt")) {
+        $BuildDir = $vsFallbackBuild
     } elseif (Test-Path -LiteralPath (Join-Path $defaultBuild "CMakeCache.txt")) {
         $BuildDir = $defaultBuild
     } else {

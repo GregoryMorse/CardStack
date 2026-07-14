@@ -13,6 +13,7 @@
 
 class QAction;
 class QCloseEvent;
+class QShowEvent;
 class QEvent;
 class QLabel;
 class QMdiArea;
@@ -30,11 +31,15 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget* parent = nullptr, bool openInitialSample = false);
+    explicit MainWindow(
+        QWidget* parent = nullptr,
+        bool openInitialSample = false,
+        bool restorePreviousSession = false);
     ~MainWindow() override;
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void showEvent(QShowEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -59,7 +64,10 @@ private:
     void handleSecurityCommand();
     void handleDeckDescriptionCommand();
     void handlePhoneDialCommand();
+    void handlePhoneCallLogCommand();
     void handlePhoneDialerConfigCommand();
+    void loadPhoneDialerSettings();
+    void savePhoneDialerSettings() const;
     bool verifyNewSecurityPassword(const QString& password);
     QString normalizedSecurityPassword(const QDialog& dialog) const;
     void showHelpContents();
@@ -81,6 +89,7 @@ private:
     void configureSubWindowSystemMenu(QMdiSubWindow* subWindow);
     void tileSubWindowsVertical();
     void tileSubWindowsHorizontal();
+    void arrangeMinimizedSubWindows();
     int showUiDialog(const QString& dialogName);
     bool configureReportForm(ReportDefinition* report);
     QString dialogNameForCommand(int commandId) const;
@@ -104,6 +113,9 @@ private:
     bool exportReportPackageFromDesigner(ReportDesignerWidget* designer);
     bool confirmCloseDeckWindow(QMdiSubWindow* subWindow);
     bool closeAllSubWindowsWithPrompts();
+    QByteArray captureDeckWindowSession() const;
+    void saveWindowSession(const QByteArray& deckWindows);
+    bool restoreWindowSession();
     void updateDeckWindowTitle(QMdiSubWindow* subWindow, const DeckWorkspace* workspace) const;
     UiBuilder::DialogContext dialogContext() const;
     DeckWorkspace::SearchRequest searchRequestFromDialog(const QDialog& dialog) const;
@@ -130,6 +142,7 @@ private:
     QString m_phoneLongDistancePrefix = QStringLiteral("1");
     QString m_phoneOutsideLinePrefix = QStringLiteral("9");
     QString m_phoneLocalAreaCode;
+    QByteArray m_pendingDeckWindowSession;
     bool m_phoneUseLongDistance = false;
     bool m_phoneGetOutsideLine = false;
     bool m_phoneLogCalls = false;

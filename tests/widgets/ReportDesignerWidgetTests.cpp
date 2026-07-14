@@ -1,6 +1,7 @@
 ﻿#include "ReportDesignerWidget.h"
 
 #include "../support/ModalDialogDriver.h"
+#include "UiIds.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -283,6 +284,76 @@ private slots:
         QVERIFY(!designer.isVisible());
         QCOMPARE(saveSpy.size(), 1);
         QVERIFY(!designer.isDirty());
+    }
+
+    void canvasMouseMessagesSelectMoveResizeAndActivateFrames()
+    {
+        ReportDefinition report = makeReport();
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Text;
+        frame.text = QStringLiteral("Move me");
+        frame.bounds = QRect(900, 700, 1400, 500);
+        report.frames = {frame};
+
+        ReportDesignerWidget designer(report, {});
+        designer.resize(1000, 700);
+        designer.show();
+        QCoreApplication::processEvents();
+        QWidget* canvas = designer.findChild<QWidget*>(QStringLiteral("reportDesignCanvas"));
+        QVERIFY(canvas != nullptr);
+
+        const QRectF available = canvas->rect().adjusted(16, 16, -20, -20);
+        const qreal aspect = static_cast<qreal>(report.formWidth) / report.formHeight;
+        qreal pageWidth = available.width();
+        qreal pageHeight = pageWidth / aspect;
+        if (pageHeight > available.height()) {
+            pageHeight = available.height();
+            pageWidth = pageHeight * aspect;
+        }
+        const QRectF page(available.center().x() - pageWidth / 2.0,
+                          available.center().y() - pageHeight / 2.0,
+                          pageWidth,
+                          pageHeight);
+        const auto visualBounds = [&page, &report](const QRect& bounds) {
+            return QRectF(page.left() + bounds.left() * page.width() / report.formWidth,
+                          page.top() + bounds.top() * page.height() / report.formHeight,
+                          bounds.width() * page.width() / report.formWidth,
+                          bounds.height() * page.height() / report.formHeight);
+        };
+
+        const QPoint initialCenter = visualBounds(frame.bounds).center().toPoint();
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, QPoint(2, 2));
+        QCOMPARE(designer.selectedFrameIndex(), -1);
+        QTest::mouseClick(canvas, Qt::RightButton, Qt::NoModifier, initialCenter);
+        QCOMPARE(designer.selectedFrameIndex(), -1);
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, initialCenter);
+        QCOMPARE(designer.selectedFrameIndex(), 0);
+        QVERIFY(canvas->hasFocus());
+
+        const QRect beforeMove = designer.report().frames.first().bounds;
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, initialCenter);
+        QTest::mouseMove(canvas, initialCenter + QPoint(24, 18));
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, initialCenter + QPoint(24, 18));
+        const QRect afterMove = designer.report().frames.first().bounds;
+        QVERIFY(afterMove.topLeft() != beforeMove.topLeft());
+
+        const QPoint resizePoint = visualBounds(afterMove).bottomRight().toPoint() - QPoint(2, 2);
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, resizePoint);
+        QTest::mouseMove(canvas, resizePoint + QPoint(22, 16));
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, resizePoint + QPoint(22, 16));
+        const QRect afterResize = designer.report().frames.first().bounds;
+        QVERIFY(afterResize.width() > afterMove.width());
+        QVERIFY(afterResize.height() > afterMove.height());
+        QVERIFY(designer.canUndo());
+        designer.undo();
+        QCOMPARE(designer.report().frames.first().bounds, afterMove);
+        designer.undo();
+        QCOMPARE(designer.report().frames.first().bounds, beforeMove);
+
+        QSignalSpy commandSpy(&designer, &ReportDesignerWidget::commandRequested);
+        QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, visualBounds(beforeMove).center().toPoint());
+        QCOMPARE(commandSpy.size(), 1);
+        QCOMPARE(commandSpy.takeFirst().first().toInt(), UiIds::Command::ToolFrameAttributes);
     }
 
     void writesManualDesignerInspectionImagesWhenConfigured()

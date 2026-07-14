@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$BuildDir = "build\vs2022-local-qt",
+    [string]$BuildDir = "build\vs2026-local-qt",
     [string]$Config = "Debug",
     [string]$QtRoot = "",
     [string]$OutputRoot = "build",
@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BuildPath = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $BuildDir))
 $OutputPath = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $OutputRoot))
-$BuildScript = Join-Path $PSScriptRoot "build-cardstack-vs2022.ps1"
+$BuildScript = Join-Path $PSScriptRoot "build-cardstack-windows.ps1"
 $TestExe = Join-Path $BuildPath "$Config\CardStackTests.exe"
 $DeployDir = Join-Path $BuildPath "$Config\CardStackDeploy"
 $RuntimePath = [System.IO.Path]::GetFullPath((Join-Path $BuildPath "visual-gallery-runtime"))
