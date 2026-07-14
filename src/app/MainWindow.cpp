@@ -72,6 +72,7 @@
 #include <QPrinterInfo>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QRect>
 #include <QRegularExpression>
 #include <QScrollBar>
@@ -94,6 +95,11 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <winspool.h>
+#endif
 #include <QVariant>
 #include <QWidget>
 
@@ -1237,25 +1243,100 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
     QDialog dialog(parent);
     dialog.setWindowTitle(QObject::tr("Printer Setup"));
     dialog.setProperty("legacyDialogName", QStringLiteral("PRINTERSETUP"));
-    dialog.setMinimumWidth(420);
+    dialog.setMinimumWidth(610);
 
     auto* layout = new QVBoxLayout(&dialog);
-    auto* introduction = new QLabel(
-        QObject::tr("Select the printer, paper size, and orientation used for reports."), &dialog);
-    introduction->setWordWrap(true);
-    layout->addWidget(introduction);
+    layout->setContentsMargins(14, 12, 14, 12);
+    layout->setSpacing(10);
 
-    auto* form = new QFormLayout;
+    auto* printerGroup = new QGroupBox(QObject::tr("Printer"), &dialog);
+    auto* printerLayout = new QGridLayout(printerGroup);
     auto* printerCombo = new QComboBox(&dialog);
     printerCombo->setObjectName(QStringLiteral("printerSetupPrinter"));
+    auto* propertiesButton = new QPushButton(QObject::tr("&Properties..."), printerGroup);
+    propertiesButton->setObjectName(QStringLiteral("printerSetupProperties"));
+    auto* statusValue = new QLabel(printerGroup);
+    statusValue->setObjectName(QStringLiteral("printerSetupStatus"));
+    auto* typeValue = new QLabel(printerGroup);
+    typeValue->setObjectName(QStringLiteral("printerSetupType"));
+    auto* whereValue = new QLabel(printerGroup);
+    whereValue->setObjectName(QStringLiteral("printerSetupWhere"));
+    auto* commentValue = new QLabel(printerGroup);
+    commentValue->setObjectName(QStringLiteral("printerSetupComment"));
+
+    printerLayout->addWidget(new QLabel(QObject::tr("&Name:"), printerGroup), 0, 0);
+    printerLayout->addWidget(printerCombo, 0, 1);
+    printerLayout->addWidget(propertiesButton, 0, 2);
+    printerLayout->addWidget(new QLabel(QObject::tr("Status:"), printerGroup), 1, 0);
+    printerLayout->addWidget(statusValue, 1, 1, 1, 2);
+    printerLayout->addWidget(new QLabel(QObject::tr("Type:"), printerGroup), 2, 0);
+    printerLayout->addWidget(typeValue, 2, 1, 1, 2);
+    printerLayout->addWidget(new QLabel(QObject::tr("Where:"), printerGroup), 3, 0);
+    printerLayout->addWidget(whereValue, 3, 1, 1, 2);
+    printerLayout->addWidget(new QLabel(QObject::tr("Comment:"), printerGroup), 4, 0);
+    printerLayout->addWidget(commentValue, 4, 1, 1, 2);
+    printerLayout->setColumnStretch(1, 1);
+    layout->addWidget(printerGroup);
+
     auto* paperCombo = new QComboBox(&dialog);
     paperCombo->setObjectName(QStringLiteral("printerSetupPaperSize"));
-    auto* orientationCombo = new QComboBox(&dialog);
-    orientationCombo->setObjectName(QStringLiteral("printerSetupOrientation"));
-    orientationCombo->addItem(QObject::tr("Portrait"), static_cast<int>(QPageLayout::Portrait));
-    orientationCombo->addItem(QObject::tr("Landscape"), static_cast<int>(QPageLayout::Landscape));
-    orientationCombo->setCurrentIndex(
-        printer->pageLayout().orientation() == QPageLayout::Landscape ? 1 : 0);
+    auto* sourceCombo = new QComboBox(&dialog);
+    sourceCombo->setObjectName(QStringLiteral("printerSetupPaperSource"));
+    sourceCombo->addItem(QObject::tr("Printer default"));
+    sourceCombo->setEnabled(false);
+
+    auto* paperGroup = new QGroupBox(QObject::tr("Paper"), &dialog);
+    auto* paperLayout = new QFormLayout(paperGroup);
+    paperLayout->addRow(QObject::tr("&Size:"), paperCombo);
+    paperLayout->addRow(QObject::tr("S&ource:"), sourceCombo);
+
+    auto* orientationGroup = new QGroupBox(QObject::tr("Orientation"), &dialog);
+    auto* orientationLayout = new QGridLayout(orientationGroup);
+    auto* orientationPicture = new QLabel(orientationGroup);
+    orientationPicture->setObjectName(QStringLiteral("printerSetupOrientationPicture"));
+    orientationPicture->setFixedSize(72, 82);
+    orientationPicture->setAlignment(Qt::AlignCenter);
+    auto* portrait = new QRadioButton(QObject::tr("&Portrait"), orientationGroup);
+    portrait->setObjectName(QStringLiteral("printerSetupPortrait"));
+    auto* landscape = new QRadioButton(QObject::tr("&Landscape"), orientationGroup);
+    landscape->setObjectName(QStringLiteral("printerSetupLandscape"));
+    auto* orientationButtons = new QButtonGroup(&dialog);
+    orientationButtons->addButton(portrait);
+    orientationButtons->addButton(landscape);
+    const bool initiallyLandscape =
+        printer->pageLayout().orientation() == QPageLayout::Landscape;
+    portrait->setChecked(!initiallyLandscape);
+    landscape->setChecked(initiallyLandscape);
+    orientationLayout->addWidget(orientationPicture, 0, 0, 2, 1);
+    orientationLayout->addWidget(portrait, 0, 1);
+    orientationLayout->addWidget(landscape, 1, 1);
+
+    const auto updateOrientationPicture = [orientationPicture, portrait] {
+        const bool isLandscape = !portrait->isChecked();
+        QPixmap picture(68, 78);
+        picture.fill(Qt::transparent);
+        QPainter painter(&picture);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRectF page = isLandscape
+            ? QRectF(5, 18, 58, 42)
+            : QRectF(14, 5, 40, 66);
+        painter.fillRect(page, Qt::white);
+        painter.setPen(QPen(Qt::black, 2));
+        painter.drawRect(page);
+        QFont letterFont(QStringLiteral("Times New Roman"));
+        letterFont.setPixelSize(isLandscape ? 30 : 34);
+        painter.setFont(letterFont);
+        painter.drawText(page, Qt::AlignCenter, QStringLiteral("A"));
+        orientationPicture->setPixmap(picture);
+    };
+    QObject::connect(portrait, &QRadioButton::toggled, &dialog,
+                     [updateOrientationPicture](bool) { updateOrientationPicture(); });
+    updateOrientationPicture();
+
+    auto* paperOrientationRow = new QHBoxLayout;
+    paperOrientationRow->addWidget(paperGroup, 3);
+    paperOrientationRow->addWidget(orientationGroup, 2);
+    layout->addLayout(paperOrientationRow);
 
     const QVector<QPrinterInfo> printers = QPrinterInfo::availablePrinters();
     int selectedPrinter = -1;
@@ -1273,6 +1354,41 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
     } else {
         printerCombo->setCurrentIndex(std::max(0, selectedPrinter));
     }
+
+    const auto printerStateText = [](QPrinter::PrinterState state) {
+        switch (state) {
+        case QPrinter::Idle:
+            return QObject::tr("Ready");
+        case QPrinter::Active:
+            return QObject::tr("Active");
+        case QPrinter::Aborted:
+            return QObject::tr("Aborted");
+        case QPrinter::Error:
+        default:
+            return QObject::tr("Error");
+        }
+    };
+    const auto refreshPrinterDetails = [&] {
+        const int index = printerCombo->currentIndex();
+        if (index < 0 || index >= printers.size()) {
+            statusValue->setText(QObject::tr("Unavailable"));
+            typeValue->clear();
+            whereValue->clear();
+            commentValue->clear();
+            propertiesButton->setEnabled(false);
+            return;
+        }
+        const QPrinterInfo& info = printers.at(index);
+        QPrinter selectedPrinterInfo(QPrinter::HighResolution);
+        selectedPrinterInfo.setPrinterName(info.printerName());
+        statusValue->setText(printerStateText(selectedPrinterInfo.printerState()));
+        typeValue->setText(info.makeAndModel().trimmed().isEmpty()
+                ? info.printerName()
+                : info.makeAndModel());
+        whereValue->setText(info.location());
+        commentValue->setText(info.description());
+        propertiesButton->setEnabled(true);
+    };
 
     QVector<QPageSize> paperSizes;
     auto refreshPaperSizes = [&]() {
@@ -1299,23 +1415,64 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
         paperCombo->setCurrentIndex(currentPaperIndex);
     };
     QObject::connect(printerCombo, &QComboBox::currentIndexChanged, &dialog,
-                     [&refreshPaperSizes](int) { refreshPaperSizes(); });
+                     [&refreshPaperSizes, &refreshPrinterDetails](int) {
+                         refreshPaperSizes();
+                         refreshPrinterDetails();
+                     });
     refreshPaperSizes();
+    refreshPrinterDetails();
 
-    form->addRow(QObject::tr("&Printer:"), printerCombo);
-    form->addRow(QObject::tr("&Paper size:"), paperCombo);
-    form->addRow(QObject::tr("&Orientation:"), orientationCombo);
-    layout->addLayout(form);
-
-    auto* marginsNotice = new QLabel(
-        QObject::tr("Page margins are defined by the selected report form."), &dialog);
-    marginsNotice->setObjectName(QStringLiteral("printerSetupMarginsNotice"));
-    marginsNotice->setEnabled(false);
-    layout->addWidget(marginsNotice);
+    QObject::connect(propertiesButton, &QPushButton::clicked, &dialog, [&] {
+        const int index = printerCombo->currentIndex();
+        if (index < 0 || index >= printers.size()) {
+            return;
+        }
+#ifdef Q_OS_WIN
+        const QString printerName = printers.at(index).printerName();
+        HANDLE printerHandle = nullptr;
+        LPWSTR nativeName = const_cast<LPWSTR>(
+            reinterpret_cast<LPCWSTR>(printerName.utf16()));
+        if (!OpenPrinterW(nativeName, &printerHandle, nullptr)) {
+            return;
+        }
+        const LONG devModeSize = DocumentPropertiesW(
+            reinterpret_cast<HWND>(dialog.winId()), printerHandle, nativeName,
+            nullptr, nullptr, 0);
+        if (devModeSize > 0) {
+            QByteArray storage(devModeSize, Qt::Uninitialized);
+            auto* devMode = reinterpret_cast<DEVMODEW*>(storage.data());
+            if (DocumentPropertiesW(
+                    reinterpret_cast<HWND>(dialog.winId()), printerHandle, nativeName,
+                    devMode, nullptr, DM_OUT_BUFFER) == IDOK) {
+                DocumentPropertiesW(
+                    reinterpret_cast<HWND>(dialog.winId()), printerHandle, nativeName,
+                    devMode, devMode, DM_IN_BUFFER | DM_OUT_BUFFER | DM_IN_PROMPT);
+            }
+        }
+        ClosePrinter(printerHandle);
+#else
+        QMessageBox::information(
+            &dialog,
+            QObject::tr("Printer Properties"),
+            QObject::tr("Printer driver properties are managed by the operating system."));
+#endif
+        refreshPrinterDetails();
+        refreshPaperSizes();
+    });
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help,
         Qt::Horizontal, &dialog);
+    auto* networkButton = new QPushButton(QObject::tr("&Network..."), &dialog);
+    networkButton->setObjectName(QStringLiteral("printerSetupNetwork"));
+    buttons->addButton(networkButton, QDialogButtonBox::ActionRole);
+#ifdef Q_OS_WIN
+    QObject::connect(networkButton, &QPushButton::clicked, &dialog, [] {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:printers")));
+    });
+#else
+    networkButton->setVisible(false);
+#endif
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     QObject::connect(buttons->button(QDialogButtonBox::Help), &QAbstractButton::clicked, &dialog, [&dialog]() {
@@ -1336,8 +1493,8 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
     if (paperCombo->currentIndex() >= 0 && paperCombo->currentIndex() < paperSizes.size()) {
         printer->setPageSize(paperSizes.at(paperCombo->currentIndex()));
     }
-    printer->setPageOrientation(static_cast<QPageLayout::Orientation>(
-        orientationCombo->currentData().toInt()));
+    printer->setPageOrientation(
+        landscape->isChecked() ? QPageLayout::Landscape : QPageLayout::Portrait);
     printer->setFullPage(true);
     return true;
 }
@@ -4769,6 +4926,15 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         }
         setDefineEditWidth(Control::DefineFormRows, DefineFormMeasureEditWidthPx);
         setDefineEditWidth(Control::DefineFormColumns, DefineFormMeasureEditWidthPx);
+        for (int controlId : {
+                 Control::DefineFormComputedWidth,
+                 Control::DefineFormComputedHeight,
+             }) {
+            if (auto* label = uiControl<QLabel>(*defineDialog, controlId)) {
+                label->setMinimumWidth(250);
+                label->resize(250, std::max(label->height(), label->fontMetrics().height() + 4));
+            }
+        }
 
         auto* defineFormGroup = new QButtonGroup(defineDialog.get());
         defineFormGroup->setExclusive(true);

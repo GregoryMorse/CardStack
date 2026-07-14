@@ -3995,11 +3995,37 @@ void initializeDesignReportsDialog(QDialog* dialog, const UiBuilder::DialogConte
             return left.description.compare(right.description, Qt::CaseInsensitive) < 0;
         });
 
+        int widestDescription = 0;
+        for (const auto& report : reports) {
+            widestDescription = std::max(
+                widestDescription,
+                reportList->fontMetrics().horizontalAdvance(report.description));
+        }
+        const int desiredListWidth = std::max(
+            reportList->width(),
+            typeWidth + widestDescription + 32);
+        const int widthGrowth = desiredListWidth - reportList->width();
+        if (widthGrowth > 0) {
+            const int oldRight = reportList->geometry().right();
+            reportList->resize(desiredListWidth, reportList->height());
+            const QList<QWidget*> controls =
+                dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+            for (QWidget* control : controls) {
+                if (control != reportList && control->x() > oldRight) {
+                    control->move(control->x() + widthGrowth, control->y());
+                }
+            }
+            dialog->resize(dialog->width() + widthGrowth, dialog->height());
+        }
+
         for (const auto& report : reports) {
             auto* item = new QListWidgetItem(reportList);
-            item->setText(QStringLiteral("%1\t%2").arg(report.type, report.description));
-            item->setData(Qt::AccessibleTextRole, item->text());
+            item->setData(
+                Qt::AccessibleTextRole,
+                QStringLiteral("%1, %2").arg(report.type, report.description));
             item->setData(UiBuilder::ReportSourceIndexRole, report.sourceIndex);
+            item->setData(UiBuilder::ReportTypeRole, report.type);
+            item->setData(UiBuilder::ReportDescriptionRole, report.description);
             item->setSizeHint(QSize(0, reportList->fontMetrics().height() + 8));
             auto* row = new QWidget(reportList);
             auto* rowLayout = new QHBoxLayout(row);
@@ -4008,6 +4034,9 @@ void initializeDesignReportsDialog(QDialog* dialog, const UiBuilder::DialogConte
             auto* typeLabel = new QLabel(report.type, row);
             typeLabel->setObjectName(QStringLiteral("reportType"));
             typeLabel->setFixedWidth(typeWidth);
+            QFont typeFont = typeLabel->font();
+            typeFont.setBold(true);
+            typeLabel->setFont(typeFont);
             auto* descriptionLabel = new QLabel(report.description, row);
             descriptionLabel->setObjectName(QStringLiteral("reportDescription"));
             rowLayout->addWidget(typeLabel);

@@ -28,6 +28,10 @@ target_include_directories(cardstack_app_lib
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+if(WIN32)
+    target_link_libraries(cardstack_app_lib PRIVATE Winspool)
+endif()
+
 qt_add_executable(CardStack
     main.cpp
 )

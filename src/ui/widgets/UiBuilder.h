@@ -33,6 +33,8 @@ public:
     };
 
     static constexpr int ReportSourceIndexRole = Qt::UserRole;
+    static constexpr int ReportTypeRole = Qt::UserRole + 1;
+    static constexpr int ReportDescriptionRole = Qt::UserRole + 2;
 
     static bool populateMenuBar(
         QMenuBar* menuBar,

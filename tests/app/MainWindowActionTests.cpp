@@ -492,7 +492,14 @@ private slots:
             sawDialog = true;
             QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPrinter")) != nullptr);
             QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPaperSize")) != nullptr);
-            QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupOrientation")) != nullptr);
+            QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupPortrait")) != nullptr);
+            QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupLandscape")) != nullptr);
+            QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupProperties")) != nullptr);
+            QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupNetwork")) != nullptr);
+            QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupStatus")) != nullptr);
+            QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupType")) != nullptr);
+            QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupWhere")) != nullptr);
+            QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupComment")) != nullptr);
             QVERIFY(dialog->findChild<QWidget*>(QStringLiteral("printerSetupPreview")) == nullptr);
             QVERIFY(dialog->findChild<QWidget*>(QStringLiteral("printerSetupMarginEditor")) == nullptr);
             dialog->reject();
