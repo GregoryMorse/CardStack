@@ -492,6 +492,13 @@ private slots:
             sawDialog = true;
             QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPrinter")) != nullptr);
             QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPaperSize")) != nullptr);
+            auto* source = dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPaperSource"));
+            QVERIFY(source != nullptr);
+            QVERIFY(source->count() >= 1);
+            QCOMPARE(source->isEnabled(), source->count() > 1);
+            for (int index = 0; index < source->count(); ++index) {
+                QVERIFY(!source->itemText(index).trimmed().isEmpty());
+            }
             QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupPortrait")) != nullptr);
             QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupLandscape")) != nullptr);
             QVERIFY(dialog->findChild<QAbstractButton*>(QStringLiteral("printerSetupProperties")) != nullptr);
@@ -499,7 +506,12 @@ private slots:
             QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupStatus")) != nullptr);
             QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupType")) != nullptr);
             QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupWhere")) != nullptr);
-            QVERIFY(dialog->findChild<QLabel*>(QStringLiteral("printerSetupComment")) != nullptr);
+            auto* comment = dialog->findChild<QLabel*>(QStringLiteral("printerSetupComment"));
+            QVERIFY(comment != nullptr);
+            auto* printer = dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPrinter"));
+            if (printer != nullptr && !comment->text().isEmpty()) {
+                QVERIFY(comment->text().compare(printer->currentText(), Qt::CaseInsensitive) != 0);
+            }
             QVERIFY(dialog->findChild<QWidget*>(QStringLiteral("printerSetupPreview")) == nullptr);
             QVERIFY(dialog->findChild<QWidget*>(QStringLiteral("printerSetupMarginEditor")) == nullptr);
             dialog->reject();

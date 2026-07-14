@@ -281,7 +281,7 @@ constexpr int IndexBarHorizontalMarginPx = 2;
 constexpr int IndexBarVerticalMarginPx = 1;
 constexpr int IndexBarButtonGapPx = 1;
 constexpr int IndexBarNativeTextPaddingPx = 2;
-constexpr int ReportFormListMinimumHeightPx = 116;
+constexpr int ReportFormListMinimumHeightPx = 190;
 constexpr int ReportDesignerWindowWidthPx = 920;
 constexpr int ReportDesignerWindowHeightPx = 620;
 constexpr int TemplateDesignerWindowWidthPx = 940;
@@ -1234,6 +1234,131 @@ QString deckDescriptionDisplayPath(const DeckWorkspace* workspace)
         : QDir::toNativeSeparators(QFileInfo(storedPath).absoluteFilePath());
 }
 
+QString paperSourceDisplayName(int source)
+{
+    switch (static_cast<QPrinter::PaperSource>(source)) {
+    case QPrinter::OnlyOne:
+        return QObject::tr("Main tray");
+    case QPrinter::Lower:
+        return QObject::tr("Lower tray");
+    case QPrinter::Middle:
+        return QObject::tr("Middle tray");
+    case QPrinter::Manual:
+        return QObject::tr("Manual feed");
+    case QPrinter::Envelope:
+        return QObject::tr("Envelope feeder");
+    case QPrinter::EnvelopeManual:
+        return QObject::tr("Manual envelope feed");
+    case QPrinter::Auto:
+        return QObject::tr("Automatically Select");
+    case QPrinter::Tractor:
+        return QObject::tr("Tractor feeder");
+    case QPrinter::SmallFormat:
+        return QObject::tr("Small format");
+    case QPrinter::LargeFormat:
+        return QObject::tr("Large format");
+    case QPrinter::LargeCapacity:
+        return QObject::tr("Large capacity");
+    case QPrinter::Cassette:
+        return QObject::tr("Cassette");
+    case QPrinter::FormSource:
+        return QObject::tr("Form source");
+    case QPrinter::CustomSource:
+    default:
+        return QObject::tr("Printer source %1").arg(source);
+    }
+}
+
+struct PrinterDetails {
+    QString driverName;
+    QString portName;
+    QString comment;
+    QStringList sourceNames;
+    QVector<int> sourceIds;
+    int defaultSource = -1;
+    bool hasNativeMetadata = false;
+};
+
+#ifdef Q_OS_WIN
+PrinterDetails windowsPrinterDetails(const QString& printerName)
+{
+    PrinterDetails details;
+    HANDLE printerHandle = nullptr;
+    LPWSTR nativeName = const_cast<LPWSTR>(
+        reinterpret_cast<LPCWSTR>(printerName.utf16()));
+    if (!OpenPrinterW(nativeName, &printerHandle, nullptr)) {
+        return details;
+    }
+
+    DWORD requiredBytes = 0;
+    GetPrinterW(printerHandle, 2, nullptr, 0, &requiredBytes);
+    if (requiredBytes == 0) {
+        ClosePrinter(printerHandle);
+        return details;
+    }
+
+    QByteArray storage(static_cast<int>(requiredBytes), Qt::Uninitialized);
+    DWORD returnedBytes = 0;
+    if (!GetPrinterW(
+            printerHandle,
+            2,
+            reinterpret_cast<LPBYTE>(storage.data()),
+            requiredBytes,
+            &returnedBytes)) {
+        ClosePrinter(printerHandle);
+        return details;
+    }
+
+    const auto* info = reinterpret_cast<const PRINTER_INFO_2W*>(storage.constData());
+    const auto nativeString = [](LPCWSTR value) {
+        return value == nullptr ? QString() : QString::fromWCharArray(value).trimmed();
+    };
+    details.driverName = nativeString(info->pDriverName);
+    details.portName = nativeString(info->pPortName);
+    details.comment = nativeString(info->pComment);
+    details.hasNativeMetadata = true;
+    if (info->pDevMode != nullptr && (info->pDevMode->dmFields & DM_DEFAULTSOURCE) != 0) {
+        details.defaultSource = info->pDevMode->dmDefaultSource;
+    }
+
+    const int sourceCount = DeviceCapabilitiesW(
+        nativeName, info->pPortName, DC_BINS, nullptr, info->pDevMode);
+    if (sourceCount > 0) {
+        QVector<WORD> sourceIds(sourceCount);
+        QVector<wchar_t> sourceNames(sourceCount * 24, L'\0');
+        const int idCount = DeviceCapabilitiesW(
+            nativeName,
+            info->pPortName,
+            DC_BINS,
+            reinterpret_cast<LPWSTR>(sourceIds.data()),
+            info->pDevMode);
+        const int nameCount = DeviceCapabilitiesW(
+            nativeName,
+            info->pPortName,
+            DC_BINNAMES,
+            sourceNames.data(),
+            info->pDevMode);
+        const int availableCount = std::min(sourceCount, std::min(idCount, nameCount));
+        for (int index = 0; index < availableCount; ++index) {
+            const wchar_t* sourceName = sourceNames.constData() + (index * 24);
+            int nameLength = 0;
+            while (nameLength < 24 && sourceName[nameLength] != L'\0') {
+                ++nameLength;
+            }
+            QString displayName = QString::fromWCharArray(sourceName, nameLength).trimmed();
+            if (displayName.isEmpty()) {
+                displayName = paperSourceDisplayName(sourceIds.at(index));
+            }
+            details.sourceNames.append(displayName);
+            details.sourceIds.append(sourceIds.at(index));
+        }
+    }
+
+    ClosePrinter(printerHandle);
+    return details;
+}
+#endif
+
 bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
 {
     if (printer == nullptr) {
@@ -1282,8 +1407,6 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
     paperCombo->setObjectName(QStringLiteral("printerSetupPaperSize"));
     auto* sourceCombo = new QComboBox(&dialog);
     sourceCombo->setObjectName(QStringLiteral("printerSetupPaperSource"));
-    sourceCombo->addItem(QObject::tr("Printer default"));
-    sourceCombo->setEnabled(false);
 
     auto* paperGroup = new QGroupBox(QObject::tr("Paper"), &dialog);
     auto* paperLayout = new QFormLayout(paperGroup);
@@ -1368,25 +1491,73 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
             return QObject::tr("Error");
         }
     };
+    QVector<int> paperSourceIds;
     const auto refreshPrinterDetails = [&] {
         const int index = printerCombo->currentIndex();
+        paperSourceIds.clear();
+        sourceCombo->clear();
         if (index < 0 || index >= printers.size()) {
             statusValue->setText(QObject::tr("Unavailable"));
             typeValue->clear();
             whereValue->clear();
             commentValue->clear();
             propertiesButton->setEnabled(false);
+            sourceCombo->addItem(QObject::tr("Printer default"));
+            sourceCombo->setEnabled(false);
             return;
         }
         const QPrinterInfo& info = printers.at(index);
         QPrinter selectedPrinterInfo(QPrinter::HighResolution);
         selectedPrinterInfo.setPrinterName(info.printerName());
         statusValue->setText(printerStateText(selectedPrinterInfo.printerState()));
-        typeValue->setText(info.makeAndModel().trimmed().isEmpty()
-                ? info.printerName()
-                : info.makeAndModel());
-        whereValue->setText(info.location());
-        commentValue->setText(info.description());
+        QString type = info.makeAndModel().trimmed();
+        if (type.isEmpty()) {
+            type = info.printerName();
+        }
+        QString location = info.location().trimmed();
+        QString comment = info.description().trimmed();
+        if (comment.compare(info.printerName(), Qt::CaseInsensitive) == 0
+            || comment.compare(type, Qt::CaseInsensitive) == 0) {
+            comment.clear();
+        }
+#ifdef Q_OS_WIN
+        const PrinterDetails nativeDetails = windowsPrinterDetails(info.printerName());
+        if (nativeDetails.hasNativeMetadata) {
+            if (!nativeDetails.driverName.isEmpty()) {
+                type = nativeDetails.driverName;
+            }
+            if (!nativeDetails.portName.isEmpty()) {
+                location = nativeDetails.portName;
+            }
+            comment = nativeDetails.comment;
+            paperSourceIds = nativeDetails.sourceIds;
+            sourceCombo->addItems(nativeDetails.sourceNames);
+            int selectedSource = nativeDetails.defaultSource;
+            if (info.printerName() == printer->printerName()) {
+                selectedSource = static_cast<int>(printer->paperSource());
+            }
+            const int selectedSourceIndex = paperSourceIds.indexOf(selectedSource);
+            sourceCombo->setCurrentIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : 0);
+        }
+#endif
+        if (paperSourceIds.isEmpty()) {
+            const QList<QPrinter::PaperSource> supportedSources =
+                selectedPrinterInfo.supportedPaperSources();
+            for (QPrinter::PaperSource source : supportedSources) {
+                paperSourceIds.append(static_cast<int>(source));
+                sourceCombo->addItem(paperSourceDisplayName(static_cast<int>(source)));
+            }
+            const int selectedSourceIndex = paperSourceIds.indexOf(
+                static_cast<int>(selectedPrinterInfo.paperSource()));
+            sourceCombo->setCurrentIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : 0);
+        }
+        if (paperSourceIds.isEmpty()) {
+            sourceCombo->addItem(QObject::tr("Printer default"));
+        }
+        sourceCombo->setEnabled(paperSourceIds.size() > 1);
+        typeValue->setText(type);
+        whereValue->setText(location);
+        commentValue->setText(comment);
         propertiesButton->setEnabled(true);
     };
 
@@ -1492,6 +1663,10 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
     }
     if (paperCombo->currentIndex() >= 0 && paperCombo->currentIndex() < paperSizes.size()) {
         printer->setPageSize(paperSizes.at(paperCombo->currentIndex()));
+    }
+    if (sourceCombo->currentIndex() >= 0 && sourceCombo->currentIndex() < paperSourceIds.size()) {
+        printer->setPaperSource(
+            static_cast<QPrinter::PaperSource>(paperSourceIds.at(sourceCombo->currentIndex())));
     }
     printer->setPageOrientation(
         landscape->isChecked() ? QPageLayout::Landscape : QPageLayout::Portrait);
@@ -4737,10 +4912,24 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
     auto* list = uiControl<QListWidget>(*dialog, Control::ReportFormList);
     if (list != nullptr) {
         QRect listGeometry = list->geometry();
+        const int originalListHeight = listGeometry.height();
         listGeometry.setHeight(std::max(listGeometry.height(), ReportFormListMinimumHeightPx));
         list->setGeometry(listGeometry);
         list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         list->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        const int heightGrowth = listGeometry.height() - originalListHeight;
+        if (heightGrowth > 0) {
+            for (QGroupBox* group : dialog->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly)) {
+                if (group->geometry().contains(listGeometry.topLeft())) {
+                    QRect groupGeometry = group->geometry();
+                    groupGeometry.setHeight(groupGeometry.height() + heightGrowth);
+                    group->setGeometry(groupGeometry);
+                    break;
+                }
+            }
+            dialog->resize(dialog->width(), dialog->height() + heightGrowth);
+            dialog->setMinimumHeight(dialog->height());
+        }
     }
     const auto populateList = [this, list](ReportFormType type) {
         if (list == nullptr) {

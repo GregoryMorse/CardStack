@@ -308,6 +308,11 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     m_stack->addWidget(m_tablePage);
     applyStoredColumnWidths();
     applyStoredAppearance();
+    QPalette tablePalette = m_tableView->palette();
+    tablePalette.setColor(QPalette::Base, QColor(192, 192, 192));
+    tablePalette.setColor(QPalette::AlternateBase, QColor(192, 192, 192));
+    m_tableView->setPalette(tablePalette);
+    m_tableView->viewport()->setAutoFillBackground(true);
     showCardView();
     setCurrentCardIndex(0);
 }

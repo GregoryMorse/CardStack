@@ -1,5 +1,8 @@
 #include "CardTableModel.h"
 
+#include <QBrush>
+#include <QColor>
+
 #include <utility>
 
 namespace CardStack {
@@ -45,11 +48,16 @@ QVariant CardTableModel::data(const QModelIndex& index, int role) const
         return {};
     }
 
-    if (role != Qt::DisplayRole && role != Qt::EditRole) {
-        return {};
+    if (role == Qt::BackgroundRole) {
+        return QBrush(Qt::white);
     }
-
-    return m_deck->cardAt(index.row()).valueAt(index.column());
+    if (role == Qt::ForegroundRole) {
+        return QBrush(Qt::black);
+    }
+    if (role == Qt::DisplayRole || role == Qt::EditRole) {
+        return m_deck->cardAt(index.row()).valueAt(index.column());
+    }
+    return {};
 }
 
 bool CardTableModel::setData(const QModelIndex& index, const QVariant& value, int role)
@@ -68,7 +76,17 @@ bool CardTableModel::setData(const QModelIndex& index, const QVariant& value, in
 
 QVariant CardTableModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (role != Qt::DisplayRole || m_deck == nullptr) {
+    if (m_deck == nullptr) {
+        return {};
+    }
+
+    if (role == Qt::BackgroundRole) {
+        return QBrush(QColor(192, 192, 192));
+    }
+    if (role == Qt::ForegroundRole) {
+        return QBrush(Qt::black);
+    }
+    if (role != Qt::DisplayRole) {
         return {};
     }
 

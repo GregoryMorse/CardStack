@@ -262,6 +262,32 @@ private slots:
         QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("Original"));
     }
 
+    void smartPasteHonorsSelectedCellLimitsLineEndingsAndSingleUndo()
+    {
+        DeckWorkspace workspace(createConstrainedEditorDeck());
+        workspace.showTableView();
+        auto* tableView = workspace.findChild<QTableView*>(QStringLiteral("deckTableView"));
+        QVERIFY(tableView != nullptr);
+        tableView->setCurrentIndex(tableView->model()->index(0, 1));
+        QApplication::clipboard()->setText(
+            QStringLiteral("Long first note\tIgnored\r\nSecond note\tIgnored\r\n"));
+
+        workspace.smartPaste();
+
+        QCOMPARE(workspace.deck().cardCount(), 2);
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("Long fir"));
+        QCOMPARE(workspace.deck().cardAt(1).valueAt(0), QString());
+        QCOMPARE(workspace.deck().cardAt(1).valueAt(1), QStringLiteral("Second n"));
+        QVERIFY(workspace.canUndo());
+
+        QVERIFY(workspace.undo());
+        QCOMPARE(workspace.deck().cardCount(), 1);
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("Original"));
+        QVERIFY(!workspace.canUndo());
+    }
+
     void cardEditorHonorsFieldLengthLimits()
     {
         DeckWorkspace workspace(createConstrainedEditorDeck());
@@ -295,6 +321,13 @@ private slots:
         QVERIFY(!tableView->alternatingRowColors());
         QCOMPARE(tableView->model()->headerData(0, Qt::Horizontal).toString(), QStringLiteral("Short"));
         QCOMPARE(tableView->model()->headerData(0, Qt::Vertical).toInt(), 1);
+        QCOMPARE(
+            tableView->model()->headerData(0, Qt::Horizontal, Qt::BackgroundRole).value<QBrush>().color(),
+            QColor(192, 192, 192));
+        QCOMPARE(
+            tableView->model()->data(tableView->model()->index(0, 0), Qt::BackgroundRole).value<QBrush>().color(),
+            QColor(Qt::white));
+        QCOMPARE(tableView->palette().color(QPalette::Base), QColor(192, 192, 192));
         auto* corner = tableView->findChild<QAbstractButton*>(QStringLiteral("deckTableCornerButton"));
         QVERIFY(corner != nullptr);
         QCOMPARE(corner->text(), QStringLiteral("#"));
