@@ -18,6 +18,7 @@ public:
         struct ReportListEntry {
             QString type;
             QString description;
+            int sourceIndex = -1;
         };
 
         QString deckName;
@@ -30,6 +31,8 @@ public:
         QStringList recentReplacements;
         bool searchDirectionAvailable = false;
     };
+
+    static constexpr int ReportSourceIndexRole = Qt::UserRole;
 
     static bool populateMenuBar(
         QMenuBar* menuBar,

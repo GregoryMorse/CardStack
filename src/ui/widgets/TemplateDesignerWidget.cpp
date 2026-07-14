@@ -214,7 +214,7 @@ protected:
                 }
                 break;
             case CardTemplateFrameKind::DataBox:
-            case CardTemplateFrameKind::NotesBox:
+            case CardTemplateFrameKind::NotesBox: {
                 painter.fillRect(
                     frameRect,
                     templateColor(
@@ -228,7 +228,17 @@ protected:
                         m_appearance,
                         DeckColorRole::DataForeground,
                         QColor(QStringLiteral("#000000"))));
-                painter.drawText(frameRect.adjusted(4, 2, -4, -2), Qt::AlignLeft | Qt::AlignVCenter, tr("Sample data"));
+                QString previewText = frame.text;
+                if (m_fields != nullptr
+                    && frame.fieldIndex >= 0
+                    && frame.fieldIndex < m_fields->size()) {
+                    const FieldDefinition& field = m_fields->at(frame.fieldIndex);
+                    previewText = field.showName() ? tr("Sample data") : field.name();
+                }
+                painter.drawText(
+                    frameRect.adjusted(4, 2, -4, -2),
+                    Qt::AlignLeft | Qt::AlignVCenter,
+                    previewText);
                 if (m_fields != nullptr
                     && frame.fieldIndex >= 0
                     && frame.fieldIndex < m_fields->size()
@@ -261,6 +271,7 @@ protected:
                     painter.restore();
                 }
                 break;
+            }
             case CardTemplateFrameKind::Text:
                 painter.setPen(
                     templateColor(
@@ -274,7 +285,6 @@ protected:
                             : ((frame.styleFlags & CardTemplateStyleFlagAlignCenter) != 0 ? Qt::AlignHCenter : Qt::AlignLeft))
                         | Qt::AlignVCenter,
                     frame.text);
-                painter.drawRect(frameRect.adjusted(0, 0, -1, -1));
                 break;
             }
 

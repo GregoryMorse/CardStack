@@ -22,6 +22,9 @@
     <file alias="toolbar/card-delete.svg">assets/toolbar/card-delete.svg</file>
     <file alias="toolbar/card-duplicate.svg">assets/toolbar/card-duplicate.svg</file>
     <file alias="toolbar/card-undelete.svg">assets/toolbar/card-undelete.svg</file>
+    <file alias="toolbar/align-left.svg">assets/toolbar/align-left.svg</file>
+    <file alias="toolbar/align-center.svg">assets/toolbar/align-center.svg</file>
+    <file alias="toolbar/align-right.svg">assets/toolbar/align-right.svg</file>
     <file alias="toolbar/deck-new.svg">assets/toolbar/deck-new.svg</file>
     <file alias="toolbar/deck-open.svg">assets/toolbar/deck-open.svg</file>
     <file alias="toolbar/deck-save.svg">assets/toolbar/deck-save.svg</file>

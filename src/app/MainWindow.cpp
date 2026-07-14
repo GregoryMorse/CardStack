@@ -40,6 +40,7 @@
 #include <QFileInfo>
 #include <QEventLoop>
 #include <QFontDialog>
+#include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -62,12 +63,13 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QPageSetupDialog>
+#include <QPageSize>
 #include <QPainter>
 #include <QPixmap>
 #include <QPointer>
 #include <QPrintDialog>
 #include <QPrinter>
+#include <QPrinterInfo>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRect>
@@ -1200,6 +1202,146 @@ bool renderReportToPrinter(
     return true;
 }
 
+QString virtualUnsavedDeckPath()
+{
+    constexpr int LegacyUnsavedDeckNameLimit = 100;
+    const QDir workingDirectory = QDir::current();
+    for (int suffix = 0; suffix < LegacyUnsavedDeckNameLimit; ++suffix) {
+        const QString path = workingDirectory.absoluteFilePath(
+            QStringLiteral("NONAME%1.~tn").arg(suffix));
+        if (!QFileInfo::exists(path)) {
+            return QDir::toNativeSeparators(path);
+        }
+    }
+    return QDir::toNativeSeparators(
+        workingDirectory.absoluteFilePath(QStringLiteral("NONAME99.~tn")));
+}
+
+QString deckDescriptionDisplayPath(const DeckWorkspace* workspace)
+{
+    if (workspace == nullptr) {
+        return virtualUnsavedDeckPath();
+    }
+    const QString storedPath = workspace->property("cardstackFilePath").toString().trimmed();
+    return storedPath.isEmpty()
+        ? virtualUnsavedDeckPath()
+        : QDir::toNativeSeparators(QFileInfo(storedPath).absoluteFilePath());
+}
+
+bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
+{
+    if (printer == nullptr) {
+        return false;
+    }
+
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QObject::tr("Printer Setup"));
+    dialog.setProperty("legacyDialogName", QStringLiteral("PRINTERSETUP"));
+    dialog.setMinimumWidth(420);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* introduction = new QLabel(
+        QObject::tr("Select the printer, paper size, and orientation used for reports."), &dialog);
+    introduction->setWordWrap(true);
+    layout->addWidget(introduction);
+
+    auto* form = new QFormLayout;
+    auto* printerCombo = new QComboBox(&dialog);
+    printerCombo->setObjectName(QStringLiteral("printerSetupPrinter"));
+    auto* paperCombo = new QComboBox(&dialog);
+    paperCombo->setObjectName(QStringLiteral("printerSetupPaperSize"));
+    auto* orientationCombo = new QComboBox(&dialog);
+    orientationCombo->setObjectName(QStringLiteral("printerSetupOrientation"));
+    orientationCombo->addItem(QObject::tr("Portrait"), static_cast<int>(QPageLayout::Portrait));
+    orientationCombo->addItem(QObject::tr("Landscape"), static_cast<int>(QPageLayout::Landscape));
+    orientationCombo->setCurrentIndex(
+        printer->pageLayout().orientation() == QPageLayout::Landscape ? 1 : 0);
+
+    const QVector<QPrinterInfo> printers = QPrinterInfo::availablePrinters();
+    int selectedPrinter = -1;
+    for (int index = 0; index < printers.size(); ++index) {
+        const QPrinterInfo& info = printers.at(index);
+        printerCombo->addItem(info.printerName());
+        if (info.printerName() == printer->printerName()
+            || (selectedPrinter < 0 && printer->printerName().isEmpty() && info.isDefault())) {
+            selectedPrinter = index;
+        }
+    }
+    if (printers.isEmpty()) {
+        printerCombo->addItem(QObject::tr("System default"));
+        printerCombo->setEnabled(false);
+    } else {
+        printerCombo->setCurrentIndex(std::max(0, selectedPrinter));
+    }
+
+    QVector<QPageSize> paperSizes;
+    auto refreshPaperSizes = [&]() {
+        const QPageSize currentPageSize = printer->pageLayout().pageSize();
+        paperSizes.clear();
+        paperCombo->clear();
+        const int printerIndex = printerCombo->currentIndex();
+        if (printerIndex >= 0 && printerIndex < printers.size()) {
+            paperSizes = printers.at(printerIndex).supportedPageSizes();
+        }
+        if (paperSizes.isEmpty()) {
+            paperSizes.append(currentPageSize);
+        }
+        int currentPaperIndex = 0;
+        for (int index = 0; index < paperSizes.size(); ++index) {
+            const QString name = paperSizes.at(index).name().trimmed().isEmpty()
+                ? QObject::tr("Current paper size")
+                : paperSizes.at(index).name();
+            paperCombo->addItem(name);
+            if (paperSizes.at(index).id() == currentPageSize.id()) {
+                currentPaperIndex = index;
+            }
+        }
+        paperCombo->setCurrentIndex(currentPaperIndex);
+    };
+    QObject::connect(printerCombo, &QComboBox::currentIndexChanged, &dialog,
+                     [&refreshPaperSizes](int) { refreshPaperSizes(); });
+    refreshPaperSizes();
+
+    form->addRow(QObject::tr("&Printer:"), printerCombo);
+    form->addRow(QObject::tr("&Paper size:"), paperCombo);
+    form->addRow(QObject::tr("&Orientation:"), orientationCombo);
+    layout->addLayout(form);
+
+    auto* marginsNotice = new QLabel(
+        QObject::tr("Page margins are defined by the selected report form."), &dialog);
+    marginsNotice->setObjectName(QStringLiteral("printerSetupMarginsNotice"));
+    marginsNotice->setEnabled(false);
+    layout->addWidget(marginsNotice);
+
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help,
+        Qt::Horizontal, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QObject::connect(buttons->button(QDialogButtonBox::Help), &QAbstractButton::clicked, &dialog, [&dialog]() {
+        QMessageBox::information(
+            &dialog,
+            QObject::tr("Printer Setup"),
+            QObject::tr("Printer setup changes the output device, paper, and orientation. Report forms control page margins."));
+    });
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return false;
+    }
+    const int printerIndex = printerCombo->currentIndex();
+    if (printerIndex >= 0 && printerIndex < printers.size()) {
+        printer->setPrinterName(printers.at(printerIndex).printerName());
+    }
+    if (paperCombo->currentIndex() >= 0 && paperCombo->currentIndex() < paperSizes.size()) {
+        printer->setPageSize(paperSizes.at(paperCombo->currentIndex()));
+    }
+    printer->setPageOrientation(static_cast<QPageLayout::Orientation>(
+        orientationCombo->currentData().toInt()));
+    printer->setFullPage(true);
+    return true;
+}
+
 } // namespace
 
 QFont MainWindow::fontForDeckRole(const QString& serialized)
@@ -1210,6 +1352,7 @@ QFont MainWindow::fontForDeckRole(const QString& serialized)
 MainWindow::MainWindow(QWidget* parent, bool openInitialSample, bool restorePreviousSession)
     : QMainWindow(parent)
     , m_mdiArea(new QMdiArea(this))
+    , m_printer(std::make_shared<QPrinter>(QPrinter::HighResolution))
 {
     initializeCardStackApplicationResources();
     setWindowTitle(QStringLiteral("CardStack"));
@@ -1966,6 +2109,22 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         layout->addWidget(button);
         return button;
     };
+    const auto addIconToggle = [this, layout](
+                                   const QString& iconName,
+                                   const QString& accessibleText,
+                                   bool checked) {
+        auto* button = new QToolButton(m_designerPropertyToolbar);
+        button->setIcon(cardStackToolbarIcon(iconName));
+        button->setIconSize(QSize(18, 18));
+        button->setToolTip(accessibleText);
+        button->setAccessibleName(accessibleText);
+        button->setCheckable(true);
+        button->setChecked(checked);
+        button->setAutoRaise(false);
+        button->setFixedWidth(28);
+        layout->addWidget(button);
+        return button;
+    };
 
     if (TemplateDesignerWidget* designer = activeTemplateDesigner()) {
         const CardTemplateFrame* frame = designer->selectedFrameDefinition();
@@ -2016,9 +2175,9 @@ void MainWindow::rebuildDesignerPropertyToolbar()
             textEdit->setObjectName(QStringLiteral("designerTemplateTextEdit"));
             textEdit->setMinimumWidth(220);
             layout->addWidget(textEdit);
-            auto* left = addToggle(tr("Left"), (frame->styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight)) == 0);
-            auto* center = addToggle(tr("Center"), (frame->styleFlags & CardTemplateStyleFlagAlignCenter) != 0);
-            auto* right = addToggle(tr("Right"), (frame->styleFlags & CardTemplateStyleFlagAlignRight) != 0);
+            auto* left = addIconToggle(QStringLiteral("align-left"), tr("Align left"), (frame->styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight)) == 0);
+            auto* center = addIconToggle(QStringLiteral("align-center"), tr("Align center"), (frame->styleFlags & CardTemplateStyleFlagAlignCenter) != 0);
+            auto* right = addIconToggle(QStringLiteral("align-right"), tr("Align right"), (frame->styleFlags & CardTemplateStyleFlagAlignRight) != 0);
             const auto apply = [designer, textEdit, left, center, right, style = frame->styleFlags]() {
                 quint8 flags = style & (CardTemplateStyleFlagBold | CardTemplateStyleFlagItalic | CardTemplateStyleFlagUnderline);
                 flags |= right->isChecked() ? CardTemplateStyleFlagAlignRight
@@ -2121,9 +2280,9 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         auto* bold = addToggle(tr("B"), (frame->styleFlags & ReportStyleFlagBold) != 0);
         auto* italic = addToggle(tr("I"), (frame->styleFlags & ReportStyleFlagItalic) != 0);
         auto* underline = addToggle(tr("U"), (frame->styleFlags & ReportStyleFlagUnderline) != 0);
-        auto* left = addToggle(tr("Left"), (frame->styleFlags & (ReportStyleFlagAlignCenter | ReportStyleFlagAlignRight)) == 0);
-        auto* center = addToggle(tr("Center"), (frame->styleFlags & ReportStyleFlagAlignCenter) != 0);
-        auto* right = addToggle(tr("Right"), (frame->styleFlags & ReportStyleFlagAlignRight) != 0);
+        auto* left = addIconToggle(QStringLiteral("align-left"), tr("Align left"), (frame->styleFlags & (ReportStyleFlagAlignCenter | ReportStyleFlagAlignRight)) == 0);
+        auto* center = addIconToggle(QStringLiteral("align-center"), tr("Align center"), (frame->styleFlags & ReportStyleFlagAlignCenter) != 0);
+        auto* right = addIconToggle(QStringLiteral("align-right"), tr("Align right"), (frame->styleFlags & ReportStyleFlagAlignRight) != 0);
         auto* printEntire = new QCheckBox(tr("Print Entire"), m_designerPropertyToolbar);
         printEntire->setObjectName(QStringLiteral("designerReportPrintEntireCheck"));
         printEntire->setChecked(frame->printEntireContentsFlag != 0);
@@ -2203,13 +2362,9 @@ void MainWindow::handleUiAction()
         handlePrintReportCommand();
         return;
     case Command::FilePrinterSetup:
-    {
-        QPrinter printer(QPrinter::HighResolution);
-        printer.setFullPage(true);
-        QPageSetupDialog pageSetup(&printer, this);
-        pageSetup.exec();
+        m_printer->setFullPage(true);
+        showPrinterSetupDialog(m_printer.get(), this);
         return;
-    }
     case Command::FileSave:
         saveActiveDeck();
         return;
@@ -2892,7 +3047,10 @@ void MainWindow::handlePrintReportCommand()
         }
 
         const auto* reportList = uiControl<QListWidget>(*reportsDialog, Control::ReportsList);
-        reportIndex = reportList == nullptr ? -1 : reportList->currentRow();
+        const QListWidgetItem* selectedReport = reportList == nullptr ? nullptr : reportList->currentItem();
+        reportIndex = selectedReport == nullptr
+            ? -1
+            : selectedReport->data(UiBuilder::ReportSourceIndexRole).toInt();
         if (reportAction == QStringLiteral("new")) {
             ReportDefinition newReport =
                 createDefaultReportDefinition(workspace->deck(), tr("Untitled Report"));
@@ -2951,7 +3109,7 @@ void MainWindow::handlePrintReportCommand()
 
     const Deck deckSnapshot = workspace->deck();
     const int currentCardIndex = workspace->currentCardIndex();
-    auto printer = std::make_shared<QPrinter>(QPrinter::HighResolution);
+    auto printer = m_printer;
     printer->setFullPage(true);
     if (report.formWidth > report.formHeight) {
         printer->setPageOrientation(QPageLayout::Landscape);
@@ -2981,8 +3139,7 @@ void MainWindow::handlePrintReportCommand()
     if (auto* setupButton = uiControl<QAbstractButton>(*optionsDialog, Control::PrintPrinterSetup)) {
         connect(setupButton, &QAbstractButton::clicked, optionsDialog.get(), [this, printer]() {
             printer->setFullPage(true);
-            QPageSetupDialog pageSetup(printer.get(), this);
-            pageSetup.exec();
+            showPrinterSetupDialog(printer.get(), this);
         });
     }
     if (auto* defineSearchButton = uiControl<QAbstractButton>(*optionsDialog, Control::PrintDefineSearch)) {
@@ -3056,7 +3213,10 @@ void MainWindow::handleReportDesignerCommand(int commandId)
             return;
         }
         auto* list = uiControl<QListWidget>(*dialog, Control::ReportsList);
-        const int reportIndex = list == nullptr ? 0 : std::max(0, list->currentRow());
+        const QListWidgetItem* selectedReport = list == nullptr ? nullptr : list->currentItem();
+        const int reportIndex = selectedReport == nullptr
+            ? 0
+            : selectedReport->data(UiBuilder::ReportSourceIndexRole).toInt();
         if (reportIndex < owner->deck().reportCount()) {
             openReportDesigner(owner, reportIndex, owner->deck().reportAt(reportIndex));
         }
@@ -3355,6 +3515,9 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
             subWindow->close();
         }
         return;
+    case Command::ConfigureDeckDescription:
+        handleDeckDescriptionCommand();
+        return;
     case Command::EditUndo:
         designer->undo();
         return;
@@ -3612,6 +3775,7 @@ void MainWindow::handleSecurityCommand()
                 workspace->hasEncryptedSecurity()
                     ? tr("Deck security enabled with data encryption.")
                     : tr("Deck security enabled."), StatusMessageTimeoutMs);
+            updateCommandState();
             return;
         }
 
@@ -3622,6 +3786,7 @@ void MainWindow::handleSecurityCommand()
 
         workspace->clearSecurity();
         statusBar()->showMessage(tr("Deck security removed."), StatusMessageTimeoutMs);
+        updateCommandState();
         return;
     }
 }
@@ -3640,7 +3805,7 @@ void MainWindow::handleDeckDescriptionCommand()
     }
 
     UiBuilder::DialogContext context = dialogContext();
-    context.deckName = workspace->deck().name();
+    context.deckName = deckDescriptionDisplayPath(workspace);
     context.deckDescription = workspace->deck().description();
     std::unique_ptr<QDialog> dialog =
         UiBuilder::createDialog(QStringLiteral("CHANGEDESC"), this, context);
@@ -5825,14 +5990,15 @@ UiBuilder::DialogContext MainWindow::dialogContext() const
         context.deckDescription = workspace->deck().description();
         context.fieldNames = workspace->fieldNames();
         context.reportNames = reportNamesFromDeck(workspace->deck());
-        for (const ReportDefinition& report : workspace->deck().reports()) {
+        for (int reportIndex = 0; reportIndex < workspace->deck().reportCount(); ++reportIndex) {
+            const ReportDefinition& report = workspace->deck().reportAt(reportIndex);
             QString type = tr("Report");
             if (report.formType == ReportFormType::Card) {
                 type = tr("Card");
             } else if (report.formType == ReportFormType::Label) {
                 type = tr("Label");
             }
-            context.reports.append({type, report.name});
+            context.reports.append({type, report.name, reportIndex});
         }
         context.searchDirectionAvailable = workspace->hasLastSearchRequest();
     } else {
@@ -5917,6 +6083,10 @@ void MainWindow::updateCommandState()
     const bool hasDeck = activeDeckWorkspace() != nullptr;
     if (QAction* action = findUiAction(Command::ConfigureAddSecurity)) {
         const DeckWorkspace* workspace = activeDeckWorkspace();
+        if (workspace == nullptr && templateDesigner != nullptr) {
+            workspace = qobject_cast<DeckWorkspace*>(
+                templateDesigner->property("ownerDeckWorkspace").value<QObject*>());
+        }
         action->setText(workspace != nullptr && workspace->hasSecurity() ? tr("Remove &Security...") : tr("Add &Security..."));
     }
 

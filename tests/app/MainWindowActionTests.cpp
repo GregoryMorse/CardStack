@@ -479,6 +479,67 @@ private slots:
         QVERIFY(!commandIds.contains(UiIds::Command::CardAdd));
     }
 
+    void printerSetupUsesAStablePreviewFreeDialog()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+        QAction* printerSetup = findCommandAction(window.menuBar(), UiIds::Command::FilePrinterSetup);
+        QVERIFY(printerSetup != nullptr);
+
+        bool sawDialog = false;
+        handleNextDialogByLegacyName(QStringLiteral("PRINTERSETUP"), [&sawDialog](QDialog* dialog) {
+            sawDialog = true;
+            QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPrinter")) != nullptr);
+            QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupPaperSize")) != nullptr);
+            QVERIFY(dialog->findChild<QComboBox*>(QStringLiteral("printerSetupOrientation")) != nullptr);
+            QVERIFY(dialog->findChild<QWidget*>(QStringLiteral("printerSetupPreview")) == nullptr);
+            QVERIFY(dialog->findChild<QWidget*>(QStringLiteral("printerSetupMarginEditor")) == nullptr);
+            dialog->reject();
+        });
+        printerSetup->trigger();
+        QVERIFY(sawDialog);
+    }
+
+    void unsavedDeckDescriptionUsesRecoveredVirtualPathAndTemplateDescription()
+    {
+        MainWindow window(nullptr, false);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QAction* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+        QVERIFY(newAction != nullptr);
+        acceptNextNewFileDialog(0);
+        newAction->trigger();
+        QCoreApplication::processEvents();
+
+        QAction* descriptionAction =
+            findCommandAction(window.menuBar(), UiIds::Command::ConfigureDeckDescription);
+        QVERIFY(descriptionAction != nullptr);
+
+        bool sawDescriptionDialog = false;
+        handleNextDialogByLegacyName(
+            QStringLiteral("CHANGEDESC"),
+            [&sawDescriptionDialog](QDialog* dialog) {
+                sawDescriptionDialog = true;
+                auto* filename = qobject_cast<QLabel*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::DeckDescriptionFileName));
+                auto* description = qobject_cast<QLineEdit*>(
+                    UiBuilder::controlById(dialog, UiIds::Control::DeckDescriptionText));
+                QVERIFY(filename != nullptr);
+                QVERIFY(description != nullptr);
+                QVERIFY(filename->text().endsWith(QStringLiteral(".~tn"), Qt::CaseInsensitive));
+                QVERIFY(QFileInfo(filename->text()).fileName().startsWith(
+                    QStringLiteral("NONAME"), Qt::CaseInsensitive));
+                QVERIFY(!QFileInfo::exists(filename->text()));
+                QCOMPARE(description->text(), QStringLiteral("Book Library"));
+                dialog->reject();
+            });
+
+        descriptionAction->trigger();
+        QVERIFY(sawDescriptionDialog);
+    }
+
     void exposesMainDeckMenuCommands()
     {
         MainWindow window(nullptr, true);

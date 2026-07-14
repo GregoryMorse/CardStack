@@ -3972,19 +3972,34 @@ void initializeDesignReportsDialog(QDialog* dialog, const UiBuilder::DialogConte
     if (reportList != nullptr) {
         reportList->clear();
         const int typeWidth = reportList->fontMetrics().horizontalAdvance(QObject::tr("Report")) + 18;
-        const QVector<UiBuilder::DialogContext::ReportListEntry> reports = context.reports.isEmpty()
+        QVector<UiBuilder::DialogContext::ReportListEntry> reports = context.reports.isEmpty()
             ? [&context]() {
                   QVector<UiBuilder::DialogContext::ReportListEntry> fallback;
-                  for (const QString& name : context.reportNames) {
-                      fallback.append({QObject::tr("Report"), name});
+                  for (int index = 0; index < context.reportNames.size(); ++index) {
+                      fallback.append({QObject::tr("Report"), context.reportNames.at(index), index});
                   }
                   return fallback;
               }()
             : context.reports;
 
+        for (int index = 0; index < reports.size(); ++index) {
+            if (reports[index].sourceIndex < 0) {
+                reports[index].sourceIndex = index;
+            }
+        }
+        std::stable_sort(reports.begin(), reports.end(), [](const auto& left, const auto& right) {
+            const int typeOrder = left.type.compare(right.type, Qt::CaseInsensitive);
+            if (typeOrder != 0) {
+                return typeOrder < 0;
+            }
+            return left.description.compare(right.description, Qt::CaseInsensitive) < 0;
+        });
+
         for (const auto& report : reports) {
             auto* item = new QListWidgetItem(reportList);
-            item->setData(Qt::AccessibleTextRole, report.description);
+            item->setText(QStringLiteral("%1\t%2").arg(report.type, report.description));
+            item->setData(Qt::AccessibleTextRole, item->text());
+            item->setData(UiBuilder::ReportSourceIndexRole, report.sourceIndex);
             item->setSizeHint(QSize(0, reportList->fontMetrics().height() + 8));
             auto* row = new QWidget(reportList);
             auto* rowLayout = new QHBoxLayout(row);
@@ -4109,6 +4124,24 @@ void initializeColorDialog(QDialog* dialog)
                 deckPreview->setState(swatchGrid->customColors(), swatchGrid->usesSystemColors());
             }
         });
+    }
+
+    QWidget* helpButton = findUiControl<QWidget>(dialog, Control::Help);
+    QWidget* okButton = findUiControl<QWidget>(dialog, Control::Ok);
+    QWidget* cancelButton = findUiControl<QWidget>(dialog, Control::Cancel);
+    const int commandTop = helpButton != nullptr
+        ? helpButton->y()
+        : std::max(okButton != nullptr ? okButton->y() : 0,
+                   cancelButton != nullptr ? cancelButton->y() : 0);
+    for (QWidget* button : {okButton, cancelButton}) {
+        if (button != nullptr) {
+            button->move(button->x(), commandTop);
+        }
+    }
+    if (deckPreview != nullptr && commandTop > deckPreview->y()) {
+        const int previewBottomGap = 10;
+        const int desiredHeight = commandTop - previewBottomGap - deckPreview->y();
+        deckPreview->resize(deckPreview->width(), std::max(deckPreview->height(), desiredHeight));
     }
 
     if (roleCombo != nullptr && swatchGrid != nullptr) {

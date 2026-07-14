@@ -8,6 +8,7 @@
 #include <QMainWindow>
 
 #include <optional>
+#include <memory>
 #include <QString>
 #include <QVector>
 
@@ -20,6 +21,7 @@ class QLabel;
 class QMdiArea;
 class QMdiSubWindow;
 class QResizeEvent;
+class QPrinter;
 class QToolBar;
 class QWidget;
 
@@ -135,6 +137,7 @@ private:
     };
 
     QMdiArea* m_mdiArea = nullptr;
+    std::shared_ptr<QPrinter> m_printer;
     QToolBar* m_buttonBar = nullptr;
     QToolBar* m_indexBar = nullptr;
     QLabel* m_cardPositionLabel = nullptr;

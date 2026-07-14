@@ -20,6 +20,28 @@ constexpr quint16 LegacyFixedTextField = 0;
 constexpr quint16 LegacyNotesField = LegacyVariableTextField | LegacyMultilineEditor;
 constexpr quint16 LegacyNotDialable = 0;
 constexpr quint16 LegacyDialable = 1;
+
+QString legacyTemplateDescription(int legacyResourceId)
+{
+    switch (legacyResourceId) {
+    case 101: return QStringLiteral("Book Library");
+    case 102: return QStringLiteral("Business Cards");
+    case 103: return QStringLiteral("Credit Card");
+    case 104: return QStringLiteral("Data boxes");
+    case 105: return QStringLiteral("File Folders");
+    case 106: return QStringLiteral("Home Inventory");
+    case 107: return QStringLiteral("Mailing List");
+    case 108: return QStringLiteral("Music Library");
+    case 109: return QStringLiteral("Notes");
+    case 110: return QStringLiteral("Personnel Records");
+    case 111: return QStringLiteral("Recipes");
+    case 112: return QStringLiteral("Rolodex Cards");
+    case 113: return QStringLiteral("Software Library");
+    case 114: return QStringLiteral("Video Library");
+    default: return {};
+    }
+}
+
 FieldDefinition textField(const QString& name, int maxLength = DefaultTextLength)
 {
     return FieldDefinition(name, FieldType::Text, maxLength);
@@ -251,6 +273,7 @@ DeckTemplate deckTemplateFromDecodedLegacyTemplate(
     DeckTemplate deckTemplate;
     deckTemplate.legacyResourceId = legacyResourceId;
     deckTemplate.name = std::move(name);
+    deckTemplate.description = legacyTemplateDescription(legacyResourceId);
     deckTemplate.legacyFields = std::move(legacyFields);
     deckTemplate.legacyTextFrames = std::move(legacyTextFrames);
     deckTemplate.fields = fieldDefinitionsFromLegacyFields(deckTemplate.legacyFields);
@@ -512,6 +535,7 @@ Deck createDeckFromTemplate(const DeckTemplate& deckTemplate, QString deckName)
         deckName = deckTemplate.name;
     }
     Deck deck = deckWithFields(std::move(deckName), deckTemplate.fields);
+    deck.setDescription(deckTemplate.description);
     deck.setSortKeys(deckTemplate.sortKeys);
     deck.setCardTemplateLayout(deckTemplate.layout);
     deck.setAppearance(deckTemplate.appearance);

@@ -1115,11 +1115,17 @@ private slots:
         auto* deckPreview = dialog->findChild<QWidget*>(QStringLiteral("deckColorPreview"));
         auto* useSystem = qobject_cast<QAbstractButton*>(
             UiBuilder::controlById(dialog.get(), UiIds::Control::ColorUseSystem));
+        auto* ok = UiBuilder::controlById(dialog.get(), UiIds::Control::Ok);
+        auto* cancel = UiBuilder::controlById(dialog.get(), UiIds::Control::Cancel);
+        auto* help = UiBuilder::controlById(dialog.get(), UiIds::Control::Help);
 
         QVERIFY(roleCombo != nullptr);
         QVERIFY(swatchGrid != nullptr);
         QVERIFY(deckPreview != nullptr);
         QVERIFY(useSystem != nullptr);
+        QVERIFY(ok != nullptr);
+        QVERIFY(cancel != nullptr);
+        QVERIFY(help != nullptr);
         QCOMPARE(roleCombo->count(), UiIds::StringId::ColorRoleLast - UiIds::StringId::ColorRoleFirst + 1);
         QCOMPARE(roleCombo->currentIndex(), 5);
         QVERIFY(useSystem->isCheckable());
@@ -1129,6 +1135,10 @@ private slots:
         QVERIFY(deckPreview->property("hasDeckPreview").toBool());
         QCOMPARE(deckPreview->geometry().left(), roleCombo->geometry().left());
         QVERIFY(deckPreview->geometry().right() < swatchGrid->geometry().left());
+        QCOMPARE(ok->geometry().top(), help->geometry().top());
+        QCOMPARE(cancel->geometry().top(), help->geometry().top());
+        QVERIFY(deckPreview->geometry().bottom() < ok->geometry().top());
+        QVERIFY(deckPreview->height() > roleCombo->height() * 3);
         QCOMPARE(
             UiBuilder::colorDialogColors(dialog.get()),
             QStringList({QStringLiteral("#000000"), QStringLiteral("#000000"),
@@ -1148,6 +1158,34 @@ private slots:
         UiBuilder::setColorDialogState(dialog.get(), customColors, false);
         QCOMPARE(UiBuilder::colorDialogColors(dialog.get()), customColors);
         QVERIFY(!UiBuilder::colorDialogUsesSystemColors(dialog.get()));
+    }
+
+    void sortsAvailableReportsByTypeThenDescriptionAndPreservesSourceIndex()
+    {
+        UiBuilder::DialogContext context;
+        context.reports = {
+            {QStringLiteral("Report"), QStringLiteral("Zulu"), 0},
+            {QStringLiteral("Card"), QStringLiteral("Beta"), 1},
+            {QStringLiteral("Report"), QStringLiteral("Alpha"), 2},
+            {QStringLiteral("Label"), QStringLiteral("Address"), 3},
+            {QStringLiteral("Card"), QStringLiteral("Alpha"), 4},
+        };
+        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("DESIGNREPORTS"), nullptr, context);
+        QVERIFY(dialog != nullptr);
+        auto* reports = qobject_cast<QListWidget*>(
+            UiBuilder::controlById(dialog.get(), UiIds::Control::ReportsList));
+        QVERIFY(reports != nullptr);
+        QCOMPARE(reports->count(), 5);
+        QCOMPARE(reports->item(0)->text(), QStringLiteral("Card\tAlpha"));
+        QCOMPARE(reports->item(1)->text(), QStringLiteral("Card\tBeta"));
+        QCOMPARE(reports->item(2)->text(), QStringLiteral("Label\tAddress"));
+        QCOMPARE(reports->item(3)->text(), QStringLiteral("Report\tAlpha"));
+        QCOMPARE(reports->item(4)->text(), QStringLiteral("Report\tZulu"));
+        QCOMPARE(reports->item(0)->data(UiBuilder::ReportSourceIndexRole).toInt(), 4);
+        QCOMPARE(reports->item(1)->data(UiBuilder::ReportSourceIndexRole).toInt(), 1);
+        QCOMPARE(reports->item(2)->data(UiBuilder::ReportSourceIndexRole).toInt(), 3);
+        QCOMPARE(reports->item(3)->data(UiBuilder::ReportSourceIndexRole).toInt(), 2);
+        QCOMPARE(reports->item(4)->data(UiBuilder::ReportSourceIndexRole).toInt(), 0);
     }
 
     void everyVisibleDialogControlHasSafeGeometry()

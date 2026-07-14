@@ -708,7 +708,12 @@ private slots:
             auto* reportList = qobject_cast<QListWidget*>(
                 UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
             if (reportList != nullptr && reportList->count() > 0) {
-                reportList->setCurrentRow(0);
+                for (int row = 0; row < reportList->count(); ++row) {
+                    if (reportList->item(row)->data(UiBuilder::ReportSourceIndexRole).toInt() == 0) {
+                        reportList->setCurrentRow(row);
+                        break;
+                    }
+                }
             }
 
             if (dialogStep == 0) {
@@ -768,7 +773,12 @@ private slots:
             auto* reportList = qobject_cast<QListWidget*>(
                 UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
             if (reportList != nullptr && reportList->count() > 0) {
-                reportList->setCurrentRow(0);
+                for (int row = 0; row < reportList->count(); ++row) {
+                    if (reportList->item(row)->data(UiBuilder::ReportSourceIndexRole).toInt() == 0) {
+                        reportList->setCurrentRow(row);
+                        break;
+                    }
+                }
             }
             dialog->accept();
             return true;
@@ -963,7 +973,13 @@ private slots:
             auto* list = qobject_cast<QListWidget*>(
                 UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
             if (list != nullptr) {
-                list->setCurrentRow(initialReportCount);
+                for (int row = 0; row < list->count(); ++row) {
+                    if (list->item(row)->data(UiBuilder::ReportSourceIndexRole).toInt()
+                        == initialReportCount) {
+                        list->setCurrentRow(row);
+                        break;
+                    }
+                }
             }
             auto* modify = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog, UiIds::Control::ReportsModify));

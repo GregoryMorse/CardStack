@@ -53,6 +53,7 @@ struct LegacyTemplateTextFrameDescriptor {
 struct DeckTemplate {
     int legacyResourceId = 0;
     QString name;
+    QString description;
     QVector<FieldDefinition> fields;
     QVector<DeckSortKey> sortKeys;
     QVector<ReportDefinition> reports;

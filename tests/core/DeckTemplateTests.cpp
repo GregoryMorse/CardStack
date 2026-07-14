@@ -22,9 +22,19 @@ private slots:
         QVERIFY(names.contains(QStringLiteral("Video Library")));
 
         const QVector<DeckTemplate>& templates = builtInDeckTemplates();
+        const QStringList recoveredDescriptions = {
+            QStringLiteral("Book Library"), QStringLiteral("Business Cards"),
+            QStringLiteral("Credit Card"), QStringLiteral("Data boxes"),
+            QStringLiteral("File Folders"), QStringLiteral("Home Inventory"),
+            QStringLiteral("Mailing List"), QStringLiteral("Music Library"),
+            QStringLiteral("Notes"), QStringLiteral("Personnel Records"),
+            QStringLiteral("Recipes"), QStringLiteral("Rolodex Cards"),
+            QStringLiteral("Software Library"), QStringLiteral("Video Library")};
         QCOMPARE(templates.first().legacyResourceId, 101);
         QCOMPARE(templates.last().legacyResourceId, 114);
-        for (const DeckTemplate& deckTemplate : templates) {
+        for (int index = 0; index < templates.size(); ++index) {
+            const DeckTemplate& deckTemplate = templates.at(index);
+            QCOMPARE(deckTemplate.description, recoveredDescriptions.at(index));
             QVERIFY2(deckTemplate.schemaFromLegacyResource, qPrintable(deckTemplate.name));
             QVERIFY2(deckTemplate.layoutFromLegacyResource, qPrintable(deckTemplate.name));
             QVERIFY2(!deckTemplate.layoutGeneratedFromSchema, qPrintable(deckTemplate.name));
@@ -39,6 +49,7 @@ private slots:
         for (const DeckTemplate& deckTemplate : builtInDeckTemplates()) {
             const Deck deck = createDeckFromTemplate(deckTemplate);
             QCOMPARE(deck.name(), deckTemplate.name);
+            QCOMPARE(deck.description(), deckTemplate.description);
             QCOMPARE(deck.cardCount(), 0);
             QCOMPARE(deck.fieldCount(), deckTemplate.fields.size());
             QCOMPARE(deck.reportCount(), deckTemplate.reports.size());
@@ -64,7 +75,7 @@ private slots:
         }
 
         const Deck software = createDeckFromTemplateName(QStringLiteral("Software Library"));
-        QVERIFY(software.description().isEmpty());
+        QCOMPARE(software.description(), QStringLiteral("Software Library"));
         QVERIFY(software.appearance().dataFont.startsWith(QStringLiteral("Arial,")));
         QVERIFY(software.appearance().nameFont.startsWith(QStringLiteral("Arial,")));
         QVERIFY(software.appearance().textFont.startsWith(QStringLiteral("Arial,")));
