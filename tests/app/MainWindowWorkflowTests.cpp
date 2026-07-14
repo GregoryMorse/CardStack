@@ -838,6 +838,10 @@ private slots:
         QVERIFY(workspace != nullptr);
         const int initialReportCount = workspace->deck().reportCount();
 
+        handleNextLegacyDialog(QStringLiteral("REPORTFORM"), [](QDialog* dialog) {
+            dialog->accept();
+            return true;
+        });
         handleNextLegacyDialog(QStringLiteral("DESIGNREPORTS"), [](QDialog* dialog) {
             auto* newReport = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog, UiIds::Control::ReportsNew));

@@ -43,6 +43,7 @@ private slots:
             QCOMPARE(deck.fieldCount(), deckTemplate.fields.size());
             QCOMPARE(deck.reportCount(), deckTemplate.reports.size());
             QCOMPARE(deck.cardTemplateLayout(), deckTemplate.layout);
+            QCOMPARE(deck.sortKeys(), deckTemplate.sortKeys);
             QVERIFY2(deck.fieldCount() > 0, qPrintable(deckTemplate.name));
             QVERIFY2(deck.reportCount() > 0, qPrintable(deckTemplate.name));
             for (const ReportDefinition& report : deck.reports()) {
@@ -94,6 +95,7 @@ private slots:
 
         const std::optional<DeckTemplate> businessCardsTemplate = findBuiltInDeckTemplate(QStringLiteral("Business Cards"));
         QVERIFY(businessCardsTemplate.has_value());
+        QCOMPARE(businessCardsTemplate->sortKeys, QVector<DeckSortKey>({{2, false}, {0, false}, {4, false}}));
         QCOMPARE(businessCardsTemplate->legacyFields.at(11).dialableMarker, quint16(1));
         QCOMPARE(businessCardsTemplate->legacyTextFrames.size(), 2);
         QCOMPARE(businessCardsTemplate->legacyTextFrames.at(0).text, QStringLiteral("Name"));

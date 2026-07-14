@@ -78,6 +78,9 @@ QRect normalizedFrameBounds(QRect bounds, const CardTemplateLayout& layout)
 
 QFont storedFont(const QString& serialized, const QFont& fallback)
 {
+    if (serialized.isEmpty()) {
+        return fallback;
+    }
     QFont font;
     return font.fromString(serialized) ? font : fallback;
 }
@@ -87,6 +90,23 @@ void applyTemplateStyle(QFont* font, quint8 styleFlags)
     font->setBold((styleFlags & CardTemplateStyleFlagBold) != 0);
     font->setItalic((styleFlags & CardTemplateStyleFlagItalic) != 0);
     font->setUnderline((styleFlags & CardTemplateStyleFlagUnderline) != 0);
+}
+
+QColor templateColor(
+    const DeckAppearance& appearance,
+    DeckColorRole role,
+    const QColor& systemFallback)
+{
+    const int index = static_cast<int>(role);
+    if (!appearance.useSystemColors
+        && index >= 0
+        && index < appearance.customColors.size()) {
+        const QColor configured(appearance.customColors.at(index));
+        if (configured.isValid()) {
+            return configured;
+        }
+    }
+    return systemFallback;
 }
 
 } // namespace
@@ -100,6 +120,9 @@ public:
         setMinimumSize(420, 360);
         setMouseTracking(true);
         setFocusPolicy(Qt::StrongFocus);
+        setProperty("frameColor", QStringLiteral("#000000"));
+        setProperty("fieldEditorBackground", QStringLiteral("#ececec"));
+        setProperty("selectionColor", QStringLiteral("#808080"));
     }
 
     void setLayoutDefinition(const CardTemplateLayout* layout)
@@ -142,15 +165,19 @@ protected:
 
         const QRectF page = pageRect();
         painter.fillRect(page.translated(5.0, 5.0), QColor(0, 0, 0, 35));
-        painter.fillRect(page, palette().base());
-        painter.setPen(palette().mid().color());
+        painter.fillRect(
+            page,
+            templateColor(m_appearance, DeckColorRole::CardBackground, QColor(QStringLiteral("#ffffff"))));
+        painter.setPen(QPen(Qt::black, 1));
         painter.drawRect(page.adjusted(0, 0, -1, -1));
 
         const QRectF indexHeader = scaledBounds(QRect(0, 0, m_layout->canvasWidth, 220), *m_layout, page);
         painter.save();
-        painter.fillRect(indexHeader, palette().alternateBase());
+        painter.fillRect(
+            indexHeader,
+            templateColor(m_appearance, DeckColorRole::IndexBackground, QColor(QStringLiteral("#d8d8d8"))));
         const qreal logicalScale = page.width() / std::max(1, m_layout->canvasWidth);
-        painter.setPen(QPen(palette().mid().color(), std::max<qreal>(1.0, 12.0 * logicalScale)));
+        painter.setPen(QPen(Qt::black, std::max<qreal>(1.0, 12.0 * logicalScale)));
         const qreal borderInset = std::max<qreal>(1.0, 6.0 * logicalScale);
         painter.drawRect(indexHeader.adjusted(borderInset, borderInset, -borderInset, -borderInset));
         QFont indexFont = storedFont(m_appearance.indexFont, painter.font());
@@ -159,7 +186,8 @@ protected:
         }
         indexFont.setWeight(QFont::Medium);
         painter.setFont(indexFont);
-        painter.setPen(palette().text().color());
+        painter.setPen(
+            templateColor(m_appearance, DeckColorRole::IndexForeground, QColor(QStringLiteral("#000000"))));
         const qreal textInset = std::max<qreal>(4.0, 30.0 * logicalScale);
         painter.drawText(indexHeader.adjusted(textInset, 0, -textInset, 0), Qt::AlignLeft | Qt::AlignVCenter, tr("Index"));
         painter.restore();
@@ -168,7 +196,7 @@ protected:
             const CardTemplateFrame& frame = m_layout->frames.at(index);
             const QRectF frameRect = scaledBounds(frame.bounds, *m_layout, page);
             painter.save();
-            painter.setPen(index == m_selectedFrameIndex ? palette().highlight().color() : QColor(50, 105, 145));
+            painter.setPen(QPen(Qt::black, 1));
             QFont frameFont = storedFont(
                 frame.kind == CardTemplateFrameKind::Text ? m_appearance.textFont : m_appearance.dataFont,
                 painter.font());
@@ -187,7 +215,19 @@ protected:
                 break;
             case CardTemplateFrameKind::DataBox:
             case CardTemplateFrameKind::NotesBox:
+                painter.fillRect(
+                    frameRect,
+                    templateColor(
+                        m_appearance,
+                        DeckColorRole::DataBackground,
+                        QColor(QStringLiteral("#ececec"))));
+                painter.setPen(QPen(Qt::black, 1));
                 painter.drawRect(frameRect);
+                painter.setPen(
+                    templateColor(
+                        m_appearance,
+                        DeckColorRole::DataForeground,
+                        QColor(QStringLiteral("#000000"))));
                 painter.drawText(frameRect.adjusted(4, 2, -4, -2), Qt::AlignLeft | Qt::AlignVCenter, tr("Sample data"));
                 if (m_fields != nullptr
                     && frame.fieldIndex >= 0
@@ -212,11 +252,21 @@ protected:
                     QFont nameFont = storedFont(m_appearance.nameFont, painter.font());
                     applyTemplateStyle(&nameFont, frame.styleFlags);
                     painter.setFont(nameFont);
+                    painter.setPen(
+                        templateColor(
+                            m_appearance,
+                            DeckColorRole::NameForeground,
+                            QColor(QStringLiteral("#000000"))));
                     painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, m_fields->at(frame.fieldIndex).name());
                     painter.restore();
                 }
                 break;
             case CardTemplateFrameKind::Text:
+                painter.setPen(
+                    templateColor(
+                        m_appearance,
+                        DeckColorRole::TextForeground,
+                        QColor(QStringLiteral("#000000"))));
                 painter.drawText(
                     frameRect,
                     ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
@@ -229,8 +279,12 @@ protected:
             }
 
             if (index == m_selectedFrameIndex) {
-                painter.drawRect(frameRect.adjusted(2, 2, -3, -3));
-                painter.setBrush(palette().highlight());
+                const QColor selectionGray(QStringLiteral("#808080"));
+                painter.setPen(QPen(selectionGray, 3, Qt::SolidLine));
+                painter.drawRect(frameRect.adjusted(-2, -2, 1, 1));
+                painter.setPen(QPen(selectionGray, 1, Qt::DotLine));
+                painter.drawRect(frameRect.adjusted(3, 3, -4, -4));
+                painter.setBrush(selectionGray);
                 painter.setPen(Qt::NoPen);
                 painter.drawRect(resizeHandle(frameRect));
                 painter.setBrush(Qt::NoBrush);
@@ -619,7 +673,8 @@ void TemplateDesignerWidget::updateSelectedFieldDefinition(
         std::max(1, maxLength),
         showName,
         phone,
-        previous.legacyDescriptor());
+        previous.legacyDescriptor(),
+        previous.displayWidth());
     if (previous.name() == updated.name()
         && previous.maxLength() == updated.maxLength()
         && previous.showName() == updated.showName()

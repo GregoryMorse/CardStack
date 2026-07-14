@@ -26,6 +26,8 @@
     <file alias="toolbar/deck-open.svg">assets/toolbar/deck-open.svg</file>
     <file alias="toolbar/deck-save.svg">assets/toolbar/deck-save.svg</file>
     <file alias="toolbar/find.svg">assets/toolbar/find.svg</file>
+    <file alias="toolbar/find-next.svg">assets/toolbar/find-next.svg</file>
+    <file alias="toolbar/phone-dial.svg">assets/toolbar/phone-dial.svg</file>
     <file alias="toolbar/nav-first.svg">assets/toolbar/nav-first.svg</file>
     <file alias="toolbar/nav-last.svg">assets/toolbar/nav-last.svg</file>
     <file alias="toolbar/nav-next.svg">assets/toolbar/nav-next.svg</file>
@@ -48,6 +50,8 @@
     <file alias="toolbar/png-24/deck-open.png">assets/toolbar/png-24/deck-open.png</file>
     <file alias="toolbar/png-24/deck-save.png">assets/toolbar/png-24/deck-save.png</file>
     <file alias="toolbar/png-24/find.png">assets/toolbar/png-24/find.png</file>
+    <file alias="toolbar/png-24/find-next.png">assets/toolbar/png-24/find-next.png</file>
+    <file alias="toolbar/png-24/phone-dial.png">assets/toolbar/png-24/phone-dial.png</file>
     <file alias="toolbar/png-24/nav-first.png">assets/toolbar/png-24/nav-first.png</file>
     <file alias="toolbar/png-24/nav-last.png">assets/toolbar/png-24/nav-last.png</file>
     <file alias="toolbar/png-24/nav-next.png">assets/toolbar/png-24/nav-next.png</file>
@@ -70,6 +74,8 @@
     <file alias="toolbar/png-48/deck-open.png">assets/toolbar/png-48/deck-open.png</file>
     <file alias="toolbar/png-48/deck-save.png">assets/toolbar/png-48/deck-save.png</file>
     <file alias="toolbar/png-48/find.png">assets/toolbar/png-48/find.png</file>
+    <file alias="toolbar/png-48/find-next.png">assets/toolbar/png-48/find-next.png</file>
+    <file alias="toolbar/png-48/phone-dial.png">assets/toolbar/png-48/phone-dial.png</file>
     <file alias="toolbar/png-48/nav-first.png">assets/toolbar/png-48/nav-first.png</file>
     <file alias="toolbar/png-48/nav-last.png">assets/toolbar/png-48/nav-last.png</file>
     <file alias="toolbar/png-48/nav-next.png">assets/toolbar/png-48/nav-next.png</file>

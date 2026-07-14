@@ -330,6 +330,34 @@ private slots:
         QVERIFY(cardPanel->accessibleName().isEmpty());
     }
 
+    void cardHeaderUsesAllThreeDeckIndexFields()
+    {
+        Deck deck(QStringLiteral("Three Part Index"));
+        deck.addField(FieldDefinition(QStringLiteral("First Name"), FieldType::Text, 64));
+        deck.addField(FieldDefinition(QStringLiteral("Title"), FieldType::Text, 64));
+        deck.addField(FieldDefinition(QStringLiteral("Last Name"), FieldType::Text, 64));
+        deck.addField(FieldDefinition(QStringLiteral("Phone"), FieldType::Text, 64));
+        deck.addField(FieldDefinition(QStringLiteral("Company"), FieldType::Text, 64));
+        deck.setSortKeys({{2, false}, {0, false}, {4, false}});
+        deck.addCard(CardRecord({
+            QStringLiteral("Ada"),
+            QStringLiteral("Countess"),
+            QStringLiteral("Lovelace"),
+            QStringLiteral("555-0100"),
+            QStringLiteral("Analytical Engines"),
+        }));
+
+        DeckWorkspace workspace(std::move(deck));
+        workspace.showCardView();
+        QCoreApplication::processEvents();
+
+        auto* cardPanel = workspace.findChild<QWidget*>(QStringLiteral("cardDetailPanel"));
+        QVERIFY(cardPanel != nullptr);
+        QCOMPARE(
+            cardPanel->accessibleName(),
+            QStringLiteral("Lovelace | Ada | Analytical Engines"));
+    }
+
     void indexPrefixJumpUsesNextPopulatedBucket()
     {
         Deck deck(QStringLiteral("Index Test"));

@@ -87,6 +87,7 @@ public:
 
     void addField(FieldDefinition field);
     void setFields(QVector<FieldDefinition> fields);
+    void setFieldDisplayWidth(int fieldIndex, int width);
     void addCard(CardRecord card);
     void setCards(QVector<CardRecord> cards);
     void addReport(ReportDefinition report);

@@ -166,6 +166,7 @@ private slots:
         putU16(&record, nameOffset + FieldTopOffset, 30);
         putU16(&record, nameOffset + FieldRightOffset, 300);
         putU16(&record, nameOffset + FieldBottomOffset, 55);
+        putU16(&record, nameOffset + FieldDisplayWidthOffset, 279);
         record[nameOffset + FieldAlignmentOffset] = AlignRight;
 
         const int notesOffset = FieldTableOffset + FieldDescriptorSize;
@@ -184,6 +185,7 @@ private slots:
         QCOMPARE(parsed->fields.at(0).name(), QStringLiteral("Name"));
         QVERIFY(parsed->fields.at(0).showName());
         QVERIFY(parsed->fields.at(0).isPhone());
+        QCOMPARE(parsed->fields.at(0).displayWidth(), 279);
         QVERIFY(parsed->fields.at(1).isNotes());
         QCOMPARE(parsed->layout.frames.size(), 3);
         QCOMPARE(parsed->layout.frames.at(0).text, QStringLiteral("Index"));

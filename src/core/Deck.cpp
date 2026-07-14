@@ -170,6 +170,14 @@ void Deck::setFields(QVector<FieldDefinition> fields)
     m_fields = std::move(fields);
 }
 
+void Deck::setFieldDisplayWidth(int fieldIndex, int width)
+{
+    if (fieldIndex < 0 || fieldIndex >= m_fields.size()) {
+        return;
+    }
+    m_fields[fieldIndex].setDisplayWidth(width);
+}
+
 void Deck::addCard(CardRecord card)
 {
     m_cards.append(std::move(card));

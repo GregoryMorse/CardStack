@@ -3,6 +3,7 @@
 #include <QDialog>
 #include <QMenuBar>
 #include <QStringList>
+#include <QVector>
 
 #include <functional>
 #include <memory>
@@ -14,13 +15,20 @@ namespace CardStack {
 class UiBuilder {
 public:
     struct DialogContext {
+        struct ReportListEntry {
+            QString type;
+            QString description;
+        };
+
         QString deckName;
         QString deckDescription;
         QStringList fieldNames;
         QStringList templateNames;
         QStringList reportNames;
+        QVector<ReportListEntry> reports;
         QStringList recentSearches;
         QStringList recentReplacements;
+        bool searchDirectionAvailable = false;
     };
 
     static bool populateMenuBar(

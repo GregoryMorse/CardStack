@@ -13,7 +13,13 @@ enum class FieldType {
 class FieldDefinition {
 public:
     FieldDefinition() = default;
-    FieldDefinition(QString name, FieldType type, int maxLength, bool showName = true, bool phone = false, QByteArray legacyDescriptor = {});
+    FieldDefinition(QString name,
+                    FieldType type,
+                    int maxLength,
+                    bool showName = true,
+                    bool phone = false,
+                    QByteArray legacyDescriptor = {},
+                    int displayWidth = 0);
 
     const QString& name() const;
     FieldType type() const;
@@ -21,6 +27,8 @@ public:
     bool showName() const;
     bool isPhone() const;
     const QByteArray& legacyDescriptor() const;
+    int displayWidth() const;
+    void setDisplayWidth(int width);
 
     bool isNotes() const;
 
@@ -31,6 +39,7 @@ private:
     bool m_showName = true;
     bool m_phone = false;
     QByteArray m_legacyDescriptor;
+    int m_displayWidth = 0;
 };
 
 } // namespace CardStack

@@ -34,7 +34,7 @@ namespace CardStack {
 namespace {
 
 constexpr int DefaultTableRowHeightPx = 24;
-constexpr int CardTitleFieldIndex = 0;
+constexpr int FallbackIndexFieldIndex = 0;
 constexpr char IndexSpaceBucketKey[] = "SPACE";
 
 QString editorText(QWidget* editor)
@@ -221,17 +221,20 @@ int titleBucketRank(const QString& title)
     return 0;
 }
 
-bool titleSortsBefore(const CardRecord& left, const CardRecord& right)
+bool indexSortsBefore(const CardRecord& left, const CardRecord& right, const QVector<DeckSortKey>& sortKeys)
 {
-    const QString leftTitle = left.valueAt(CardTitleFieldIndex).trimmed();
-    const QString rightTitle = right.valueAt(CardTitleFieldIndex).trimmed();
-    const int leftRank = titleBucketRank(leftTitle);
-    const int rightRank = titleBucketRank(rightTitle);
-    if (leftRank != rightRank) {
-        return leftRank < rightRank;
+    for (const DeckSortKey& key : sortKeys) {
+        const QString leftTitle = left.valueAt(key.fieldIndex).trimmed();
+        const QString rightTitle = right.valueAt(key.fieldIndex).trimmed();
+        int comparison = titleBucketRank(leftTitle) - titleBucketRank(rightTitle);
+        if (comparison == 0) {
+            comparison = QString::localeAwareCompare(leftTitle, rightTitle);
+        }
+        if (comparison != 0) {
+            return key.descending ? comparison > 0 : comparison < 0;
+        }
     }
-
-    return QString::localeAwareCompare(leftTitle, rightTitle) < 0;
+    return false;
 }
 
 } // namespace
@@ -258,9 +261,19 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     });
     m_tableView->setModel(m_tableModel);
     m_tableView->setAlternatingRowColors(true);
-    m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_tableView->setSelectionBehavior(QAbstractItemView::SelectItems);
     m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_tableView->horizontalHeader()->setStretchLastSection(true);
+    m_tableView->horizontalHeader()->setStretchLastSection(false);
+    connect(m_tableView->horizontalHeader(),
+            &QHeaderView::sectionResized,
+            this,
+            [this](int logicalIndex, int, int newSize) {
+                if (m_applyingColumnWidths || logicalIndex < 0) {
+                    return;
+                }
+                m_deck.setFieldDisplayWidth(logicalIndex, newSize);
+                markDirty();
+            });
     m_tableView->verticalHeader()->setDefaultSectionSize(DefaultTableRowHeightPx);
     m_tableView->setObjectName(QStringLiteral("deckTableView"));
     connect(m_tableView->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& current) {
@@ -276,6 +289,7 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
 
     m_stack->addWidget(m_cardPage);
     m_stack->addWidget(m_tablePage);
+    applyStoredColumnWidths();
     applyStoredAppearance();
     showCardView();
     setCurrentCardIndex(0);
@@ -424,10 +438,15 @@ bool DeckWorkspace::jumpToIndexPrefix(const QString& prefix)
         return QString(trimmed.at(0).toUpper());
     };
 
+    const int indexField = primaryIndexFieldIndex();
+    if (indexField < 0) {
+        return false;
+    }
     for (int offset = 0; offset < bucketOrder.size(); ++offset) {
         const QString bucket = bucketOrder.at((requestedIndex + offset) % bucketOrder.size());
         for (int cardIndex = 0; cardIndex < m_deck.cardCount(); ++cardIndex) {
-            if (titleBucket(m_deck.cardAt(cardIndex).valueAt(CardTitleFieldIndex)) == bucket) {
+            if (titleBucket(m_deck.cardAt(cardIndex).valueAt(indexField)) == bucket) {
+                m_currentFieldIndex = indexField;
                 setCurrentCardIndex(cardIndex);
                 return true;
             }
@@ -686,13 +705,13 @@ void DeckWorkspace::applyStoredAppearance()
 {
     const DeckAppearance& appearance = m_deck.appearance();
     QFont storedFont;
-    if (storedFont.fromString(appearance.dataFont)) {
+    if (!appearance.dataFont.isEmpty() && storedFont.fromString(appearance.dataFont)) {
         for (QWidget* editor : m_valueEditors) {
             editor->setFont(storedFont);
         }
         m_tableView->setFont(storedFont);
     }
-    if (storedFont.fromString(appearance.nameFont)) {
+    if (!appearance.nameFont.isEmpty() && storedFont.fromString(appearance.nameFont)) {
         for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
             if (label->objectName().startsWith(QStringLiteral("fieldCaption_"))
                 || label->objectName().startsWith(QStringLiteral("fieldName_"))) {
@@ -700,20 +719,30 @@ void DeckWorkspace::applyStoredAppearance()
             }
         }
     }
-    if (storedFont.fromString(appearance.textFont)) {
+    if (!appearance.textFont.isEmpty() && storedFont.fromString(appearance.textFont)) {
         for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>(QStringLiteral("templateTextFrame"))) {
             label->setFont(storedFont);
         }
     }
-    if (storedFont.fromString(appearance.indexFont)) {
+    if (!appearance.indexFont.isEmpty() && storedFont.fromString(appearance.indexFont)) {
         m_tableView->horizontalHeader()->setFont(storedFont);
         m_tableView->verticalHeader()->setFont(storedFont);
     }
 
-    const QPalette systemPalette = QApplication::palette();
-    auto roleColor = [&appearance, &systemPalette](DeckColorRole role, QPalette::ColorRole systemRole) {
+    const auto systemColor = [](DeckColorRole role) {
+        switch (role) {
+        case DeckColorRole::IndexBackground:
+            return QColor(QStringLiteral("#c0c0c0"));
+        case DeckColorRole::DataBackground:
+        case DeckColorRole::CardBackground:
+            return QColor(QStringLiteral("#ffffff"));
+        default:
+            return QColor(QStringLiteral("#000000"));
+        }
+    };
+    auto roleColor = [&appearance, systemColor](DeckColorRole role, QPalette::ColorRole) {
         if (appearance.useSystemColors) {
-            return systemPalette.color(systemRole);
+            return systemColor(role);
         }
         const int index = static_cast<int>(role);
         if (index >= 0 && index < appearance.customColors.size()) {
@@ -722,7 +751,7 @@ void DeckWorkspace::applyStoredAppearance()
                 return customColor;
             }
         }
-        return systemPalette.color(systemRole);
+        return systemColor(role);
     };
 
     QPalette tablePalette = m_tableView->palette();
@@ -1197,13 +1226,46 @@ void DeckWorkspace::refreshCardStack()
     m_cardDetailPanel->setStackEntries(entries, m_currentCardIndex);
 }
 
-QString DeckWorkspace::cardTitle(int cardIndex) const
+CardDetailPanel::CardTitleParts DeckWorkspace::cardTitle(int cardIndex) const
 {
     if (cardIndex < 0 || cardIndex >= m_deck.cardCount()) {
-        return tr("Untitled card");
+        return {};
     }
 
-    return m_deck.cardAt(cardIndex).valueAt(CardTitleFieldIndex).trimmed();
+    CardDetailPanel::CardTitleParts title;
+    QString* destinations[] = {&title.left, &title.middle, &title.right};
+    const QVector<DeckSortKey>& sortKeys = m_deck.sortKeys();
+    if (sortKeys.isEmpty()) {
+        title.left = m_deck.cardAt(cardIndex).valueAt(FallbackIndexFieldIndex).trimmed();
+        return title;
+    }
+    for (int level = 0; level < std::min(3, static_cast<int>(sortKeys.size())); ++level) {
+        const int fieldIndex = sortKeys.at(level).fieldIndex;
+        if (fieldIndex >= 0 && fieldIndex < m_deck.fieldCount()) {
+            *destinations[level] = m_deck.cardAt(cardIndex).valueAt(fieldIndex).trimmed();
+        }
+    }
+    return title;
+}
+
+int DeckWorkspace::primaryIndexFieldIndex() const
+{
+    for (const DeckSortKey& key : m_deck.sortKeys()) {
+        if (key.fieldIndex >= 0 && key.fieldIndex < m_deck.fieldCount()) {
+            return key.fieldIndex;
+        }
+    }
+    return m_deck.fieldCount() > 0 ? FallbackIndexFieldIndex : -1;
+}
+
+bool DeckWorkspace::isIndexField(int fieldIndex) const
+{
+    if (m_deck.sortKeys().isEmpty()) {
+        return fieldIndex == FallbackIndexFieldIndex;
+    }
+    return std::any_of(m_deck.sortKeys().cbegin(), m_deck.sortKeys().cend(), [fieldIndex](const DeckSortKey& key) {
+        return key.fieldIndex == fieldIndex;
+    });
 }
 
 void DeckWorkspace::refreshCardHeader()
@@ -1264,7 +1326,7 @@ void DeckWorkspace::syncCardEditorToDeck()
         if (record.valueAt(fieldIndex) != normalized) {
             record.setValueAt(fieldIndex, normalized);
             changed = true;
-            titleChanged = titleChanged || fieldIndex == CardTitleFieldIndex;
+            titleChanged = titleChanged || isIndexField(fieldIndex);
         }
     }
     if (changed) {
@@ -1278,6 +1340,19 @@ void DeckWorkspace::syncCardEditorToDeck()
 void DeckWorkspace::syncModel()
 {
     m_tableModel->setDeck(&m_deck);
+    applyStoredColumnWidths();
+}
+
+void DeckWorkspace::applyStoredColumnWidths()
+{
+    m_applyingColumnWidths = true;
+    for (int column = 0; column < m_deck.fieldCount(); ++column) {
+        const int width = m_deck.fieldAt(column).displayWidth();
+        if (width > 0) {
+            m_tableView->horizontalHeader()->resizeSection(column, width);
+        }
+    }
+    m_applyingColumnWidths = false;
 }
 
 bool DeckWorkspace::sortCardsByTitleIfNeeded()
@@ -1297,8 +1372,12 @@ bool DeckWorkspace::sortCardsByTitleIfNeeded()
         entries.append({m_deck.cardAt(cardIndex), cardIndex});
     }
 
-    std::stable_sort(entries.begin(), entries.end(), [](const SortEntry& left, const SortEntry& right) {
-        return titleSortsBefore(left.record, right.record);
+    QVector<DeckSortKey> sortKeys = m_deck.sortKeys();
+    if (sortKeys.isEmpty() && m_deck.fieldCount() > 0) {
+        sortKeys.append({FallbackIndexFieldIndex, false});
+    }
+    std::stable_sort(entries.begin(), entries.end(), [&sortKeys](const SortEntry& left, const SortEntry& right) {
+        return indexSortsBefore(left.record, right.record, sortKeys);
     });
 
     bool changed = false;
@@ -1360,7 +1439,6 @@ void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
     const QModelIndex tableIndex = m_tableModel->index(m_currentCardIndex, m_currentFieldIndex);
     if (tableIndex.isValid()) {
         m_tableView->setCurrentIndex(tableIndex);
-        m_tableView->selectRow(m_currentCardIndex);
         m_tableView->scrollTo(tableIndex);
     }
 }
@@ -1408,9 +1486,10 @@ void DeckWorkspace::setCurrentCardIndex(int index)
     refreshCardEditor();
     emit cardPositionChanged(m_currentCardIndex, m_deck.cardCount());
 
-    const QModelIndex tableIndex = m_tableModel->index(m_currentCardIndex, 0);
+    m_currentFieldIndex = std::clamp(m_currentFieldIndex, 0, std::max(0, m_deck.fieldCount() - 1));
+    const QModelIndex tableIndex = m_tableModel->index(m_currentCardIndex, m_currentFieldIndex);
     if (tableIndex.isValid()) {
-        m_tableView->selectRow(m_currentCardIndex);
+        m_tableView->setCurrentIndex(tableIndex);
         m_tableView->scrollTo(tableIndex);
     }
 }
@@ -1463,7 +1542,7 @@ bool DeckWorkspace::setValueAt(int row, int fieldIndex, const QString& value, bo
     pushUndoSnapshot();
     m_deck.cardAt(row).setValueAt(fieldIndex, normalized);
     markDirty();
-    if (fieldIndex == CardTitleFieldIndex) {
+    if (isIndexField(fieldIndex)) {
         m_currentCardIndex = row;
         if (sortCardsByTitleIfNeeded()) {
             syncModel();
@@ -1485,20 +1564,32 @@ bool DeckWorkspace::find(const SearchRequest& request)
     m_lastSearchRequest = request;
     m_hasLastSearchRequest = true;
 
+    const auto matchingField = [this](const CardRecord& record, const SearchClause& clause) {
+        const int firstField = firstFieldToSearch(clause);
+        const int lastField = lastFieldToSearch(clause);
+        for (int fieldIndex = firstField; fieldIndex <= lastField; ++fieldIndex) {
+            if (valueMatches(record.valueAt(fieldIndex), clause.text, clause)) {
+                return fieldIndex;
+            }
+        }
+        return -1;
+    };
+
     const int step = request.direction == SearchDirection::BackwardFromCurrent ? -1 : 1;
     int cardIndex = currentSearchStartIndex(request.direction);
     while (cardIndex >= 0 && cardIndex < m_deck.cardCount()) {
         const CardRecord& record = m_deck.cardAt(cardIndex);
-        const int firstField = firstFieldToSearch(request.first);
-        const int lastField = lastFieldToSearch(request.first);
-        for (int fieldIndex = firstField; fieldIndex <= lastField; ++fieldIndex) {
-            SearchRequest fieldRequest = request;
-            if (fieldRequest.first.fieldIndex < 0) {
-                fieldRequest.first.fieldIndex = fieldIndex;
-            }
-            if (recordMatches(record, fieldRequest)) {
-                return moveToMatch(cardIndex, fieldIndex);
-            }
+        const int firstMatch = matchingField(record, request.first);
+        const int secondMatch = request.comparison == SearchComparison::None
+            ? -1
+            : matchingField(record, request.second);
+        const bool matches = request.comparison == SearchComparison::None
+            ? firstMatch >= 0
+            : request.comparison == SearchComparison::And
+                ? firstMatch >= 0 && secondMatch >= 0
+                : firstMatch >= 0 || secondMatch >= 0;
+        if (matches) {
+            return moveToMatch(cardIndex, firstMatch >= 0 ? firstMatch : secondMatch);
         }
         cardIndex += step;
     }

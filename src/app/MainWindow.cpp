@@ -465,7 +465,8 @@ bool isTemplateDesignerCommand(int commandId)
         commandId == Command::ConfigureNameFont ||
         commandId == Command::ConfigureTextFont ||
         commandId == Command::ConfigureIndexFont ||
-        commandId == Command::ConfigureColors;
+        commandId == Command::ConfigureColors ||
+        commandId == Command::ConfigureDeckDescription;
 }
 
 QStringList defaultTemplates()
@@ -878,10 +879,7 @@ ReportDefinition createDefaultReportDefinition(const Deck& deck, QString name = 
     report.marginTop = DefaultReportMarginMils;
     report.marginRight = DefaultReportMarginMils;
     report.marginBottom = DefaultReportMarginMils;
-    report.textFont.faceName = QStringLiteral("Arial");
-    report.dataFont.faceName = QStringLiteral("Arial");
-    report.textFont.legacyHeight = -10;
-    report.dataFont.legacyHeight = -10;
+    applyDefaultReportFonts(deck, &report);
 
     ReportFrameDefinition title;
     title.signature = 0xabcd;
@@ -1815,6 +1813,8 @@ void MainWindow::configureToolBarForMenu(int menuId)
 
     addUiToolAction(Command::FileNew, QStringLiteral("deck-new"), tr("New deck"));
     addUiToolAction(Command::FileOpen, QStringLiteral("deck-open"), tr("Open deck"));
+    addSeparator();
+    addUiToolAction(Command::PhoneDial, QStringLiteral("phone-dial"), tr("Phone Dialer"));
     if (menuId == Menu::Startup) {
         return;
     }
@@ -1853,6 +1853,7 @@ void MainWindow::configureToolBarForMenu(int menuId)
     addUiToolAction(Command::FilePrintReport, QStringLiteral("print-report"), tr("Print report"));
     addSeparator();
     addUiToolAction(Command::SearchFind, QStringLiteral("find"), tr("Find"));
+    addUiToolAction(Command::SearchFindNext, QStringLiteral("find-next"), tr("Find next"));
     addUiToolAction(Command::SearchReplace, QStringLiteral("replace"), tr("Replace"));
     addSeparator();
     addUiToolAction(Command::CardAdd, QStringLiteral("card-add"), tr("Add card"));
@@ -2458,6 +2459,7 @@ void MainWindow::handleFindCommand()
     } else {
         QMessageBox::information(this, tr("CardStack"), tr("No matching card was found."));
     }
+    updateCommandState();
 }
 
 void MainWindow::handleFindNextCommand()
@@ -2546,6 +2548,25 @@ void MainWindow::handleSortCommand()
     if (!dialog) {
         statusBar()->showMessage(tr("Index dialog is not available."), StatusMessageTimeoutMs);
         return;
+    }
+
+    const QVector<DeckSortKey>& currentSortKeys = workspace->deck().sortKeys();
+    const int sortFieldControls[] = {
+        Control::SortFieldLevel1,
+        Control::SortFieldLevel2,
+        Control::SortFieldLevel3,
+    };
+    const int sortReverseControls[] = {
+        Control::SortReverseLevel1,
+        Control::SortReverseLevel2,
+        Control::SortReverseLevel3,
+    };
+    for (int level = 0; level < 3; ++level) {
+        const bool populated = level < currentSortKeys.size();
+        if (auto* combo = uiControl<QComboBox>(*dialog, sortFieldControls[level])) {
+            combo->setCurrentIndex(populated ? currentSortKeys.at(level).fieldIndex + 1 : 0);
+        }
+        setChecked(*dialog, sortReverseControls[level], populated && currentSortKeys.at(level).descending);
     }
 
     if (dialog->exec() != QDialog::Accepted) {
@@ -2735,6 +2756,7 @@ void MainWindow::handleNewReportCommand()
 
     ReportDefinition report = createDefaultReportDefinition(workspace->deck(), tr("Untitled Report"));
     if (!configureReportForm(&report)) {
+        handlePrintReportCommand();
         return;
     }
 
@@ -2806,10 +2828,13 @@ void MainWindow::handlePrintReportCommand()
         const auto* reportList = uiControl<QListWidget>(*reportsDialog, Control::ReportsList);
         reportIndex = reportList == nullptr ? -1 : reportList->currentRow();
         if (reportAction == QStringLiteral("new")) {
-            openReportDesigner(
-                workspace,
-                -1,
-                createDefaultReportDefinition(workspace->deck(), tr("Untitled Report")));
+            ReportDefinition newReport =
+                createDefaultReportDefinition(workspace->deck(), tr("Untitled Report"));
+            if (!configureReportForm(&newReport)) {
+                continue;
+            }
+            fitNewReportFramesToForm(&newReport);
+            openReportDesigner(workspace, -1, newReport);
             return;
         }
         if (reportAction == QStringLiteral("defaults")) {
@@ -3425,7 +3450,7 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
     case Command::ConfigureIndexFont: {
         auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
         if (owner == nullptr) {
-            statusBar()->showMessage(tr("Save the new template as a deck before changing deck-wide fonts."), StatusMessageTimeoutMs);
+            statusBar()->showMessage(tr("Save the new template before changing template fonts."), StatusMessageTimeoutMs);
             return;
         }
         bool accepted = false;
@@ -3448,7 +3473,7 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
     case Command::ConfigureColors: {
         auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
         if (owner == nullptr) {
-            statusBar()->showMessage(tr("Save the new template as a deck before changing deck-wide colors."), StatusMessageTimeoutMs);
+            statusBar()->showMessage(tr("Save the new template before changing template colors."), StatusMessageTimeoutMs);
             return;
         }
         std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHOOSECOLOR"), this, dialogContext());
@@ -3534,12 +3559,21 @@ void MainWindow::handleSecurityCommand()
 void MainWindow::handleDeckDescriptionCommand()
 {
     DeckWorkspace* workspace = activeDeckWorkspace();
+    const bool editingTemplate = workspace == nullptr && activeTemplateDesigner() != nullptr;
+    if (editingTemplate) {
+        workspace = qobject_cast<DeckWorkspace*>(
+            activeTemplateDesigner()->property("ownerDeckWorkspace").value<QObject*>());
+    }
     if (workspace == nullptr) {
         statusBar()->showMessage(tr("No active deck."), StatusMessageTimeoutMs);
         return;
     }
 
-    std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHANGEDESC"), this, dialogContext());
+    UiBuilder::DialogContext context = dialogContext();
+    context.deckName = workspace->deck().name();
+    context.deckDescription = workspace->deck().description();
+    std::unique_ptr<QDialog> dialog =
+        UiBuilder::createDialog(QStringLiteral("CHANGEDESC"), this, context);
     if (!dialog) {
         statusBar()->showMessage(tr("Deck description dialog is not available."), StatusMessageTimeoutMs);
         return;
@@ -3551,7 +3585,9 @@ void MainWindow::handleDeckDescriptionCommand()
 
     const auto* description = uiControl<QLineEdit>(*dialog, Control::DeckDescriptionText);
     workspace->setDeckDescription(description == nullptr ? QString() : description->text());
-    statusBar()->showMessage(tr("Deck description changed."), StatusMessageTimeoutMs);
+    statusBar()->showMessage(
+        editingTemplate ? tr("Template description changed.") : tr("Deck description changed."),
+        StatusMessageTimeoutMs);
 }
 
 bool MainWindow::verifyNewSecurityPassword(const QString& password)
@@ -4338,9 +4374,46 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         }
         list->clear();
         const QVector<ReportFormPreset> presets = reportFormPresets(type);
+        QVector<int> presetOrder;
+        presetOrder.reserve(presets.size());
         for (int index = 0; index < presets.size(); ++index) {
-            auto* item = new QListWidgetItem(tr(presets.at(index).label), list);
+            presetOrder.append(index);
+        }
+        std::sort(
+            presetOrder.begin(),
+            presetOrder.end(),
+            [this, &presets](int left, int right) {
+                const QString leftName =
+                    tr(presets.at(left).label).section(QLatin1Char('\t'), 0, 0);
+                const QString rightName =
+                    tr(presets.at(right).label).section(QLatin1Char('\t'), 0, 0);
+                return QString::localeAwareCompare(leftName, rightName) < 0;
+            });
+        int firstColumnWidth = 0;
+        for (const ReportFormPreset& preset : presets) {
+            const QString label = tr(preset.label);
+            firstColumnWidth = std::max(
+                firstColumnWidth,
+                list->fontMetrics().horizontalAdvance(label.section(QLatin1Char('\t'), 0, 0)));
+        }
+        for (int displayIndex = 0; displayIndex < presetOrder.size(); ++displayIndex) {
+            const int index = presetOrder.at(displayIndex);
+            const QString label = tr(presets.at(index).label);
+            auto* item = new QListWidgetItem(label, list);
             item->setData(Qt::UserRole, index);
+            if (label.contains(QLatin1Char('\t'))) {
+                item->setSizeHint(QSize(0, list->fontMetrics().height() + 8));
+                auto* row = new QWidget(list);
+                auto* rowLayout = new QHBoxLayout(row);
+                rowLayout->setContentsMargins(4, 0, 4, 0);
+                rowLayout->setSpacing(12);
+                auto* name = new QLabel(label.section(QLatin1Char('\t'), 0, 0), row);
+                name->setFixedWidth(firstColumnWidth);
+                auto* size = new QLabel(label.section(QLatin1Char('\t'), 1), row);
+                rowLayout->addWidget(name);
+                rowLayout->addWidget(size, 1);
+                list->setItemWidget(item, row);
+            }
         }
         if (list->count() > 0) {
             list->setCurrentRow(0);
@@ -5015,13 +5088,13 @@ bool MainWindow::reviewImportedDeck(const QString& filePath, Deck* deck)
                     const FieldDefinition other = reviewedFields.at(index);
                     reviewedFields[index] = FieldDefinition(
                         other.name(), FieldType::Text, std::min(other.maxLength(), 256),
-                        other.showName(), other.isPhone(), other.legacyDescriptor());
+                        other.showName(), other.isPhone(), other.legacyDescriptor(), other.displayWidth());
                 }
             }
         }
         reviewedFields[fieldIndex] = FieldDefinition(
             revisedName, revisedNotes ? FieldType::Notes : FieldType::Text, revisedLength,
-            original.showName(), original.isPhone(), original.legacyDescriptor());
+            original.showName(), original.isPhone(), original.legacyDescriptor(), original.displayWidth());
         table->horizontalHeaderItem(fieldIndex + 1)->setText(revisedName);
     });
 
@@ -5058,7 +5131,7 @@ bool MainWindow::reviewImportedDeck(const QString& filePath, Deck* deck)
         if (requiredLength != original.maxLength()) {
             reviewedFields[fieldIndex] = FieldDefinition(
                 original.name(), original.type(), std::min(requiredLength, 12192),
-                original.showName(), original.isPhone(), original.legacyDescriptor());
+                original.showName(), original.isPhone(), original.legacyDescriptor(), original.displayWidth());
         }
     }
     deck->setFields(std::move(reviewedFields));
@@ -5658,6 +5731,16 @@ UiBuilder::DialogContext MainWindow::dialogContext() const
         context.deckDescription = workspace->deck().description();
         context.fieldNames = workspace->fieldNames();
         context.reportNames = reportNamesFromDeck(workspace->deck());
+        for (const ReportDefinition& report : workspace->deck().reports()) {
+            QString type = tr("Report");
+            if (report.formType == ReportFormType::Card) {
+                type = tr("Card");
+            } else if (report.formType == ReportFormType::Label) {
+                type = tr("Label");
+            }
+            context.reports.append({type, report.name});
+        }
+        context.searchDirectionAvailable = workspace->hasLastSearchRequest();
     } else {
         context.deckName = tr("Untitled");
     }
@@ -5808,15 +5891,20 @@ void MainWindow::updateCommandState()
     const bool hasCards = cardCount > 0;
     const bool hasPreviousCard = hasCards && currentCardIndex > 0;
     const bool hasNextCard = hasCards && currentCardIndex + 1 < cardCount;
+    if (QAction* action = findUiAction(Command::PhoneDial)) {
+        action->setEnabled(true);
+    }
 
     for (int commandId : {Command::CardDelete,
                           Command::CardDuplicate,
                           Command::SearchFind,
-                          Command::SearchFindNext,
                           Command::SearchReplace}) {
         if (QAction* action = findUiAction(commandId)) {
             action->setEnabled(workspace != nullptr && hasCards);
         }
+    }
+    if (QAction* action = findUiAction(Command::SearchFindNext)) {
+        action->setEnabled(workspace != nullptr && hasCards && workspace->hasLastSearchRequest());
     }
     for (int commandId : {Command::NavigateFirstCard,
                           Command::NavigatePreviousWindowful,
@@ -5892,6 +5980,7 @@ void MainWindow::updateCommandState()
             Command::ConfigureTextFont,
             Command::ConfigureIndexFont,
             Command::ConfigureColors,
+            Command::ConfigureDeckDescription,
         };
         for (int commandId : templateDesignerCommandIds) {
             if (QAction* action = findUiAction(commandId)) {

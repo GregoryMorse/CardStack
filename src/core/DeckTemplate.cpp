@@ -62,8 +62,8 @@ LegacyTemplateFieldDescriptor legacyField(
     int right,
     int bottom,
     LegacyTemplateTextAlignment textAlignment,
-    quint8 legacyStyleMetricByte,
-    quint8 legacyTailByte)
+    quint8 legacyDisplayWidthLowByte,
+    quint8 legacyDisplayWidthHighByte)
 {
     LegacyTemplateFieldDescriptor field;
     field.fieldIndex = fieldIndex;
@@ -76,8 +76,8 @@ LegacyTemplateFieldDescriptor legacyField(
     field.dataLength = dataLength;
     field.legacyBounds640 = legacyBounds(left, top, right, bottom);
     field.textAlignment = textAlignment;
-    field.legacyStyleMetricByte = legacyStyleMetricByte;
-    field.legacyTailByte = legacyTailByte;
+    field.legacyDisplayWidthLowByte = legacyDisplayWidthLowByte;
+    field.legacyDisplayWidthHighByte = legacyDisplayWidthHighByte;
     return field;
 }
 
@@ -106,7 +106,9 @@ QVector<FieldDefinition> fieldDefinitionsFromLegacyFields(const QVector<LegacyTe
             legacyField.fieldType,
             legacyField.dataLength,
             legacyField.controlRole == LegacyTemplateControlRole::Standalone,
-            legacyField.dialableMarker != 0));
+            legacyField.dialableMarker != 0,
+            {},
+            legacyField.displayWidth()));
     }
     return fields;
 }
@@ -181,11 +183,63 @@ CardTemplateLayout layoutFromLegacyFields(
         frame.bounds = scaledLegacyBounds(legacyField.legacyBounds640);
         frame.text = legacyField.name;
         frame.fieldIndex = legacyField.fieldIndex;
-        frame.styleFlags = legacyField.legacyTailByte;
+        if (legacyField.textAlignment == LegacyTemplateTextAlignment::Center) {
+            frame.styleFlags |= CardTemplateStyleFlagAlignCenter;
+        } else if (legacyField.textAlignment == LegacyTemplateTextAlignment::Right) {
+            frame.styleFlags |= CardTemplateStyleFlagAlignRight;
+        }
         layout.frames.append(frame);
     }
 
     return layout;
+}
+
+QVector<DeckSortKey> defaultSortKeysForTemplate(int legacyResourceId)
+{
+    // Decoded template resources store up to three one-based field indexes.
+    switch (legacyResourceId) {
+    case 101: return {{1, false}, {2, false}, {6, false}};
+    case 102: return {{2, false}, {0, false}, {4, false}};
+    case 103: return {{0, false}, {1, false}};
+    case 104: return {{0, false}, {1, false}, {2, false}};
+    case 105: return {{0, false}, {1, false}};
+    case 106: return {{0, false}};
+    case 107: return {{1, false}, {0, false}};
+    case 108: return {{1, false}, {0, false}};
+    case 109: return {{0, false}};
+    case 110: return {{2, false}, {0, false}, {1, false}};
+    case 111: return {{1, false}, {0, false}};
+    case 112: return {{2, false}, {0, false}, {3, false}};
+    case 113: return {{0, false}, {1, false}, {2, false}};
+    case 114: return {{0, false}};
+    default: return {};
+    }
+}
+
+DeckAppearance builtInAppearance(int legacyResourceId)
+{
+    auto serializedFont = [](int pixelSize) {
+        return QStringLiteral("Arial,-1,%1,5,400,0,0,0,0,0").arg(pixelSize);
+    };
+
+    DeckAppearance appearance;
+    appearance.indexFont = serializedFont(13);
+    appearance.nameFont = serializedFont(13);
+    appearance.textFont = serializedFont(13);
+    const bool thirteenPixelData = legacyResourceId == 104 || legacyResourceId == 105
+        || legacyResourceId == 106 || legacyResourceId == 108 || legacyResourceId == 109;
+    appearance.dataFont = serializedFont(thirteenPixelData ? 13 : 12);
+    appearance.customColors = {
+        QStringLiteral("#c0c0c0"),
+        QStringLiteral("#0000ff"),
+        QStringLiteral("#ff00ff"),
+        QStringLiteral("#000000"),
+        QStringLiteral("#00ffff"),
+        QStringLiteral("#000000"),
+        QStringLiteral("#000000"),
+    };
+    appearance.useSystemColors = true;
+    return appearance;
 }
 
 DeckTemplate deckTemplateFromDecodedLegacyTemplate(
@@ -200,8 +254,10 @@ DeckTemplate deckTemplateFromDecodedLegacyTemplate(
     deckTemplate.legacyFields = std::move(legacyFields);
     deckTemplate.legacyTextFrames = std::move(legacyTextFrames);
     deckTemplate.fields = fieldDefinitionsFromLegacyFields(deckTemplate.legacyFields);
+    deckTemplate.sortKeys = defaultSortKeysForTemplate(legacyResourceId);
     deckTemplate.reports = builtInReportTemplatesForLegacyResource(legacyResourceId);
     deckTemplate.layout = layoutFromLegacyFields(deckTemplate.legacyFields, deckTemplate.legacyTextFrames);
+    deckTemplate.appearance = builtInAppearance(legacyResourceId);
     deckTemplate.schemaFromLegacyResource = true;
     deckTemplate.layoutFromLegacyResource = true;
     deckTemplate.layoutGeneratedFromSchema = false;
@@ -456,7 +512,9 @@ Deck createDeckFromTemplate(const DeckTemplate& deckTemplate, QString deckName)
         deckName = deckTemplate.name;
     }
     Deck deck = deckWithFields(std::move(deckName), deckTemplate.fields);
+    deck.setSortKeys(deckTemplate.sortKeys);
     deck.setCardTemplateLayout(deckTemplate.layout);
+    deck.setAppearance(deckTemplate.appearance);
     for (const ReportDefinition& report : deckTemplate.reports) {
         deck.addReport(report);
     }
@@ -481,7 +539,9 @@ Deck createDeckFromScratch(QString deckName)
     Deck deck(std::move(deckName));
     deck.setDescription(QStringLiteral("Designed from scratch."));
     deck.addField(textField(QStringLiteral("New Data Box")));
+    deck.setSortKeys({{0, false}});
     deck.setCardTemplateLayout(generatedLayoutForFields(deck.fields()));
+    deck.setAppearance(builtInAppearance(0));
     return deck;
 }
 

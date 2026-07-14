@@ -1,11 +1,13 @@
 #include "CardDetailPanel.h"
 
 #include <QFont>
+#include <QFontMetrics>
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPen>
+#include <QStringList>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -40,7 +42,7 @@ QRectF cardRectForOrder(const QRect& widgetRect, int visibleCount, int order)
 void drawCardFrame(
     QPainter* painter,
     const QRectF& cardRect,
-    const QString& title,
+    const CardDetailPanel::CardTitleParts& title,
     const QFont& baseFont,
     bool active)
 {
@@ -72,10 +74,34 @@ void drawCardFrame(
     titleFont.setBold(active);
     titleFont.setPointSize(std::max(9, titleFont.pointSize()));
     painter->setFont(titleFont);
-    painter->drawText(
-        headerRect.adjusted(14, 2, -14, -2),
-        Qt::AlignLeft | Qt::AlignVCenter,
-        title.trimmed());
+    const QRectF titleArea = headerRect.adjusted(14, 2, -14, -2);
+    const qreal sectionWidth = titleArea.width() / 3.0;
+    const QFontMetrics metrics(titleFont);
+    const struct {
+        QString text;
+        Qt::Alignment alignment;
+    } sections[] = {
+        {title.left, Qt::AlignLeft | Qt::AlignVCenter},
+        {title.middle, Qt::AlignHCenter | Qt::AlignVCenter},
+        {title.right, Qt::AlignRight | Qt::AlignVCenter},
+    };
+    for (int index = 0; index < 3; ++index) {
+        const QRectF section(
+            titleArea.left() + index * sectionWidth,
+            titleArea.top(),
+            sectionWidth,
+            titleArea.height());
+        painter->save();
+        painter->setClipRect(section);
+        painter->drawText(
+            section.adjusted(3, 0, -3, 0),
+            sections[index].alignment,
+            metrics.elidedText(
+                sections[index].text,
+                Qt::ElideRight,
+                std::max(0, static_cast<int>(section.width()) - 6)));
+        painter->restore();
+    }
 
     if (active) {
         painter->setPen(QPen(QColor(214, 200, 169), 1));
@@ -105,14 +131,30 @@ QVBoxLayout* CardDetailPanel::bodyLayout() const
     return m_bodyLayout;
 }
 
-void CardDetailPanel::setCardTitle(const QString& cardTitle)
+QString CardDetailPanel::CardTitleParts::accessibleText() const
+{
+    QStringList values;
+    for (const QString& value : {left, middle, right}) {
+        if (!value.trimmed().isEmpty()) {
+            values.append(value.trimmed());
+        }
+    }
+    return values.join(QStringLiteral(" | "));
+}
+
+const CardDetailPanel::CardTitleParts& CardDetailPanel::cardTitle() const
+{
+    return m_cardTitle;
+}
+
+void CardDetailPanel::setCardTitle(const CardTitleParts& cardTitle)
 {
     if (m_cardTitle == cardTitle) {
         return;
     }
 
     m_cardTitle = cardTitle;
-    setAccessibleName(cardTitle);
+    setAccessibleName(cardTitle.accessibleText());
     update();
 }
 

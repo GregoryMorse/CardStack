@@ -1,8 +1,10 @@
 #include "UiBuilder.h"
 
+#include "Deck.h"
 #include "UiIds.h"
 #include "UiResourceData.h"
 
+#include <QAbstractItemModel>
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QColorDialog>
@@ -25,6 +27,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
+#include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollBar>
@@ -464,6 +467,8 @@ public:
     {
         setFocusPolicy(Qt::StrongFocus);
         setAutoFillBackground(true);
+        setProperty("paletteColorCount", 48);
+        setProperty("hasDeckPreview", true);
     }
 
     void setSelectedRole(int role)
@@ -506,46 +511,64 @@ protected:
         painter.setPen(palette().shadow().color());
         painter.drawRect(rect().adjusted(0, 0, -1, -1));
 
-        const int margin = 8;
-        const int gap = 6;
-        const int swatchWidth = std::max(14, (width() - margin * 2 - gap * 2) / 3);
-        const int swatchHeight = std::max(14, (height() - margin * 2 - gap * 2) / 3);
-
-        for (int index = 0; index < m_customColors.size(); ++index) {
-            const int row = index / 3;
-            const int column = index % 3;
+        const QRect paletteRect = rect().adjusted(8, 8, -8, -72);
+        const int swatchWidth = std::max(1, paletteRect.width() / 8);
+        const int swatchHeight = std::max(1, paletteRect.height() / 6);
+        const QVector<QColor>& colors = paletteColors();
+        for (int index = 0; index < colors.size(); ++index) {
             const QRect swatch(
-                margin + column * (swatchWidth + gap),
-                margin + row * (swatchHeight + gap),
+                paletteRect.left() + (index % 8) * swatchWidth,
+                paletteRect.top() + (index / 8) * swatchHeight,
                 swatchWidth,
                 swatchHeight);
-
-            painter.fillRect(swatch, colorForRole(index));
-            painter.setPen(index == m_selectedRole ? palette().highlight().color() : palette().mid().color());
+            painter.fillRect(swatch.adjusted(1, 1, -1, -1), colors.at(index));
+            painter.setPen(colors.at(index) == colorForRole(m_selectedRole)
+                               ? Qt::black
+                               : QColor(QStringLiteral("#707070")));
             painter.drawRect(swatch.adjusted(0, 0, -1, -1));
-            if (index == m_selectedRole) {
+            if (colors.at(index) == colorForRole(m_selectedRole)) {
                 painter.drawRect(swatch.adjusted(2, 2, -3, -3));
             }
         }
+
+        const QRect preview = rect().adjusted(8, height() - 64, -8, -8);
+        painter.fillRect(preview, colorForRole(static_cast<int>(DeckColorRole::CardBackground)));
+        painter.setPen(QColor(QStringLiteral("#707070")));
+        painter.drawRect(preview.adjusted(0, 0, -1, -1));
+
+        const QRect indexPreview(preview.left() + 5, preview.top() + 4, preview.width() - 10, 15);
+        painter.fillRect(indexPreview, colorForRole(static_cast<int>(DeckColorRole::IndexBackground)));
+        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::IndexForeground)));
+        painter.drawText(indexPreview.adjusted(4, 0, -4, 0), Qt::AlignVCenter, tr("Index"));
+
+        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::NameForeground)));
+        painter.drawText(QRect(preview.left() + 6, preview.top() + 24, 52, 20),
+                         Qt::AlignRight | Qt::AlignVCenter,
+                         tr("Name"));
+        const QRect dataPreview(preview.left() + 64, preview.top() + 24,
+                                std::max(20, preview.width() - 70), 20);
+        painter.fillRect(dataPreview, colorForRole(static_cast<int>(DeckColorRole::DataBackground)));
+        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::DataForeground)));
+        painter.drawText(dataPreview.adjusted(4, 0, -4, 0), Qt::AlignVCenter, tr("Sample data"));
+        painter.setPen(colorForRole(static_cast<int>(DeckColorRole::TextForeground)));
+        painter.drawText(QRect(preview.left() + 6, preview.bottom() - 14,
+                               preview.width() - 12, 12),
+                         Qt::AlignVCenter,
+                         tr("Text"));
     }
 
     void mousePressEvent(QMouseEvent* event) override
     {
-        const int role = roleAt(event->position().toPoint());
-        if (role < 0) {
+        const int paletteIndex = paletteIndexAt(event->position().toPoint());
+        if (paletteIndex < 0) {
             return;
         }
 
-        setSelectedRole(role);
         if (m_useSystemColors) {
             return;
         }
-
-        const QColor color = QColorDialog::getColor(m_customColors.at(role), this, tr("CardStack Color"));
-        if (color.isValid()) {
-            m_customColors[role] = color;
-            update();
-        }
+        m_customColors[m_selectedRole] = paletteColors().at(paletteIndex);
+        update();
     }
 
 private:
@@ -555,38 +578,49 @@ private:
             return m_customColors.at(role);
         }
 
-        const QList<QPalette::ColorRole> systemRoles = {
-            QPalette::WindowText,
-            QPalette::Text,
-            QPalette::ButtonText,
-            QPalette::ToolTipText,
-            QPalette::Base,
-            QPalette::AlternateBase,
-            QPalette::Window,
-        };
-        return palette().color(systemRoles.at(std::clamp(role, 0, static_cast<int>(systemRoles.size()) - 1)));
+        switch (static_cast<DeckColorRole>(role)) {
+        case DeckColorRole::IndexBackground:
+            return QColor(QStringLiteral("#c0c0c0"));
+        case DeckColorRole::DataBackground:
+        case DeckColorRole::CardBackground:
+            return QColor(QStringLiteral("#ffffff"));
+        default:
+            return QColor(QStringLiteral("#000000"));
+        }
     }
 
-    int roleAt(const QPoint& point) const
+    int paletteIndexAt(const QPoint& point) const
     {
-        const int margin = 8;
-        const int gap = 6;
-        const int swatchWidth = std::max(14, (width() - margin * 2 - gap * 2) / 3);
-        const int swatchHeight = std::max(14, (height() - margin * 2 - gap * 2) / 3);
-
-        for (int index = 0; index < m_customColors.size(); ++index) {
-            const int row = index / 3;
-            const int column = index % 3;
-            const QRect swatch(
-                margin + column * (swatchWidth + gap),
-                margin + row * (swatchHeight + gap),
-                swatchWidth,
-                swatchHeight);
-            if (swatch.contains(point)) {
-                return index;
-            }
+        const QRect paletteRect = rect().adjusted(8, 8, -8, -72);
+        if (!paletteRect.contains(point)) {
+            return -1;
         }
-        return -1;
+        const int swatchWidth = std::max(1, paletteRect.width() / 8);
+        const int swatchHeight = std::max(1, paletteRect.height() / 6);
+        const int column = std::clamp((point.x() - paletteRect.left()) / swatchWidth, 0, 7);
+        const int row = std::clamp((point.y() - paletteRect.top()) / swatchHeight, 0, 5);
+        return row * 8 + column;
+    }
+
+    static const QVector<QColor>& paletteColors()
+    {
+        static const QVector<QColor> colors = [] {
+            static const char* const values[] = {
+                "#ff8080", "#ffffe8", "#80ff80", "#00ff80", "#80ffff", "#0080ff", "#ff80c0", "#ff80ff",
+                "#ff0000", "#ffff80", "#80ff00", "#00ff40", "#00ffff", "#0080c0", "#8080c0", "#ff00ff",
+                "#804040", "#ffff00", "#00ff00", "#008080", "#004080", "#8080ff", "#800040", "#ff0080",
+                "#800000", "#ff8000", "#008000", "#008040", "#0000ff", "#0000a0", "#800080", "#8000ff",
+                "#400000", "#804000", "#004000", "#004040", "#000080", "#000040", "#400040", "#400080",
+                "#000000", "#808000", "#808040", "#808080", "#408080", "#c0c0c0", "#828282", "#ffffff",
+            };
+            QVector<QColor> result;
+            result.reserve(48);
+            for (const char* value : values) {
+                result.append(QColor(QString::fromLatin1(value)));
+            }
+            return result;
+        }();
+        return colors;
     }
 
     QVector<QColor> m_customColors;
@@ -3543,9 +3577,22 @@ void initializeNewFileDialog(QDialog* dialog, const UiBuilder::DialogContext& co
         sourceCombo->setGeometry(comboRect);
     }
 
-    auto updateTemplateState = [sourceCombo, templateList]() {
+    auto updateTemplateState = [dialog, sourceCombo, templateList]() {
         const int selected = sourceCombo->currentIndex();
-        templateList->setEnabled(selected == 0 || selected == 2);
+        const bool enabled = selected == 0 || selected == 2;
+        if (!enabled) {
+            if (templateList->currentRow() >= 0) {
+                dialog->setProperty("savedTemplateRow", templateList->currentRow());
+            }
+            templateList->setEnabled(false);
+            return;
+        }
+
+        templateList->setEnabled(true);
+        const int savedRow = dialog->property("savedTemplateRow").toInt();
+        if (savedRow >= 0 && savedRow < templateList->count()) {
+            templateList->setCurrentRow(savedRow);
+        }
     };
 
     QObject::connect(sourceCombo, &QComboBox::currentIndexChanged, dialog, updateTemplateState);
@@ -3574,6 +3621,10 @@ void initializeSearchDialog(QDialog* dialog, const UiBuilder::DialogContext& con
         dialog,
         {Control::SearchDirectionBeginning, Control::SearchDirectionForward, Control::SearchDirectionBackward},
         Control::SearchDirectionBeginning);
+    setControlsEnabled(
+        dialog,
+        {Control::SearchDirectionBeginning, Control::SearchDirectionForward, Control::SearchDirectionBackward},
+        context.searchDirectionAvailable);
 
     const QList<int> secondClauseControls = {
         Control::SearchSecondText,
@@ -3785,6 +3836,16 @@ void initializeSortDialog(QDialog* dialog, const UiBuilder::DialogContext& conte
     populateComboBox(dialog, Control::SortFieldLevel1, sortFields, false);
     populateComboBox(dialog, Control::SortFieldLevel2, sortFields, false);
     populateComboBox(dialog, Control::SortFieldLevel3, sortFields, false);
+
+    auto* secondLevel = findUiControl<QComboBox>(dialog, Control::SortFieldLevel2);
+    auto* thirdLevel = findUiControl<QComboBox>(dialog, Control::SortFieldLevel3);
+    if (secondLevel != nullptr && thirdLevel != nullptr) {
+        QObject::connect(secondLevel, qOverload<int>(&QComboBox::activated), dialog, [thirdLevel](int index) {
+            if (index == 0) {
+                thirdLevel->setFocus();
+            }
+        });
+    }
 }
 
 void initializeMergeDialog(QDialog* dialog, const UiBuilder::DialogContext& context)
@@ -3816,13 +3877,43 @@ void initializeExportDialog(QDialog* dialog, const UiBuilder::DialogContext& con
 
 void initializeDesignReportsDialog(QDialog* dialog, const UiBuilder::DialogContext& context)
 {
-    populateListWidget(dialog, Control::ReportsList, context.reportNames);
     auto* reportList = findUiControl<QListWidget>(dialog, Control::ReportsList);
     auto* printButton = findUiControl<QAbstractButton>(dialog, Control::Ok);
     auto* deleteButton = findUiControl<QAbstractButton>(dialog, Control::ReportsDelete);
     auto* modifyButton = findUiControl<QAbstractButton>(dialog, Control::ReportsModify);
     auto* undoButton = findUiControl<QAbstractButton>(dialog, Control::ReportsUndoDelete);
     auto* addDefaultsButton = findUiControl<QAbstractButton>(dialog, Control::ReportsAddDefaults);
+
+    if (reportList != nullptr) {
+        reportList->clear();
+        const int typeWidth = reportList->fontMetrics().horizontalAdvance(QObject::tr("Report")) + 18;
+        const QVector<UiBuilder::DialogContext::ReportListEntry> reports = context.reports.isEmpty()
+            ? [&context]() {
+                  QVector<UiBuilder::DialogContext::ReportListEntry> fallback;
+                  for (const QString& name : context.reportNames) {
+                      fallback.append({QObject::tr("Report"), name});
+                  }
+                  return fallback;
+              }()
+            : context.reports;
+
+        for (const auto& report : reports) {
+            auto* item = new QListWidgetItem(report.description, reportList);
+            item->setSizeHint(QSize(0, reportList->fontMetrics().height() + 8));
+            auto* row = new QWidget(reportList);
+            auto* rowLayout = new QHBoxLayout(row);
+            rowLayout->setContentsMargins(4, 0, 4, 0);
+            rowLayout->setSpacing(8);
+            auto* typeLabel = new QLabel(report.type, row);
+            typeLabel->setObjectName(QStringLiteral("reportType"));
+            typeLabel->setFixedWidth(typeWidth);
+            auto* descriptionLabel = new QLabel(report.description, row);
+            descriptionLabel->setObjectName(QStringLiteral("reportDescription"));
+            rowLayout->addWidget(typeLabel);
+            rowLayout->addWidget(descriptionLabel, 1);
+            reportList->setItemWidget(item, row);
+        }
+    }
 
     auto updateButtons = [reportList, printButton, deleteButton, modifyButton]() {
         const bool hasSelection = reportList != nullptr && reportList->currentRow() >= 0;
@@ -3900,6 +3991,22 @@ void initializeColorDialog(QDialog* dialog)
 
     auto* swatchGrid = dynamic_cast<ColorSwatchGrid*>(findUiControl<QWidget>(dialog, Control::ColorCustomGrid));
     if (swatchGrid != nullptr) {
+        const QRect oldGeometry = swatchGrid->geometry();
+        const int desiredWidth = std::max(oldGeometry.width(), 360);
+        const int desiredHeight = std::max(oldGeometry.height(), 210);
+        const int heightDelta = desiredHeight - oldGeometry.height();
+        swatchGrid->setGeometry(oldGeometry.x(), oldGeometry.y(), desiredWidth, desiredHeight);
+        if (heightDelta > 0) {
+            const QList<QWidget*> controls =
+                dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+            for (QWidget* control : controls) {
+                if (control != swatchGrid && control->y() >= oldGeometry.bottom()) {
+                    control->move(control->x(), control->y() + heightDelta);
+                }
+            }
+            dialog->resize(std::max(dialog->width(), swatchGrid->geometry().right() + 16),
+                           dialog->height() + heightDelta);
+        }
         swatchGrid->setSelectedRole(roleCombo != nullptr ? roleCombo->currentIndex() : 5);
     }
 
@@ -3910,11 +4017,9 @@ void initializeColorDialog(QDialog* dialog)
     }
 
     if (auto* useSystem = findUiControl<QAbstractButton>(dialog, Control::ColorUseSystem)) {
-        useSystem->setText(QObject::tr("Use system palette colors"));
+        useSystem->setText(QObject::tr("Use system colors"));
         useSystem->setCheckable(true);
-#ifndef Q_OS_WIN
-        useSystem->setVisible(false);
-#endif
+        useSystem->setVisible(true);
         QObject::connect(useSystem, &QAbstractButton::toggled, dialog, [swatchGrid](bool checked) {
             if (swatchGrid != nullptr) {
                 swatchGrid->setUseSystemColors(checked);
@@ -4011,13 +4116,23 @@ void initializeAddSystemBoxDialog(QDialog* dialog)
             });
         }
     }
-    for (int controlId : {Control::SystemBoxDateFormats, Control::SystemBoxNumberFormats, Control::SystemBoxSystemFields}) {
-        if (auto* combo = findUiControl<QComboBox>(dialog, controlId)) {
-            QObject::connect(combo, &QComboBox::currentIndexChanged, dialog, [updatePreview](int) {
-                updatePreview();
-            });
+    const auto bindFormatCombo = [dialog, updatePreview](int comboId, int categoryId) {
+        auto* combo = findUiControl<QComboBox>(dialog, comboId);
+        if (combo == nullptr) {
+            return;
         }
-    }
+        QObject::connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), dialog, [dialog, categoryId, updatePreview](int) {
+            auto* category = findUiControl<QAbstractButton>(dialog, categoryId);
+            if (category != nullptr && !category->isChecked()) {
+                category->setChecked(true);
+                return;
+            }
+            updatePreview();
+        });
+    };
+    bindFormatCombo(Control::SystemBoxDateFormats, Control::SystemBoxDateCategory);
+    bindFormatCombo(Control::SystemBoxNumberFormats, Control::SystemBoxNumberCategory);
+    bindFormatCombo(Control::SystemBoxSystemFields, Control::SystemBoxSystemCategory);
     updatePreview();
 }
 
@@ -4085,6 +4200,61 @@ void initializePhoneDefinitionDialog(QDialog* dialog)
     }
     dialog->resize(dialog->width(), std::max(1, dialog->height() - usefulSectionShiftPx));
     dialog->setMinimumSize(dialog->size());
+
+    auto* quickDials = findUiControl<QListWidget>(dialog, Control::PhoneQuickDials);
+    if (quickDials == nullptr) {
+        return;
+    }
+    const QPointer<QListWidget> guardedQuickDials(quickDials);
+    const QPointer<QAbstractButton> addButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialAdd));
+    const QPointer<QAbstractButton> modifyButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialModify));
+    const QPointer<QAbstractButton> deleteButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialDelete));
+    const QPointer<QAbstractButton> okButton(findUiControl<QAbstractButton>(dialog, Control::Ok));
+    const auto updateQuickDialButtons = [guardedQuickDials, addButton, modifyButton, deleteButton, okButton]() {
+        if (guardedQuickDials.isNull()) {
+            return;
+        }
+        const int count = guardedQuickDials->count();
+        const auto setEnabled = [okButton](const QPointer<QAbstractButton>& button, bool enabled) {
+            if (button.isNull()) {
+                return;
+            }
+            if (!enabled && button->hasFocus()) {
+                if (!okButton.isNull()) {
+                    okButton->setFocus();
+                }
+            }
+            button->setEnabled(enabled);
+        };
+        setEnabled(addButton, count < 100);
+        setEnabled(modifyButton, count > 0);
+        setEnabled(deleteButton, count > 0);
+    };
+    QObject::connect(quickDials->model(), &QAbstractItemModel::rowsInserted, dialog, updateQuickDialButtons);
+    QObject::connect(quickDials->model(), &QAbstractItemModel::rowsRemoved, dialog, updateQuickDialButtons);
+    QObject::connect(quickDials->model(), &QAbstractItemModel::modelReset, dialog, updateQuickDialButtons);
+    updateQuickDialButtons();
+}
+
+void initializeQuickDialDialog(QDialog* dialog)
+{
+    auto* number = findUiControl<QLineEdit>(dialog, Control::QuickDialNumber);
+    auto* ok = findUiControl<QAbstractButton>(dialog, Control::Ok);
+    if (number == nullptr || ok == nullptr) {
+        return;
+    }
+
+    const auto updateAcceptState = [dialog, number, ok]() {
+        const bool enabled = !number->text().isEmpty();
+        if (!enabled && ok->hasFocus()) {
+            if (auto* cancel = findUiControl<QAbstractButton>(dialog, Control::Cancel)) {
+                cancel->setFocus();
+            }
+        }
+        ok->setEnabled(enabled);
+    };
+    QObject::connect(number, &QLineEdit::textChanged, dialog, updateAcceptState);
+    updateAcceptState();
 }
 
 void initializeReportFormDialog(QDialog* dialog)
@@ -4168,6 +4338,8 @@ void initializeUiDialog(
         initializePhoneDialog(dialog);
     } else if (dialogName == QStringLiteral("PHNDEF")) {
         initializePhoneDefinitionDialog(dialog);
+    } else if (dialogName == QStringLiteral("QUICKDIAL")) {
+        initializeQuickDialDialog(dialog);
     } else if (dialogName == QStringLiteral("REPORTFORM")) {
         initializeReportFormDialog(dialog);
     } else if (dialogName == QStringLiteral("DEFINEFORM")) {

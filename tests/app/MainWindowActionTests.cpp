@@ -1,4 +1,4 @@
-﻿#include "MainWindow.h"
+#include "MainWindow.h"
 
 #include "../support/ModalDialogDriver.h"
 #include "../support/VisualTestSupport.h"
@@ -573,6 +573,7 @@ private slots:
         const QSet<int> commandIds = commandIdsFromToolBar(toolBar);
         QVERIFY(commandIds.contains(UiIds::Command::FileNew));
         QVERIFY(commandIds.contains(UiIds::Command::FileOpen));
+        QVERIFY(commandIds.contains(UiIds::Command::PhoneDial));
         QVERIFY(!commandIds.contains(UiIds::Command::FileSave));
         QVERIFY(!commandIds.contains(UiIds::Command::CardAdd));
         QVERIFY(!commandIds.contains(UiIds::Command::ToolAddText));
@@ -600,7 +601,9 @@ private slots:
         QVERIFY(commandIds.contains(UiIds::Command::FileSave));
         QVERIFY(commandIds.contains(UiIds::Command::FilePrintReport));
         QVERIFY(commandIds.contains(UiIds::Command::SearchFind));
+        QVERIFY(commandIds.contains(UiIds::Command::SearchFindNext));
         QVERIFY(commandIds.contains(UiIds::Command::SearchReplace));
+        QVERIFY(commandIds.contains(UiIds::Command::PhoneDial));
         QVERIFY(commandIds.contains(UiIds::Command::CardAdd));
         QVERIFY(commandIds.contains(UiIds::Command::CardDelete));
         QVERIFY(commandIds.contains(UiIds::Command::NavigateFirstCard));
@@ -609,6 +612,13 @@ private slots:
         QVERIFY(commandIds.contains(UiIds::Command::FileOpenReport));
         QVERIFY(!commandIds.contains(UiIds::Command::ToolAddText));
         QVERIFY(!commandIds.contains(UiIds::Command::ToolAddSystemData));
+
+        QAction* findNextAction = findCommandAction(window.menuBar(), UiIds::Command::SearchFindNext);
+        QAction* phoneDialAction = findCommandAction(window.menuBar(), UiIds::Command::PhoneDial);
+        QVERIFY(findNextAction != nullptr);
+        QVERIFY(phoneDialAction != nullptr);
+        QVERIFY(!findNextAction->isEnabled());
+        QVERIFY(phoneDialAction->isEnabled());
 
         for (QAction* action : toolBar->actions()) {
             if (action->isSeparator() || !action->data().isValid()) {
@@ -1509,7 +1519,7 @@ private slots:
         QVERIFY(newReportAction != nullptr);
         QVERIFY(newReportAction->isEnabled());
 
-        acceptNextReportFormDialog(ReportFormType::Report, 1);
+        acceptNextReportFormDialog(ReportFormType::Report, 0);
         newReportAction->trigger();
         QCoreApplication::processEvents();
 

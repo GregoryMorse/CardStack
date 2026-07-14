@@ -30,8 +30,14 @@ struct LegacyTemplateFieldDescriptor {
     int dataLength = 0;
     QRect legacyBounds640;
     LegacyTemplateTextAlignment textAlignment = LegacyTemplateTextAlignment::Left;
-    quint8 legacyStyleMetricByte = 0;
-    quint8 legacyTailByte = 0;
+    quint8 legacyDisplayWidthLowByte = 0;
+    quint8 legacyDisplayWidthHighByte = 0;
+
+    int displayWidth() const
+    {
+        return static_cast<int>(legacyDisplayWidthLowByte)
+            | (static_cast<int>(legacyDisplayWidthHighByte) << 8);
+    }
 
     bool operator==(const LegacyTemplateFieldDescriptor&) const = default;
 };
@@ -48,10 +54,12 @@ struct DeckTemplate {
     int legacyResourceId = 0;
     QString name;
     QVector<FieldDefinition> fields;
+    QVector<DeckSortKey> sortKeys;
     QVector<ReportDefinition> reports;
     QVector<LegacyTemplateFieldDescriptor> legacyFields;
     QVector<LegacyTemplateTextFrameDescriptor> legacyTextFrames;
     CardTemplateLayout layout;
+    DeckAppearance appearance;
     bool schemaFromLegacyResource = false;
     bool layoutFromLegacyResource = false;
     bool layoutGeneratedFromSchema = false;

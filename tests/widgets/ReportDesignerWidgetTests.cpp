@@ -1,6 +1,8 @@
 ﻿#include "ReportDesignerWidget.h"
 
 #include "../support/ModalDialogDriver.h"
+#include "BuiltInReportTemplates.h"
+#include "Deck.h"
 #include "UiIds.h"
 
 #include <QCoreApplication>
@@ -187,6 +189,43 @@ private slots:
         QCOMPARE(designer.report().dataFont.legacyHeight, original.legacyHeight);
     }
 
+    void generatedDefaultReportsInheritTheirIndependentTemplateFonts()
+    {
+        Deck deck(QStringLiteral("Font defaults"));
+        ReportDefinition pageSource;
+        pageSource.dataFont = {QStringLiteral("Arial"), 31};
+        pageSource.textFont = {QStringLiteral("Courier New"), 29};
+        deck.addReport(pageSource);
+        ReportDefinition rowSource;
+        rowSource.dataFont = {QStringLiteral("Tahoma"), 27};
+        rowSource.textFont = {QStringLiteral("Times New Roman"), 25};
+        deck.addReport(rowSource);
+
+        const QVector<ReportDefinition> defaults = standardReportDefinitionsForDeck(
+            deck,
+            QStringLiteral("Default Page Report"),
+            QStringLiteral("Default Row Report"));
+        QCOMPARE(defaults.size(), 2);
+        QCOMPARE(defaults.at(0).dataFont.faceName, QStringLiteral("Arial"));
+        QCOMPARE(defaults.at(0).dataFont.legacyHeight, 31);
+        QCOMPARE(defaults.at(0).textFont.faceName, QStringLiteral("Courier New"));
+        QCOMPARE(defaults.at(1).dataFont.faceName, QStringLiteral("Tahoma"));
+        QCOMPARE(defaults.at(1).dataFont.legacyHeight, 27);
+        QCOMPARE(defaults.at(1).textFont.faceName, QStringLiteral("Times New Roman"));
+    }
+
+    void canvasExposesPageScaledHorizontalAndVerticalRulers()
+    {
+        ReportDesignerWidget designer(makeReport(), {});
+        QWidget* canvas = designer.findChild<QWidget*>(QStringLiteral("reportDesignCanvas"));
+        QVERIFY(canvas != nullptr);
+        QVERIFY(canvas->property("hasHorizontalRuler").toBool());
+        QVERIFY(canvas->property("hasVerticalRuler").toBool());
+        QCOMPARE(canvas->property("guideColor").toString(), QStringLiteral("#0057b8"));
+        QCOMPARE(canvas->property("selectionColor").toString(), QStringLiteral("#c51f1f"));
+        QCOMPARE(canvas->property("guideLineStyle").toString(), QStringLiteral("dotted"));
+    }
+
     void exposesAndStoresEveryReportLineAndFillStyle()
     {
         ReportDesignerWidget designer(makeReport(), {QStringLiteral("Product")});
@@ -302,7 +341,12 @@ private slots:
         QWidget* canvas = designer.findChild<QWidget*>(QStringLiteral("reportDesignCanvas"));
         QVERIFY(canvas != nullptr);
 
-        const QRectF available = canvas->rect().adjusted(16, 16, -20, -20);
+        constexpr int RulerThickness = 28;
+        const QRectF available = canvas->rect().adjusted(
+            RulerThickness + 16,
+            RulerThickness + 16,
+            -20,
+            -20);
         const qreal aspect = static_cast<qreal>(report.formWidth) / report.formHeight;
         qreal pageWidth = available.width();
         qreal pageHeight = pageWidth / aspect;

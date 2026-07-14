@@ -114,7 +114,11 @@ ReportFrameDefinition standardSystemFrame(QString token, const QRect& bounds, in
     return frame;
 }
 
-ReportDefinition standardReportShell(QString name, int frameCount)
+ReportDefinition standardReportShell(
+    const Deck& deck,
+    QString name,
+    int frameCount,
+    int sourceReportIndex)
 {
     ReportDefinition report;
     report.name = std::move(name);
@@ -131,14 +135,13 @@ ReportDefinition standardReportShell(QString name, int frameCount)
     report.marginTop = StandardReportMarginMils;
     report.marginRight = StandardReportMarginMils;
     report.marginBottom = StandardReportMarginMils;
-    report.textFont.faceName = QStringLiteral("Arial");
-    report.dataFont.faceName = QStringLiteral("Arial");
+    applyDefaultReportFonts(deck, &report, sourceReportIndex);
     return report;
 }
 
 ReportDefinition standardPageReport(const Deck& deck, QString name)
 {
-    ReportDefinition report = standardReportShell(std::move(name), deck.fieldCount() + 2);
+    ReportDefinition report = standardReportShell(deck, std::move(name), deck.fieldCount() + 2, 0);
     int top = StandardReportFieldTopMils;
     for (int fieldIndex = 0; fieldIndex < deck.fieldCount(); ++fieldIndex) {
         const FieldDefinition& field = deck.fieldAt(fieldIndex);
@@ -166,7 +169,7 @@ ReportDefinition standardPageReport(const Deck& deck, QString name)
 
 ReportDefinition standardRowReport(const Deck& deck, QString name)
 {
-    ReportDefinition report = standardReportShell(std::move(name), deck.fieldCount() + 2);
+    ReportDefinition report = standardReportShell(deck, std::move(name), deck.fieldCount() + 2, 1);
     for (int fieldIndex = 0; fieldIndex < deck.fieldCount(); ++fieldIndex) {
         const FieldDefinition& field = deck.fieldAt(fieldIndex);
         const int column = fieldIndex % StandardRowReportColumns;
@@ -5044,6 +5047,56 @@ QVector<ReportDefinition> standardReportDefinitionsForDeck(
         standardPageReport(deck, pageReportName),
         standardRowReport(deck, rowReportName),
     };
+}
+
+void applyDefaultReportFonts(
+    const Deck& deck,
+    ReportDefinition* report,
+    int sourceReportIndex)
+{
+    if (report == nullptr) {
+        return;
+    }
+
+    if (deck.reportCount() > 0) {
+        const int sourceIndex = std::clamp(sourceReportIndex, 0, deck.reportCount() - 1);
+        const ReportDefinition& source = deck.reportAt(sourceIndex);
+        report->dataFont = source.dataFont;
+        report->textFont = source.textFont;
+        return;
+    }
+
+    const auto fromTemplateFont = [](const QString& serialized, int fallbackHeight) {
+        ReportFontDefinition result;
+        const QStringList parts = serialized.split(QLatin1Char(','));
+        if (!parts.isEmpty()) {
+            result.faceName = parts.first().trimmed();
+        }
+        if (parts.size() > 2) {
+            bool pixelSizeValid = false;
+            const int pixelSize = parts.at(2).toInt(&pixelSizeValid);
+            if (pixelSizeValid && pixelSize > 0) {
+                result.legacyHeight = pixelSize;
+            }
+        }
+        if (result.legacyHeight == 0 && parts.size() > 1) {
+            bool pointSizeValid = false;
+            const double pointSize = parts.at(1).toDouble(&pointSizeValid);
+            if (pointSizeValid && pointSize > 0.0) {
+                result.legacyHeight = std::max(1, qRound(pointSize));
+            }
+        }
+        if (result.faceName.isEmpty()) {
+            result.faceName = QStringLiteral("Arial");
+        }
+        if (result.legacyHeight == 0) {
+            result.legacyHeight = fallbackHeight;
+        }
+        return result;
+    };
+
+    report->dataFont = fromTemplateFont(deck.appearance().dataFont, 12);
+    report->textFont = fromTemplateFont(deck.appearance().textFont, 13);
 }
 
 } // namespace CardStack

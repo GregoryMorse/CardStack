@@ -14,5 +14,9 @@ QVector<ReportDefinition> standardReportDefinitionsForDeck(
     const Deck& deck,
     const QString& pageReportName,
     const QString& rowReportName);
+void applyDefaultReportFonts(
+    const Deck& deck,
+    ReportDefinition* report,
+    int sourceReportIndex = 0);
 
 } // namespace CardStack

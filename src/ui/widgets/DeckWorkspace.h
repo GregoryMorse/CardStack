@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CardDetailPanel.h"
 #include "DeckMerge.h"
 #include "Deck.h"
 
@@ -17,7 +18,6 @@ class QVBoxLayout;
 
 namespace CardStack {
 
-class CardDetailPanel;
 class CardTableModel;
 
 class DeckWorkspace : public QWidget {
@@ -146,6 +146,7 @@ public:
 
     bool find(const SearchRequest& request);
     bool findNext();
+    bool hasLastSearchRequest() const { return m_hasLastSearchRequest; }
     bool replaceCurrent(const SearchRequest& request, const QString& replacement);
     int replaceAll(const SearchRequest& request, const QString& replacement);
     void sortCards(const QVector<SortLevel>& levels);
@@ -163,12 +164,15 @@ private:
     void attachCardDetailPanelToTablePage();
     void rebuildCardEditor();
     void refreshCardStack();
-    QString cardTitle(int cardIndex) const;
+    CardDetailPanel::CardTitleParts cardTitle(int cardIndex) const;
+    int primaryIndexFieldIndex() const;
+    bool isIndexField(int fieldIndex) const;
     void refreshCardHeader();
     void refreshCardEditor();
     bool ensureEditableCard();
     void syncCardEditorToDeck();
     void syncModel();
+    void applyStoredColumnWidths();
     bool sortCardsByTitleIfNeeded();
     void setCurrentCardIndex(int index);
     void pushUndoSnapshot();
@@ -207,6 +211,7 @@ private:
     QTableView* m_tableView = nullptr;
     CardTableModel* m_tableModel = nullptr;
     QVector<QWidget*> m_valueEditors;
+    bool m_applyingColumnWidths = false;
 };
 
 } // namespace CardStack

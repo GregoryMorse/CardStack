@@ -29,7 +29,7 @@ Deck makeRoundTripDeck()
         QStringLiteral("#708090")};
     appearance.useSystemColors = false;
     deck.setAppearance(appearance);
-    deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64));
+    deck.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64, true, false, {}, 225));
     deck.addField(FieldDefinition(QStringLiteral("Notes"), FieldType::Notes, 8192));
     deck.setSortKeys({
         {0, false},
@@ -187,6 +187,7 @@ private slots:
         QCOMPARE(loaded.fieldAt(0).name(), QStringLiteral("Name"));
         QCOMPARE(loaded.fieldAt(0).type(), FieldType::Text);
         QCOMPARE(loaded.fieldAt(0).maxLength(), 64);
+        QCOMPARE(loaded.fieldAt(0).displayWidth(), 225);
         QCOMPARE(loaded.fieldAt(1).name(), QStringLiteral("Notes"));
         QCOMPARE(loaded.fieldAt(1).type(), FieldType::Notes);
         QCOMPARE(loaded.fieldAt(1).maxLength(), 8192);
@@ -303,6 +304,7 @@ private slots:
                 QCOMPARE(actual.showName(), oracle.showName());
                 QCOMPARE(actual.isPhone(), oracle.isPhone());
                 QCOMPARE(actual.legacyDescriptor(), oracle.legacyDescriptor());
+                QCOMPARE(actual.displayWidth(), oracle.displayWidth());
             }
             for (int reportIndex = 0; reportIndex < expected.reportCount(); ++reportIndex) {
                 const ReportDefinition& actual = loaded.reportAt(reportIndex);
@@ -373,6 +375,20 @@ private slots:
         QVERIFY(tables.contains(QStringLiteral("import_export_profiles")));
         QVERIFY(tables.contains(QStringLiteral("phone_profiles")));
         QVERIFY(tables.contains(QStringLiteral("phone_call_log")));
+
+        QVERIFY(query.exec(QStringLiteral(
+            "SELECT description FROM templates WHERE id = 1")));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toString(),
+                 QStringLiteral("A deck description saved with the native CardStack file."));
+        QVERIFY(query.exec(QStringLiteral(
+            "SELECT description FROM decks WHERE id = 1")));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toString(), QString());
+        QVERIFY(query.exec(QStringLiteral(
+            "SELECT count(*) FROM deck_formatting WHERE scope NOT LIKE 'template-%'")));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toInt(), 0);
 
         QVERIFY(query.exec(QStringLiteral("SELECT value FROM app_settings WHERE key = 'schema_version'")));
         QVERIFY(query.next());

@@ -805,10 +805,31 @@ private slots:
             auto* templates = qobject_cast<QListWidget*>(UiBuilder::controlById(dialog.get(), UiIds::Control::NewFileTemplateList));
             QVERIFY(source != nullptr);
             QVERIFY(templates != nullptr);
+            QVERIFY(templates->count() > 1);
+            templates->setCurrentRow(1);
             source->setCurrentIndex(1);
             QVERIFY(!templates->isEnabled());
+            templates->setCurrentRow(-1);
             source->setCurrentIndex(2);
             QVERIFY(templates->isEnabled());
+            QCOMPARE(templates->currentRow(), 1);
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("SORT"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* secondLevel = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SortFieldLevel2));
+            auto* thirdLevel = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SortFieldLevel3));
+            QVERIFY(secondLevel != nullptr);
+            QVERIFY(thirdLevel != nullptr);
+            dialog->show();
+            secondLevel->setCurrentIndex(1);
+            secondLevel->setFocus();
+            secondLevel->setCurrentIndex(0);
+            QMetaObject::invokeMethod(secondLevel, "activated", Qt::DirectConnection, Q_ARG(int, 0));
+            QCOMPARE(dialog->focusWidget(), thirdLevel);
         }
 
         {
@@ -885,6 +906,73 @@ private slots:
             QVERIFY(password != nullptr);
             password->setText(QStringLiteral("mixedCase"));
             QCOMPARE(password->text(), QStringLiteral("MIXEDCAS"));
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("ADDSYSTEMBOX"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* numberCategory = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SystemBoxNumberCategory));
+            auto* systemCategory = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SystemBoxSystemCategory));
+            auto* numberFormats = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SystemBoxNumberFormats));
+            auto* systemFields = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::SystemBoxSystemFields));
+            QVERIFY(numberCategory != nullptr);
+            QVERIFY(systemCategory != nullptr);
+            QVERIFY(numberFormats != nullptr);
+            QVERIFY(systemFields != nullptr);
+            numberFormats->setCurrentIndex(1);
+            QVERIFY(numberCategory->isChecked());
+            systemFields->setCurrentIndex(1);
+            QVERIFY(systemCategory->isChecked());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("QUICKDIAL"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* number = qobject_cast<QLineEdit*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::QuickDialNumber));
+            auto* ok = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::Ok));
+            QVERIFY(number != nullptr);
+            QVERIFY(ok != nullptr);
+            QVERIFY(!ok->isEnabled());
+            number->setText(QStringLiteral("555-1212"));
+            QVERIFY(ok->isEnabled());
+            number->clear();
+            QVERIFY(!ok->isEnabled());
+        }
+
+        {
+            std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("PHNDEF"), nullptr, context);
+            QVERIFY(dialog != nullptr);
+            auto* quickDials = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDials));
+            auto* add = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDialAdd));
+            auto* modify = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDialModify));
+            auto* remove = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDialDelete));
+            QVERIFY(quickDials != nullptr);
+            QVERIFY(add != nullptr);
+            QVERIFY(modify != nullptr);
+            QVERIFY(remove != nullptr);
+            QVERIFY(add->isEnabled());
+            QVERIFY(!modify->isEnabled());
+            QVERIFY(!remove->isEnabled());
+            quickDials->addItem(QStringLiteral("First\t555-1212"));
+            QVERIFY(modify->isEnabled());
+            QVERIFY(remove->isEnabled());
+            while (quickDials->count() < 100) {
+                quickDials->addItem(QString::number(quickDials->count()));
+            }
+            QVERIFY(!add->isEnabled());
+            quickDials->clear();
+            QVERIFY(add->isEnabled());
+            QVERIFY(!modify->isEnabled());
+            QVERIFY(!remove->isEnabled());
         }
 
         {
@@ -1033,11 +1121,9 @@ private slots:
         QCOMPARE(roleCombo->count(), UiIds::StringId::ColorRoleLast - UiIds::StringId::ColorRoleFirst + 1);
         QCOMPARE(roleCombo->currentIndex(), 5);
         QVERIFY(useSystem->isCheckable());
-#ifdef Q_OS_WIN
         QVERIFY(!useSystem->isHidden());
-#else
-        QVERIFY(useSystem->isHidden());
-#endif
+        QCOMPARE(swatchGrid->property("paletteColorCount").toInt(), 48);
+        QVERIFY(swatchGrid->property("hasDeckPreview").toBool());
         roleCombo->setCurrentIndex(1);
         useSystem->setChecked(true);
         QCoreApplication::processEvents();

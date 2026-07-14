@@ -14,9 +14,18 @@ class CardDetailPanel : public QFrame {
     Q_OBJECT
 
 public:
+    struct CardTitleParts {
+        QString left;
+        QString middle;
+        QString right;
+
+        bool operator==(const CardTitleParts&) const = default;
+        QString accessibleText() const;
+    };
+
     struct StackEntry {
         int cardIndex = 0;
-        QString title;
+        CardTitleParts title;
 
         friend bool operator==(const StackEntry& left, const StackEntry& right)
         {
@@ -27,7 +36,8 @@ public:
     explicit CardDetailPanel(QWidget* parent = nullptr);
 
     QVBoxLayout* bodyLayout() const;
-    void setCardTitle(const QString& cardTitle);
+    const CardTitleParts& cardTitle() const;
+    void setCardTitle(const CardTitleParts& cardTitle);
     void setStackEntries(const QVector<StackEntry>& entries, int currentCardIndex);
 
 signals:
@@ -39,7 +49,7 @@ protected:
 
 private:
     QVBoxLayout* m_bodyLayout = nullptr;
-    QString m_cardTitle;
+    CardTitleParts m_cardTitle;
     QVector<StackEntry> m_stackEntries;
     int m_currentCardIndex = -1;
 };

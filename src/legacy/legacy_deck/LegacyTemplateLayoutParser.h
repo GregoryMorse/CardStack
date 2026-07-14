@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CardTemplateLayout.h"
+#include "Deck.h"
 #include "LegacyOemCodec.h"
 #include "FieldDefinition.h"
 
@@ -17,6 +18,11 @@ inline constexpr int MaximumTextFrameCount = 40;
 inline constexpr int CoordinateScale = 10;
 inline constexpr int DefaultCanvasWidth = 6400;
 inline constexpr int DefaultCanvasHeight = 4800;
+inline constexpr int SortKeyCount = 3;
+inline constexpr int SortKeyTableOffset = 0x49;
+inline constexpr int SortKeyDescriptorSize = 4;
+inline constexpr int SortKeyFlagsOffset = 2;
+inline constexpr quint16 SortDescendingFlag = 0x0040;
 
 inline constexpr int TextFrameCountOffset = 0x55;
 inline constexpr int FieldCountOffset = 0x57;
@@ -42,8 +48,7 @@ inline constexpr int FieldTopOffset = 0x1c;
 inline constexpr int FieldRightOffset = 0x1e;
 inline constexpr int FieldBottomOffset = 0x20;
 inline constexpr int FieldAlignmentOffset = 0x22;
-inline constexpr int FieldStyleMetricOffset = 0x23;
-inline constexpr int FieldStyleOffset = 0x24;
+inline constexpr int FieldDisplayWidthOffset = 0x23;
 
 inline constexpr quint16 VariableTextFlag = 0x0001;
 inline constexpr quint16 MultilineEditorFlag = 0x0002;
@@ -54,6 +59,7 @@ inline constexpr char AlignRight = 'r';
 
 struct ParsedLayout {
     QVector<FieldDefinition> fields;
+    QVector<DeckSortKey> sortKeys;
     CardTemplateLayout layout;
 };
 
@@ -111,6 +117,17 @@ inline std::optional<ParsedLayout> parse(const QByteArray& record, int expectedF
     parsed.layout.canvasWidth = DefaultCanvasWidth;
     parsed.layout.canvasHeight = DefaultCanvasHeight;
     parsed.layout.frames.reserve(fieldCount + textFrameCount);
+    parsed.sortKeys.reserve(SortKeyCount);
+
+    for (int level = 0; level < SortKeyCount; ++level) {
+        const int offset = SortKeyTableOffset + level * SortKeyDescriptorSize;
+        const int oneBasedFieldIndex = readUnsigned16(record, offset);
+        if (oneBasedFieldIndex <= 0 || oneBasedFieldIndex > fieldCount) {
+            continue;
+        }
+        const quint16 flags = readUnsigned16(record, offset + SortKeyFlagsOffset);
+        parsed.sortKeys.append({oneBasedFieldIndex - 1, (flags & SortDescendingFlag) != 0});
+    }
 
     for (int index = 0; index < textFrameCount; ++index) {
         const int offset = TextFrameTableOffset + index * TextFrameDescriptorSize;
@@ -141,7 +158,8 @@ inline std::optional<ParsedLayout> parse(const QByteArray& record, int expectedF
             dataLength,
             controlRole == StandaloneControlRole,
             dialableMarker != 0,
-            record.mid(offset, FieldDescriptorSize)));
+            record.mid(offset, FieldDescriptorSize),
+            readUnsigned16(record, offset + FieldDisplayWidthOffset)));
 
         CardTemplateFrame frame;
         frame.kind = fieldType == FieldType::Notes ? CardTemplateFrameKind::NotesBox : CardTemplateFrameKind::DataBox;
@@ -149,7 +167,6 @@ inline std::optional<ParsedLayout> parse(const QByteArray& record, int expectedF
         frame.text = name;
         frame.bounds = scaledBounds(record, offset, FieldLeftOffset, FieldTopOffset, FieldRightOffset, FieldBottomOffset);
         const char alignment = record.at(offset + FieldAlignmentOffset);
-        frame.styleFlags = static_cast<quint8>(record.at(offset + FieldStyleOffset));
         frame.legacyDescriptor = record.mid(offset, FieldDescriptorSize);
         if (alignment == AlignCenter) {
             frame.styleFlags |= CardTemplateStyleFlagAlignCenter;

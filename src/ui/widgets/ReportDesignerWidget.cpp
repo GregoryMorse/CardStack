@@ -131,6 +131,11 @@ public:
         setMinimumSize(360, 420);
         setMouseTracking(true);
         setFocusPolicy(Qt::StrongFocus);
+        setProperty("hasHorizontalRuler", true);
+        setProperty("hasVerticalRuler", true);
+        setProperty("guideColor", QStringLiteral("#0057b8"));
+        setProperty("selectionColor", QStringLiteral("#c51f1f"));
+        setProperty("guideLineStyle", QStringLiteral("dotted"));
     }
 
     void setReport(const ReportDefinition* report)
@@ -160,6 +165,7 @@ protected:
         }
 
         const QRectF page = pageRect();
+        drawRulers(painter, page);
         painter.fillRect(page.translated(5.0, 5.0), QColor(0, 0, 0, 35));
         ReportPreviewData previewData;
         for (const ReportFrameDefinition& frame : m_report->frames) {
@@ -172,16 +178,34 @@ protected:
         }
         ReportPreviewRenderer::render(&painter, *m_report, page, previewData);
 
-        painter.setPen(palette().mid().color());
+        const QColor guideBlue(QStringLiteral("#0057b8"));
+        const QColor selectionRed(QStringLiteral("#c51f1f"));
+        painter.setPen(QPen(guideBlue, 1, Qt::SolidLine));
         painter.drawRect(page.adjusted(0.0, 0.0, -1.0, -1.0));
+
+        const qreal xScale = page.width() / std::max(1, m_report->formWidth);
+        const qreal yScale = page.height() / std::max(1, m_report->formHeight);
+        const QRectF printableArea = page.adjusted(
+            m_report->marginLeft * xScale,
+            m_report->marginTop * yScale,
+            -m_report->marginRight * xScale,
+            -m_report->marginBottom * yScale);
+        if (printableArea.isValid() && !printableArea.isEmpty()) {
+            painter.setPen(QPen(guideBlue, 1, Qt::DotLine));
+            painter.drawRect(printableArea.adjusted(0.0, 0.0, -1.0, -1.0));
+        }
 
         for (int index = 0; index < m_report->frames.size(); ++index) {
             const QRectF frameRect = scaledBounds(m_report->frames.at(index).bounds, *m_report, page);
-            painter.setPen(index == m_selectedFrameIndex ? palette().highlight().color() : QColor(70, 130, 180));
+            const bool selected = index == m_selectedFrameIndex;
+            painter.setPen(selected
+                               ? QPen(selectionRed, 2, Qt::SolidLine)
+                               : QPen(guideBlue, 1, Qt::DotLine));
             painter.drawRect(frameRect.adjusted(0.0, 0.0, -1.0, -1.0));
-            if (index == m_selectedFrameIndex) {
-                painter.drawRect(frameRect.adjusted(2.0, 2.0, -3.0, -3.0));
-                painter.setBrush(palette().highlight());
+            if (selected) {
+                painter.setPen(QPen(selectionRed, 1, Qt::DotLine));
+                painter.drawRect(frameRect.adjusted(3.0, 3.0, -4.0, -4.0));
+                painter.setBrush(selectionRed);
                 painter.setPen(Qt::NoPen);
                 painter.drawRect(resizeHandle(frameRect));
                 painter.setBrush(Qt::NoBrush);
@@ -285,11 +309,79 @@ protected:
     }
 
 private:
+    static constexpr int RulerThickness = 28;
+    static constexpr int MinorTickMils = 125;
+    static constexpr int MajorTickMils = 1000;
+
     enum class DragMode {
         None,
         Move,
         Resize
     };
+
+    void drawRulers(QPainter& painter, const QRectF& page) const
+    {
+        const QColor rulerBackground(QStringLiteral("#f5df72"));
+        const QColor rulerEdge(QStringLiteral("#8f7c2b"));
+        const QColor rulerText(QStringLiteral("#3f3615"));
+        painter.fillRect(QRect(0, 0, width(), RulerThickness), rulerBackground);
+        painter.fillRect(QRect(0, 0, RulerThickness, height()), rulerBackground);
+        painter.setPen(rulerEdge);
+        painter.drawLine(0, RulerThickness - 1, width(), RulerThickness - 1);
+        painter.drawLine(RulerThickness - 1, 0, RulerThickness - 1, height());
+
+        if (m_report == nullptr) {
+            return;
+        }
+
+        const int formWidth = std::max(1, m_report->formWidth);
+        const int formHeight = std::max(1, m_report->formHeight);
+        painter.setPen(rulerText);
+        for (int value = 0; value <= formWidth; value += MinorTickMils) {
+            const qreal x = page.left() + page.width() * value / formWidth;
+            const bool major = value % MajorTickMils == 0;
+            const bool half = value % (MajorTickMils / 2) == 0;
+            const int tickLength = major ? 11 : half ? 8 : 5;
+            painter.drawLine(QPointF(x, RulerThickness - 1),
+                             QPointF(x, RulerThickness - 1 - tickLength));
+            if (major) {
+                painter.drawText(QRectF(x + 2, 1, 30, 13),
+                                 Qt::AlignLeft | Qt::AlignVCenter,
+                                 QString::number(value / MajorTickMils));
+            }
+        }
+        if (formWidth % MajorTickMils != 0) {
+            painter.drawText(
+                QRectF(page.right() - 38, 1, 36, 13),
+                Qt::AlignRight | Qt::AlignVCenter,
+                QString::number(formWidth / static_cast<double>(MajorTickMils), 'g', 4));
+        }
+        for (int value = 0; value <= formHeight; value += MinorTickMils) {
+            const qreal y = page.top() + page.height() * value / formHeight;
+            const bool major = value % MajorTickMils == 0;
+            const bool half = value % (MajorTickMils / 2) == 0;
+            const int tickLength = major ? 11 : half ? 8 : 5;
+            painter.drawLine(QPointF(RulerThickness - 1, y),
+                             QPointF(RulerThickness - 1 - tickLength, y));
+            if (major) {
+                painter.drawText(QRectF(1, y + 2, 17, 13),
+                                 Qt::AlignRight | Qt::AlignVCenter,
+                                 QString::number(value / MajorTickMils));
+            }
+        }
+        if (formHeight % MajorTickMils != 0) {
+            painter.drawText(
+                QRectF(1, page.bottom() - 14, 22, 13),
+                Qt::AlignRight | Qt::AlignVCenter,
+                QString::number(formHeight / static_cast<double>(MajorTickMils), 'g', 4));
+        }
+
+        painter.setPen(QPen(rulerEdge, 2));
+        painter.drawLine(QPointF(page.left(), RulerThickness - 2),
+                         QPointF(page.right(), RulerThickness - 2));
+        painter.drawLine(QPointF(RulerThickness - 2, page.top()),
+                         QPointF(RulerThickness - 2, page.bottom()));
+    }
 
     QRectF pageRect() const
     {
@@ -300,7 +392,11 @@ private:
         const qreal reportWidth = std::max(1, m_report->formWidth);
         const qreal reportHeight = std::max(1, m_report->formHeight);
         const qreal aspect = reportWidth / reportHeight;
-        QRectF available = rect().adjusted(16, 16, -20, -20);
+        QRectF available = rect().adjusted(
+            RulerThickness + 16,
+            RulerThickness + 16,
+            -20,
+            -20);
         qreal pageWidth = available.width();
         qreal pageHeight = pageWidth / aspect;
         if (pageHeight > available.height()) {

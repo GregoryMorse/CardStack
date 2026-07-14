@@ -640,6 +640,7 @@ LegacyDeckReader::Result LegacyDeckReader::readRecords(
         for (const FieldDefinition& field : visualTemplate->fields) {
             deck.addField(field);
         }
+        deck.setSortKeys(visualTemplate->sortKeys);
         deck.setCardTemplateLayout(visualTemplate->layout);
     } else {
         for (const LegacyField& field : fields) {
