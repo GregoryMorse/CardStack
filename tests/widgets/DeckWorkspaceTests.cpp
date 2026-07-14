@@ -8,6 +8,7 @@
 #include <QClipboard>
 #include <QDir>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -311,7 +312,15 @@ private slots:
 
     void tableEditingUsesDeckValidationAndUndo()
     {
-        DeckWorkspace workspace(createConstrainedEditorDeck());
+        Deck deck = createConstrainedEditorDeck();
+        DeckAppearance appearance = deck.appearance();
+        appearance.useSystemColors = false;
+        appearance.customColors[static_cast<int>(DeckColorRole::IndexForeground)] = QStringLiteral("#102030");
+        appearance.customColors[static_cast<int>(DeckColorRole::DataForeground)] = QStringLiteral("#203040");
+        appearance.customColors[static_cast<int>(DeckColorRole::DataBackground)] = QStringLiteral("#d0e0f0");
+        appearance.customColors[static_cast<int>(DeckColorRole::IndexBackground)] = QStringLiteral("#a0b0c0");
+        deck.setAppearance(appearance);
+        DeckWorkspace workspace(std::move(deck));
         workspace.showTableView();
 
         auto* tableView = workspace.findChild<QTableView*>(QStringLiteral("deckTableView"));
@@ -323,11 +332,17 @@ private slots:
         QCOMPARE(tableView->model()->headerData(0, Qt::Vertical).toInt(), 1);
         QCOMPARE(
             tableView->model()->headerData(0, Qt::Horizontal, Qt::BackgroundRole).value<QBrush>().color(),
-            QColor(192, 192, 192));
+            QColor(QStringLiteral("#a0b0c0")));
+        QCOMPARE(
+            tableView->model()->headerData(0, Qt::Horizontal, Qt::ForegroundRole).value<QBrush>().color(),
+            QColor(QStringLiteral("#102030")));
         QCOMPARE(
             tableView->model()->data(tableView->model()->index(0, 0), Qt::BackgroundRole).value<QBrush>().color(),
-            QColor(Qt::white));
-        QCOMPARE(tableView->palette().color(QPalette::Base), QColor(192, 192, 192));
+            QColor(QStringLiteral("#d0e0f0")));
+        QCOMPARE(
+            tableView->model()->data(tableView->model()->index(0, 0), Qt::ForegroundRole).value<QBrush>().color(),
+            QColor(QStringLiteral("#203040")));
+        QCOMPARE(tableView->palette().color(QPalette::Base), QColor(QStringLiteral("#a0b0c0")));
         auto* corner = tableView->findChild<QAbstractButton*>(QStringLiteral("deckTableCornerButton"));
         QVERIFY(corner != nullptr);
         QCOMPARE(corner->text(), QStringLiteral("#"));
@@ -338,6 +353,77 @@ private slots:
 
         QVERIFY(workspace.undo());
         QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+    }
+
+    void appliesEveryPersistedFontAndColorRoleToDeckViews()
+    {
+        Deck deck = createTemplateLayoutDeck();
+        CardTemplateLayout layout = deck.cardTemplateLayout();
+        CardTemplateFrame otherTextFrame;
+        otherTextFrame.kind = CardTemplateFrameKind::Text;
+        otherTextFrame.text = QStringLiteral("Other text");
+        otherTextFrame.bounds = QRect(2800, 3000, 1200, 220);
+        layout.frames.append(otherTextFrame);
+        deck.setCardTemplateLayout(layout);
+        DeckAppearance appearance = deck.appearance();
+        appearance.useSystemColors = false;
+        QFont dataFont(QStringLiteral("Arial"));
+        dataFont.setPixelSize(17);
+        dataFont.setItalic(true);
+        QFont nameFont(QStringLiteral("Arial"));
+        nameFont.setPixelSize(16);
+        nameFont.setBold(true);
+        QFont textFont(QStringLiteral("Arial"));
+        textFont.setPixelSize(15);
+        textFont.setUnderline(true);
+        QFont indexFont(QStringLiteral("Arial"));
+        indexFont.setPixelSize(19);
+        indexFont.setWeight(QFont::Light);
+        appearance.dataFont = dataFont.toString();
+        appearance.nameFont = nameFont.toString();
+        appearance.textFont = textFont.toString();
+        appearance.indexFont = indexFont.toString();
+        appearance.customColors[static_cast<int>(DeckColorRole::IndexForeground)] = QStringLiteral("#112233");
+        appearance.customColors[static_cast<int>(DeckColorRole::DataForeground)] = QStringLiteral("#223344");
+        appearance.customColors[static_cast<int>(DeckColorRole::NameForeground)] = QStringLiteral("#334455");
+        appearance.customColors[static_cast<int>(DeckColorRole::TextForeground)] = QStringLiteral("#445566");
+        appearance.customColors[static_cast<int>(DeckColorRole::DataBackground)] = QStringLiteral("#ccddee");
+        appearance.customColors[static_cast<int>(DeckColorRole::IndexBackground)] = QStringLiteral("#aabbcc");
+        appearance.customColors[static_cast<int>(DeckColorRole::CardBackground)] = QStringLiteral("#eef0f2");
+        deck.setAppearance(appearance);
+
+        DeckWorkspace workspace(std::move(deck));
+        auto* dataEditor = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        QLabel* nameLabel = nullptr;
+        QLabel* textLabel = nullptr;
+        for (QLabel* label : workspace.findChildren<QLabel*>(QStringLiteral("templateTextFrame"))) {
+            if (label->property("deckNameCaption").toBool()) {
+                nameLabel = label;
+            } else if (label->text() == QStringLiteral("Other text")) {
+                textLabel = label;
+            }
+        }
+        auto* tableView = workspace.findChild<QTableView*>(QStringLiteral("deckTableView"));
+        auto* cardPanel = workspace.findChild<QWidget*>(QStringLiteral("cardDetailPanel"));
+        QVERIFY(dataEditor != nullptr);
+        QVERIFY(nameLabel != nullptr);
+        QVERIFY(textLabel != nullptr);
+        QVERIFY(tableView != nullptr);
+        QVERIFY(cardPanel != nullptr);
+
+        QCOMPARE(dataEditor->font(), dataFont);
+        QCOMPARE(nameLabel->font(), nameFont);
+        QCOMPARE(textLabel->font(), textFont);
+        QCOMPARE(tableView->horizontalHeader()->font(), indexFont);
+        QCOMPARE(cardPanel->font(), indexFont);
+        QVERIFY(tableView->verticalHeader()->defaultSectionSize() >= QFontMetrics(indexFont).height() + 8);
+        QCOMPARE(dataEditor->palette().color(QPalette::Text), QColor(QStringLiteral("#223344")));
+        QCOMPARE(dataEditor->palette().color(QPalette::Base), QColor(QStringLiteral("#ccddee")));
+        QCOMPARE(nameLabel->palette().color(QPalette::WindowText), QColor(QStringLiteral("#334455")));
+        QCOMPARE(textLabel->palette().color(QPalette::WindowText), QColor(QStringLiteral("#445566")));
+        QCOMPARE(cardPanel->palette().color(QPalette::ButtonText), QColor(QStringLiteral("#112233")));
+        QCOMPARE(cardPanel->palette().color(QPalette::Button), QColor(QStringLiteral("#aabbcc")));
+        QCOMPARE(cardPanel->palette().color(QPalette::Window), QColor(QStringLiteral("#eef0f2")));
     }
 
     void cardViewUsesCardsAsRotatingClickableStack()

@@ -1554,7 +1554,9 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
 #endif
         }
         if (paperSourceIds.isEmpty()) {
-            sourceCombo->addItem(QObject::tr("Printer default"));
+            const int activeSource = static_cast<int>(selectedPrinterInfo.paperSource());
+            paperSourceIds.append(activeSource);
+            sourceCombo->addItem(paperSourceDisplayName(activeSource));
         }
         sourceCombo->setEnabled(paperSourceIds.size() > 1);
         typeValue->setText(type);
@@ -4062,6 +4064,7 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
         }
         appearance.useSystemColors = UiBuilder::colorDialogUsesSystemColors(dialog.get());
         owner->applyAppearance(std::move(appearance));
+        designer->setAppearance(owner->deck().appearance());
         return;
     }
     default:

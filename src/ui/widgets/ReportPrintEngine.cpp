@@ -69,6 +69,7 @@ QRect bandBounds(const ReportDefinition& report, quint16 band)
 QVector<QString> continuationChunks(
     const QString& text,
     const ReportFontDefinition& fontDefinition,
+    quint8 styleFlags,
     const QRect& frameBounds)
 {
     if (text.isEmpty()) {
@@ -77,6 +78,9 @@ QVector<QString> continuationChunks(
 
     QFont font(fontDefinition.faceName);
     font.setPixelSize(std::max(1, std::abs(fontDefinition.legacyHeight)));
+    font.setBold((styleFlags & ReportStyleFlagBold) != 0);
+    font.setItalic((styleFlags & ReportStyleFlagItalic) != 0);
+    font.setUnderline((styleFlags & ReportStyleFlagUnderline) != 0);
     QTextLayout layout(text, font);
     QVector<QPair<int, int>> lines;
     layout.beginLayout();
@@ -114,7 +118,7 @@ QVector<QMap<QString, QString>> recordContinuationSlots(
         }
         const QString fieldName = frame.fieldPlaceholders.first();
         const QVector<QString> chunks = continuationChunks(
-            data.fieldValues.value(fieldName), report.dataFont, frame.bounds);
+            data.fieldValues.value(fieldName), report.dataFont, frame.styleFlags, frame.bounds);
         continuationResults.resize(std::max(continuationResults.size(), chunks.size()));
         for (int index = 0; index < continuationResults.size(); ++index) {
             continuationResults[index].insert(fieldName, index < chunks.size() ? chunks.at(index) : QString());

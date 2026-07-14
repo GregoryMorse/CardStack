@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QFrame>
+#include <QColor>
+#include <QFont>
 #include <QString>
 #include <QVector>
 
@@ -39,6 +41,11 @@ public:
     const CardTitleParts& cardTitle() const;
     void setCardTitle(const CardTitleParts& cardTitle);
     void setStackEntries(const QVector<StackEntry>& entries, int currentCardIndex);
+    void setAppearance(
+        const QFont& indexFont,
+        const QColor& indexForeground,
+        const QColor& indexBackground,
+        const QColor& cardBackground);
 
 signals:
     void cardRequested(int cardIndex);
@@ -52,6 +59,9 @@ private:
     CardTitleParts m_cardTitle;
     QVector<StackEntry> m_stackEntries;
     int m_currentCardIndex = -1;
+    QColor m_indexForeground = Qt::black;
+    QColor m_indexBackground = QColor(192, 192, 192);
+    QColor m_cardBackground = Qt::white;
 };
 
 } // namespace CardStack

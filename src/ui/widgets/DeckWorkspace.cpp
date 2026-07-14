@@ -1,6 +1,7 @@
 #include "DeckWorkspace.h"
 
 #include <QFont>
+#include <QFontMetrics>
 #include <QPalette>
 
 #include "CardDetailPanel.h"
@@ -37,6 +38,12 @@ namespace {
 constexpr int DefaultTableRowHeightPx = 24;
 constexpr int FallbackIndexFieldIndex = 0;
 constexpr char IndexSpaceBucketKey[] = "SPACE";
+
+int tableRowHeightForFont(const QFont& font)
+{
+    constexpr int VerticalCellPaddingPx = 8;
+    return std::max(DefaultTableRowHeightPx, QFontMetrics(font).height() + VerticalCellPaddingPx);
+}
 
 QString editorText(QWidget* editor)
 {
@@ -308,10 +315,6 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     m_stack->addWidget(m_tablePage);
     applyStoredColumnWidths();
     applyStoredAppearance();
-    QPalette tablePalette = m_tableView->palette();
-    tablePalette.setColor(QPalette::Base, QColor(192, 192, 192));
-    tablePalette.setColor(QPalette::AlternateBase, QColor(192, 192, 192));
-    m_tableView->setPalette(tablePalette);
     m_tableView->viewport()->setAutoFillBackground(true);
     showCardView();
     setCurrentCardIndex(0);
@@ -685,7 +688,8 @@ void DeckWorkspace::applyNameFont(const QFont& font)
     m_deck.setAppearance(std::move(appearance));
     for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
         if (label->objectName().startsWith(QStringLiteral("fieldCaption_"))
-            || label->objectName().startsWith(QStringLiteral("fieldName_"))) {
+            || label->objectName().startsWith(QStringLiteral("fieldName_"))
+            || label->property("deckNameCaption").toBool()) {
             label->setFont(font);
         }
     }
@@ -699,7 +703,9 @@ void DeckWorkspace::applyTextFont(const QFont& font)
     appearance.textFont = font.toString();
     m_deck.setAppearance(std::move(appearance));
     for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>(QStringLiteral("templateTextFrame"))) {
-        label->setFont(font);
+        if (!label->property("deckNameCaption").toBool()) {
+            label->setFont(font);
+        }
     }
     markDirty();
 }
@@ -712,6 +718,10 @@ void DeckWorkspace::applyIndexFont(const QFont& font)
     m_deck.setAppearance(std::move(appearance));
     m_tableView->horizontalHeader()->setFont(font);
     m_tableView->verticalHeader()->setFont(font);
+    m_tableView->verticalHeader()->setDefaultSectionSize(tableRowHeightForFont(font));
+    if (m_cardDetailPanel != nullptr) {
+        m_cardDetailPanel->setFont(font);
+    }
     markDirty();
 }
 
@@ -736,19 +746,23 @@ void DeckWorkspace::applyStoredAppearance()
     if (!appearance.nameFont.isEmpty() && storedFont.fromString(appearance.nameFont)) {
         for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
             if (label->objectName().startsWith(QStringLiteral("fieldCaption_"))
-                || label->objectName().startsWith(QStringLiteral("fieldName_"))) {
+                || label->objectName().startsWith(QStringLiteral("fieldName_"))
+                || label->property("deckNameCaption").toBool()) {
                 label->setFont(storedFont);
             }
         }
     }
     if (!appearance.textFont.isEmpty() && storedFont.fromString(appearance.textFont)) {
         for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>(QStringLiteral("templateTextFrame"))) {
-            label->setFont(storedFont);
+            if (!label->property("deckNameCaption").toBool()) {
+                label->setFont(storedFont);
+            }
         }
     }
     if (!appearance.indexFont.isEmpty() && storedFont.fromString(appearance.indexFont)) {
         m_tableView->horizontalHeader()->setFont(storedFont);
         m_tableView->verticalHeader()->setFont(storedFont);
+        m_tableView->verticalHeader()->setDefaultSectionSize(tableRowHeightForFont(storedFont));
     }
 
     const QPalette systemPalette = palette();
@@ -785,16 +799,23 @@ void DeckWorkspace::applyStoredAppearance()
         return systemColor(role);
     };
 
+    const QColor dataForeground = roleColor(DeckColorRole::DataForeground, QPalette::Text);
+    const QColor dataBackground = roleColor(DeckColorRole::DataBackground, QPalette::Base);
+    const QColor indexForeground = roleColor(DeckColorRole::IndexForeground, QPalette::ButtonText);
+    const QColor indexBackground = roleColor(DeckColorRole::IndexBackground, QPalette::Button);
+    const QColor cardBackground = roleColor(DeckColorRole::CardBackground, QPalette::Window);
+    m_tableModel->setAppearanceColors(dataForeground, dataBackground, indexForeground, indexBackground);
+
     QPalette tablePalette = m_tableView->palette();
-    tablePalette.setColor(QPalette::Text, roleColor(DeckColorRole::DataForeground, QPalette::Text));
-    tablePalette.setColor(QPalette::Base, roleColor(DeckColorRole::DataBackground, QPalette::Base));
-    tablePalette.setColor(QPalette::AlternateBase, roleColor(DeckColorRole::DataBackground, QPalette::AlternateBase));
+    tablePalette.setColor(QPalette::Text, dataForeground);
+    tablePalette.setColor(QPalette::Base, indexBackground);
+    tablePalette.setColor(QPalette::AlternateBase, indexBackground);
     m_tableView->setPalette(tablePalette);
     QPalette headerPalette = m_tableView->horizontalHeader()->palette();
-    headerPalette.setColor(QPalette::Button, roleColor(DeckColorRole::IndexBackground, QPalette::Button));
-    headerPalette.setColor(QPalette::Window, roleColor(DeckColorRole::IndexBackground, QPalette::Window));
-    headerPalette.setColor(QPalette::ButtonText, roleColor(DeckColorRole::IndexForeground, QPalette::ButtonText));
-    headerPalette.setColor(QPalette::WindowText, roleColor(DeckColorRole::IndexForeground, QPalette::WindowText));
+    headerPalette.setColor(QPalette::Button, indexBackground);
+    headerPalette.setColor(QPalette::Window, indexBackground);
+    headerPalette.setColor(QPalette::ButtonText, indexForeground);
+    headerPalette.setColor(QPalette::WindowText, indexForeground);
     m_tableView->horizontalHeader()->setPalette(headerPalette);
     m_tableView->verticalHeader()->setPalette(headerPalette);
     if (auto* corner = m_tableView->findChild<QAbstractButton*>(QStringLiteral("deckTableCornerButton"))) {
@@ -803,23 +824,35 @@ void DeckWorkspace::applyStoredAppearance()
             label->setPalette(headerPalette);
         }
     }
+    QFont indexFont = m_tableView->horizontalHeader()->font();
+    if (!appearance.indexFont.isEmpty()) {
+        QFont parsedIndexFont;
+        if (parsedIndexFont.fromString(appearance.indexFont)) {
+            indexFont = parsedIndexFont;
+        }
+    }
+    if (m_cardDetailPanel != nullptr) {
+        m_cardDetailPanel->setAppearance(
+            indexFont, indexForeground, indexBackground, cardBackground);
+    }
     for (QWidget* editor : m_valueEditors) {
         QPalette editorPalette = editor->palette();
-        editorPalette.setColor(QPalette::Text, roleColor(DeckColorRole::DataForeground, QPalette::Text));
-        editorPalette.setColor(QPalette::Base, roleColor(DeckColorRole::DataBackground, QPalette::Base));
+        editorPalette.setColor(QPalette::Text, dataForeground);
+        editorPalette.setColor(QPalette::Base, dataBackground);
         editor->setPalette(editorPalette);
     }
     for (QLabel* label : m_cardEditorContent->findChildren<QLabel*>()) {
         QPalette labelPalette = label->palette();
         const bool isName = label->objectName().startsWith(QStringLiteral("fieldCaption_"))
-            || label->objectName().startsWith(QStringLiteral("fieldName_"));
+            || label->objectName().startsWith(QStringLiteral("fieldName_"))
+            || label->property("deckNameCaption").toBool();
         labelPalette.setColor(
             QPalette::WindowText,
             roleColor(isName ? DeckColorRole::NameForeground : DeckColorRole::TextForeground, QPalette::WindowText));
         label->setPalette(labelPalette);
     }
     QPalette cardPalette = m_cardEditorContent->palette();
-    cardPalette.setColor(QPalette::Window, roleColor(DeckColorRole::CardBackground, QPalette::Window));
+    cardPalette.setColor(QPalette::Window, cardBackground);
     m_cardEditorContent->setAutoFillBackground(true);
     m_cardEditorContent->setPalette(cardPalette);
 }
@@ -1127,11 +1160,42 @@ void DeckWorkspace::rebuildCardEditor()
                 std::max(1, bounds.height() / Scale));
         };
 
+        const auto captionFieldIndex = [this, &cardLayout](const CardTemplateFrame& textFrame) {
+            if (textFrame.kind != CardTemplateFrameKind::Text) {
+                return -1;
+            }
+            for (const CardTemplateFrame& dataFrame : cardLayout.frames) {
+                if (dataFrame.kind != CardTemplateFrameKind::DataBox
+                    && dataFrame.kind != CardTemplateFrameKind::NotesBox) {
+                    continue;
+                }
+                const int fieldIndex = dataFrame.fieldIndex;
+                if (fieldIndex < 0 || fieldIndex >= m_deck.fieldCount()
+                    || !m_deck.fieldAt(fieldIndex).showName()) {
+                    continue;
+                }
+                const QString fieldCaption = dataFrame.text.trimmed().isEmpty()
+                    ? m_deck.fieldAt(fieldIndex).name()
+                    : dataFrame.text;
+                const bool matchingText = textFrame.text.compare(fieldCaption, Qt::CaseInsensitive) == 0;
+                const bool adjacentCaption = textFrame.bounds.left() < dataFrame.bounds.right()
+                    && textFrame.bounds.right() > dataFrame.bounds.left()
+                    && textFrame.bounds.bottom() <= dataFrame.bounds.top()
+                    && dataFrame.bounds.top() - textFrame.bounds.bottom() <= 300;
+                if (matchingText || adjacentCaption) {
+                    return fieldIndex;
+                }
+            }
+            return -1;
+        };
+
         for (const CardTemplateFrame& frame : cardLayout.frames) {
             const QRect rect = scaledBounds(frame.bounds);
             if (frame.kind == CardTemplateFrameKind::Text) {
                 auto* label = new QLabel(frame.text, m_cardEditorContent);
+                const int fieldIndex = captionFieldIndex(frame);
                 label->setObjectName(QStringLiteral("templateTextFrame"));
+                label->setProperty("deckNameCaption", fieldIndex >= 0);
                 label->setGeometry(rect);
                 label->setAlignment(
                     ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
@@ -1471,6 +1535,7 @@ void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
         rebuildCardEditor();
     }
     syncModel();
+    applyStoredAppearance();
     if (m_deck.cardCount() <= 0) {
         m_currentCardIndex = 0;
     } else {

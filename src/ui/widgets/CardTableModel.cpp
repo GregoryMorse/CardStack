@@ -19,6 +19,35 @@ void CardTableModel::setDeck(Deck* deck)
     endResetModel();
 }
 
+void CardTableModel::setAppearanceColors(
+    const QColor& dataForeground,
+    const QColor& dataBackground,
+    const QColor& indexForeground,
+    const QColor& indexBackground)
+{
+    if (m_dataForeground == dataForeground
+        && m_dataBackground == dataBackground
+        && m_indexForeground == indexForeground
+        && m_indexBackground == indexBackground) {
+        return;
+    }
+
+    m_dataForeground = dataForeground;
+    m_dataBackground = dataBackground;
+    m_indexForeground = indexForeground;
+    m_indexBackground = indexBackground;
+    if (rowCount() > 0 && columnCount() > 0) {
+        emit dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1),
+            {Qt::BackgroundRole, Qt::ForegroundRole});
+    }
+    if (columnCount() > 0) {
+        emit headerDataChanged(Qt::Horizontal, 0, columnCount() - 1);
+    }
+    if (rowCount() > 0) {
+        emit headerDataChanged(Qt::Vertical, 0, rowCount() - 1);
+    }
+}
+
 void CardTableModel::setValueChangeHandler(std::function<bool(int, int, const QString&)> handler)
 {
     m_valueChangeHandler = std::move(handler);
@@ -49,10 +78,10 @@ QVariant CardTableModel::data(const QModelIndex& index, int role) const
     }
 
     if (role == Qt::BackgroundRole) {
-        return QBrush(Qt::white);
+        return QBrush(m_dataBackground);
     }
     if (role == Qt::ForegroundRole) {
-        return QBrush(Qt::black);
+        return QBrush(m_dataForeground);
     }
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         return m_deck->cardAt(index.row()).valueAt(index.column());
@@ -81,10 +110,10 @@ QVariant CardTableModel::headerData(int section, Qt::Orientation orientation, in
     }
 
     if (role == Qt::BackgroundRole) {
-        return QBrush(QColor(192, 192, 192));
+        return QBrush(m_indexBackground);
     }
     if (role == Qt::ForegroundRole) {
-        return QBrush(Qt::black);
+        return QBrush(m_indexForeground);
     }
     if (role != Qt::DisplayRole) {
         return {};

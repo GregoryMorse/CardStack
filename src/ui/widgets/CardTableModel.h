@@ -3,6 +3,7 @@
 #include "Deck.h"
 
 #include <QAbstractTableModel>
+#include <QColor>
 
 #include <functional>
 
@@ -15,6 +16,11 @@ public:
     explicit CardTableModel(QObject* parent = nullptr);
 
     void setDeck(Deck* deck);
+    void setAppearanceColors(
+        const QColor& dataForeground,
+        const QColor& dataBackground,
+        const QColor& indexForeground,
+        const QColor& indexBackground);
     void setValueChangeHandler(std::function<bool(int, int, const QString&)> handler);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -26,6 +32,10 @@ public:
 
 private:
     Deck* m_deck = nullptr;
+    QColor m_dataForeground = Qt::black;
+    QColor m_dataBackground = Qt::white;
+    QColor m_indexForeground = Qt::black;
+    QColor m_indexBackground = QColor(192, 192, 192);
     std::function<bool(int, int, const QString&)> m_valueChangeHandler;
 };
 

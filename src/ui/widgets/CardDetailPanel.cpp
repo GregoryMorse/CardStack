@@ -2,9 +2,9 @@
 
 #include <QFont>
 #include <QFontMetrics>
-#include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPalette>
 #include <QPaintEvent>
 #include <QPen>
 #include <QStringList>
@@ -44,6 +44,9 @@ void drawCardFrame(
     const QRectF& cardRect,
     const CardDetailPanel::CardTitleParts& title,
     const QFont& baseFont,
+    const QColor& indexForeground,
+    const QColor& indexBackground,
+    const QColor& cardBackground,
     bool active)
 {
     const QRectF shadowRect = cardRect.translated(0, active ? 3 : 2);
@@ -51,28 +54,20 @@ void drawCardFrame(
     painter->setBrush(QColor(0, 0, 0, active ? 28 : 18));
     painter->drawRoundedRect(shadowRect, CardCornerRadiusPx, CardCornerRadiusPx);
 
-    QLinearGradient bodyGradient(cardRect.topLeft(), cardRect.bottomRight());
-    bodyGradient.setColorAt(0.0, active ? QColor(255, 253, 246) : QColor(239, 245, 246));
-    bodyGradient.setColorAt(1.0, active ? QColor(244, 238, 224) : QColor(215, 229, 232));
-    painter->setBrush(bodyGradient);
-    painter->setPen(QPen(active ? QColor(181, 164, 132) : QColor(138, 160, 165), 1));
+    painter->setBrush(cardBackground);
+    painter->setPen(QPen(indexBackground.darker(active ? 135 : 115), 1));
     painter->drawRoundedRect(cardRect, CardCornerRadiusPx, CardCornerRadiusPx);
 
     const QRectF headerRect(cardRect.left(), cardRect.top(), cardRect.width(), HeaderHeightPx);
-    QLinearGradient headerGradient(headerRect.topLeft(), headerRect.bottomLeft());
-    headerGradient.setColorAt(0.0, active ? QColor(44, 74, 78) : QColor(219, 231, 233));
-    headerGradient.setColorAt(1.0, active ? QColor(34, 55, 59) : QColor(196, 215, 219));
-    painter->setBrush(headerGradient);
+    painter->setBrush(indexBackground);
     painter->setPen(Qt::NoPen);
     painter->drawRoundedRect(headerRect, CardCornerRadiusPx, CardCornerRadiusPx);
     painter->fillRect(
         QRectF(headerRect.left(), headerRect.bottom() - CardCornerRadiusPx, headerRect.width(), CardCornerRadiusPx),
-        active ? QColor(34, 55, 59) : QColor(196, 215, 219));
+        indexBackground);
 
-    painter->setPen(active ? QColor(255, 250, 235) : QColor(35, 56, 60));
+    painter->setPen(indexForeground);
     QFont titleFont = baseFont;
-    titleFont.setBold(active);
-    titleFont.setPointSize(std::max(9, titleFont.pointSize()));
     painter->setFont(titleFont);
     const QRectF titleArea = headerRect.adjusted(14, 2, -14, -2);
     const qreal sectionWidth = titleArea.width() / 3.0;
@@ -104,7 +99,7 @@ void drawCardFrame(
     }
 
     if (active) {
-        painter->setPen(QPen(QColor(214, 200, 169), 1));
+        painter->setPen(QPen(indexBackground.darker(125), 1));
         painter->drawLine(
             QPointF(cardRect.left() + 18, headerRect.bottom() + 8),
             QPointF(cardRect.right() - 18, headerRect.bottom() + 8));
@@ -175,6 +170,25 @@ void CardDetailPanel::setStackEntries(const QVector<StackEntry>& entries, int cu
     update();
 }
 
+void CardDetailPanel::setAppearance(
+    const QFont& indexFont,
+    const QColor& indexForeground,
+    const QColor& indexBackground,
+    const QColor& cardBackground)
+{
+    setFont(indexFont);
+    m_indexForeground = indexForeground;
+    m_indexBackground = indexBackground;
+    m_cardBackground = cardBackground;
+
+    QPalette appearancePalette = palette();
+    appearancePalette.setColor(QPalette::ButtonText, indexForeground);
+    appearancePalette.setColor(QPalette::Button, indexBackground);
+    appearancePalette.setColor(QPalette::Window, cardBackground);
+    setPalette(appearancePalette);
+    update();
+}
+
 void CardDetailPanel::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
@@ -219,11 +233,15 @@ void CardDetailPanel::paintEvent(QPaintEvent* event)
     for (int order = visibleCount - 1; order >= 1; --order) {
         const StackEntry& entry = entries.at(order);
         const QRectF cardRect = cardRectForOrder(rect(), visibleCount, order);
-        drawCardFrame(&painter, cardRect, entry.title, baseFont, false);
+        drawCardFrame(
+            &painter, cardRect, entry.title, baseFont,
+            m_indexForeground, m_indexBackground, m_cardBackground, false);
     }
 
     const QRectF activeRect = cardRectForOrder(rect(), visibleCount, 0);
-    drawCardFrame(&painter, activeRect, m_cardTitle, baseFont, true);
+    drawCardFrame(
+        &painter, activeRect, m_cardTitle, baseFont,
+        m_indexForeground, m_indexBackground, m_cardBackground, true);
 }
 
 } // namespace CardStack

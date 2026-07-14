@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPalette>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -90,6 +91,38 @@ void applyTemplateStyle(QFont* font, quint8 styleFlags)
     font->setBold((styleFlags & CardTemplateStyleFlagBold) != 0);
     font->setItalic((styleFlags & CardTemplateStyleFlagItalic) != 0);
     font->setUnderline((styleFlags & CardTemplateStyleFlagUnderline) != 0);
+}
+
+int captionFieldIndex(
+    const CardTemplateFrame& textFrame,
+    const CardTemplateLayout& layout,
+    const QVector<FieldDefinition>& fields)
+{
+    if (textFrame.kind != CardTemplateFrameKind::Text) {
+        return -1;
+    }
+    for (const CardTemplateFrame& dataFrame : layout.frames) {
+        if (dataFrame.kind != CardTemplateFrameKind::DataBox
+            && dataFrame.kind != CardTemplateFrameKind::NotesBox) {
+            continue;
+        }
+        const int fieldIndex = dataFrame.fieldIndex;
+        if (fieldIndex < 0 || fieldIndex >= fields.size() || !fields.at(fieldIndex).showName()) {
+            continue;
+        }
+        const QString fieldCaption = dataFrame.text.trimmed().isEmpty()
+            ? fields.at(fieldIndex).name()
+            : dataFrame.text;
+        const bool matchingText = textFrame.text.compare(fieldCaption, Qt::CaseInsensitive) == 0;
+        const bool adjacentCaption = textFrame.bounds.left() < dataFrame.bounds.right()
+            && textFrame.bounds.right() > dataFrame.bounds.left()
+            && textFrame.bounds.bottom() <= dataFrame.bounds.top()
+            && dataFrame.bounds.top() - textFrame.bounds.bottom() <= 300;
+        if (matchingText || adjacentCaption) {
+            return fieldIndex;
+        }
+    }
+    return -1;
 }
 
 QColor templateColor(
@@ -167,7 +200,7 @@ protected:
         painter.fillRect(page.translated(5.0, 5.0), QColor(0, 0, 0, 35));
         painter.fillRect(
             page,
-            templateColor(m_appearance, DeckColorRole::CardBackground, QColor(QStringLiteral("#ffffff"))));
+            templateColor(m_appearance, DeckColorRole::CardBackground, palette().color(QPalette::Window)));
         painter.setPen(QPen(Qt::black, 1));
         painter.drawRect(page.adjusted(0, 0, -1, -1));
 
@@ -175,7 +208,7 @@ protected:
         painter.save();
         painter.fillRect(
             indexHeader,
-            templateColor(m_appearance, DeckColorRole::IndexBackground, QColor(QStringLiteral("#d8d8d8"))));
+            templateColor(m_appearance, DeckColorRole::IndexBackground, palette().color(QPalette::Button)));
         const qreal logicalScale = page.width() / std::max(1, m_layout->canvasWidth);
         painter.setPen(QPen(Qt::black, std::max<qreal>(1.0, 12.0 * logicalScale)));
         const qreal borderInset = std::max<qreal>(1.0, 6.0 * logicalScale);
@@ -184,10 +217,9 @@ protected:
         if (m_appearance.indexFont.isEmpty()) {
             indexFont.setPixelSize(std::max(8, qRound(indexHeader.height() * 0.55)));
         }
-        indexFont.setWeight(QFont::Medium);
         painter.setFont(indexFont);
         painter.setPen(
-            templateColor(m_appearance, DeckColorRole::IndexForeground, QColor(QStringLiteral("#000000"))));
+            templateColor(m_appearance, DeckColorRole::IndexForeground, palette().color(QPalette::ButtonText)));
         const qreal textInset = std::max<qreal>(4.0, 30.0 * logicalScale);
         painter.drawText(indexHeader.adjusted(textInset, 0, -textInset, 0), Qt::AlignLeft | Qt::AlignVCenter, tr("Index"));
         painter.restore();
@@ -197,8 +229,12 @@ protected:
             const QRectF frameRect = scaledBounds(frame.bounds, *m_layout, page);
             painter.save();
             painter.setPen(QPen(Qt::black, 1));
+            const bool nameCaption = m_fields != nullptr
+                && captionFieldIndex(frame, *m_layout, *m_fields) >= 0;
             QFont frameFont = storedFont(
-                frame.kind == CardTemplateFrameKind::Text ? m_appearance.textFont : m_appearance.dataFont,
+                nameCaption
+                    ? m_appearance.nameFont
+                    : frame.kind == CardTemplateFrameKind::Text ? m_appearance.textFont : m_appearance.dataFont,
                 painter.font());
             applyTemplateStyle(&frameFont, frame.styleFlags);
             painter.setFont(frameFont);
@@ -220,14 +256,14 @@ protected:
                     templateColor(
                         m_appearance,
                         DeckColorRole::DataBackground,
-                        QColor(QStringLiteral("#ececec"))));
+                        palette().color(QPalette::Base)));
                 painter.setPen(QPen(Qt::black, 1));
                 painter.drawRect(frameRect);
                 painter.setPen(
                     templateColor(
                         m_appearance,
                         DeckColorRole::DataForeground,
-                        QColor(QStringLiteral("#000000"))));
+                        palette().color(QPalette::Text)));
                 QString previewText = frame.text;
                 if (m_fields != nullptr
                     && frame.fieldIndex >= 0
@@ -266,7 +302,7 @@ protected:
                         templateColor(
                             m_appearance,
                             DeckColorRole::NameForeground,
-                            QColor(QStringLiteral("#000000"))));
+                            palette().color(QPalette::WindowText)));
                     painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, m_fields->at(frame.fieldIndex).name());
                     painter.restore();
                 }
@@ -276,8 +312,8 @@ protected:
                 painter.setPen(
                     templateColor(
                         m_appearance,
-                        DeckColorRole::TextForeground,
-                        QColor(QStringLiteral("#000000"))));
+                        nameCaption ? DeckColorRole::NameForeground : DeckColorRole::TextForeground,
+                        palette().color(QPalette::WindowText)));
                 painter.drawText(
                     frameRect,
                     ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
