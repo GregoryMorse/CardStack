@@ -1541,6 +1541,7 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
         }
 #endif
         if (paperSourceIds.isEmpty()) {
+#ifdef Q_OS_WIN
             const QList<QPrinter::PaperSource> supportedSources =
                 selectedPrinterInfo.supportedPaperSources();
             for (QPrinter::PaperSource source : supportedSources) {
@@ -1550,6 +1551,7 @@ bool showPrinterSetupDialog(QPrinter* printer, QWidget* parent)
             const int selectedSourceIndex = paperSourceIds.indexOf(
                 static_cast<int>(selectedPrinterInfo.paperSource()));
             sourceCombo->setCurrentIndex(selectedSourceIndex >= 0 ? selectedSourceIndex : 0);
+#endif
         }
         if (paperSourceIds.isEmpty()) {
             sourceCombo->addItem(QObject::tr("Printer default"));
