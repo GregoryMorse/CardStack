@@ -21,9 +21,9 @@ enum class CardTemplateLineBoxShape {
     VerticalLine
 };
 
-inline constexpr quint8 CardTemplateStyleFlagBold = 0x01;
-inline constexpr quint8 CardTemplateStyleFlagItalic = 0x02;
-inline constexpr quint8 CardTemplateStyleFlagUnderline = 0x04;
+inline constexpr quint8 CardTemplateStyleFlagUnderline = 0x01;
+inline constexpr quint8 CardTemplateStyleFlagBold = 0x02;
+inline constexpr quint8 CardTemplateStyleFlagItalic = 0x04;
 inline constexpr quint8 CardTemplateStyleFlagAlignCenter = 0x10;
 inline constexpr quint8 CardTemplateStyleFlagAlignRight = 0x20;
 

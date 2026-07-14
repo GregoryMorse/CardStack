@@ -91,6 +91,16 @@ class LegacyDeckReaderTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void recoveredTextStyleBitsUseTheirExactMeanings()
+    {
+        QCOMPARE(CardTemplateStyleFlagUnderline, quint8(0x01));
+        QCOMPARE(CardTemplateStyleFlagBold, quint8(0x02));
+        QCOMPARE(CardTemplateStyleFlagItalic, quint8(0x04));
+        QCOMPARE(ReportStyleFlagUnderline, quint8(0x01));
+        QCOMPARE(ReportStyleFlagBold, quint8(0x02));
+        QCOMPARE(ReportStyleFlagItalic, quint8(0x04));
+    }
+
     void decodesRecoveredDeckAppearanceOffsets()
     {
         using namespace LegacyDeckAppearanceFormat;

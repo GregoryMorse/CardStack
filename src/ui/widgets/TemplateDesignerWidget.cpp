@@ -1,5 +1,6 @@
 #include "TemplateDesignerWidget.h"
 
+#include "DeckSystemColors.h"
 #include "UiIds.h"
 
 #include <QAbstractItemView>
@@ -128,7 +129,7 @@ int captionFieldIndex(
 QColor templateColor(
     const DeckAppearance& appearance,
     DeckColorRole role,
-    const QColor& systemFallback)
+    const QPalette& systemPalette)
 {
     const int index = static_cast<int>(role);
     if (!appearance.useSystemColors
@@ -139,7 +140,7 @@ QColor templateColor(
             return configured;
         }
     }
-    return systemFallback;
+    return deckSystemColor(role, systemPalette);
 }
 
 } // namespace
@@ -200,7 +201,7 @@ protected:
         painter.fillRect(page.translated(5.0, 5.0), QColor(0, 0, 0, 35));
         painter.fillRect(
             page,
-            templateColor(m_appearance, DeckColorRole::CardBackground, palette().color(QPalette::Window)));
+            templateColor(m_appearance, DeckColorRole::CardBackground, palette()));
         painter.setPen(QPen(Qt::black, 1));
         painter.drawRect(page.adjusted(0, 0, -1, -1));
 
@@ -208,7 +209,7 @@ protected:
         painter.save();
         painter.fillRect(
             indexHeader,
-            templateColor(m_appearance, DeckColorRole::IndexBackground, palette().color(QPalette::Button)));
+            templateColor(m_appearance, DeckColorRole::IndexBackground, palette()));
         const qreal logicalScale = page.width() / std::max(1, m_layout->canvasWidth);
         painter.setPen(QPen(Qt::black, std::max<qreal>(1.0, 12.0 * logicalScale)));
         const qreal borderInset = std::max<qreal>(1.0, 6.0 * logicalScale);
@@ -219,7 +220,7 @@ protected:
         }
         painter.setFont(indexFont);
         painter.setPen(
-            templateColor(m_appearance, DeckColorRole::IndexForeground, palette().color(QPalette::ButtonText)));
+            templateColor(m_appearance, DeckColorRole::IndexForeground, palette()));
         const qreal textInset = std::max<qreal>(4.0, 30.0 * logicalScale);
         painter.drawText(indexHeader.adjusted(textInset, 0, -textInset, 0), Qt::AlignLeft | Qt::AlignVCenter, tr("Index"));
         painter.restore();
@@ -256,14 +257,14 @@ protected:
                     templateColor(
                         m_appearance,
                         DeckColorRole::DataBackground,
-                        palette().color(QPalette::Base)));
+                        palette()));
                 painter.setPen(QPen(Qt::black, 1));
                 painter.drawRect(frameRect);
                 painter.setPen(
                     templateColor(
                         m_appearance,
                         DeckColorRole::DataForeground,
-                        palette().color(QPalette::Text)));
+                        palette()));
                 QString previewText = frame.text;
                 if (m_fields != nullptr
                     && frame.fieldIndex >= 0
@@ -302,7 +303,7 @@ protected:
                         templateColor(
                             m_appearance,
                             DeckColorRole::NameForeground,
-                            palette().color(QPalette::WindowText)));
+                            palette()));
                     painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, m_fields->at(frame.fieldIndex).name());
                     painter.restore();
                 }
@@ -313,7 +314,7 @@ protected:
                     templateColor(
                         m_appearance,
                         nameCaption ? DeckColorRole::NameForeground : DeckColorRole::TextForeground,
-                        palette().color(QPalette::WindowText)));
+                        palette()));
                 painter.drawText(
                     frameRect,
                     ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0

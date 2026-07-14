@@ -50,9 +50,9 @@ struct ReportFrameDefinition {
     bool operator==(const ReportFrameDefinition&) const = default;
 };
 
-inline constexpr quint8 ReportStyleFlagBold = 0x01;
-inline constexpr quint8 ReportStyleFlagItalic = 0x02;
-inline constexpr quint8 ReportStyleFlagUnderline = 0x04;
+inline constexpr quint8 ReportStyleFlagUnderline = 0x01;
+inline constexpr quint8 ReportStyleFlagBold = 0x02;
+inline constexpr quint8 ReportStyleFlagItalic = 0x04;
 inline constexpr quint8 ReportStyleFlagAlignCenter = 0x10;
 inline constexpr quint8 ReportStyleFlagAlignRight = 0x20;
 

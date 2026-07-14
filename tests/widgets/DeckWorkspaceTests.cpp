@@ -180,22 +180,28 @@ private slots:
     void addDuplicateDeleteAndUndeleteKeepCardLifecycleStable()
     {
         DeckWorkspace workspace(createTwoCardDeck());
+        workspace.showTableView();
+        QCOMPARE(workspace.viewMode(), DeckWorkspace::ViewMode::Table);
 
         const int initialCount = workspace.deck().cardCount();
         workspace.addCard();
+        QCOMPARE(workspace.viewMode(), DeckWorkspace::ViewMode::Table);
         QCOMPARE(workspace.deck().cardCount(), initialCount + 1);
         QCOMPARE(workspace.currentCardIndex(), workspace.deck().cardCount() - 1);
         QCOMPARE(workspace.deck().cardAt(workspace.currentCardIndex()).valueAt(0), QString());
 
         workspace.duplicateCurrentCard();
+        QCOMPARE(workspace.viewMode(), DeckWorkspace::ViewMode::Table);
         QCOMPARE(workspace.deck().cardCount(), initialCount + 2);
         QCOMPARE(workspace.currentCardIndex(), workspace.deck().cardCount() - 1);
 
         workspace.deleteCurrentCard();
+        QCOMPARE(workspace.viewMode(), DeckWorkspace::ViewMode::Table);
         QCOMPARE(workspace.deck().cardCount(), initialCount + 1);
         QVERIFY(workspace.canUndelete());
 
         QVERIFY(workspace.undeleteCard());
+        QCOMPARE(workspace.viewMode(), DeckWorkspace::ViewMode::Table);
         QCOMPARE(workspace.deck().cardCount(), initialCount + 2);
         QCOMPARE(workspace.currentCardIndex(), workspace.deck().cardCount() - 1);
 

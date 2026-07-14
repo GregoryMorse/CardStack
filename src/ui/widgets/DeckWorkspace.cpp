@@ -6,6 +6,7 @@
 
 #include "CardDetailPanel.h"
 #include "CardTableModel.h"
+#include "DeckSystemColors.h"
 #include "PhoneticSearch.h"
 
 #include <QApplication>
@@ -490,7 +491,6 @@ void DeckWorkspace::addCard()
     markDirty();
     syncModel();
     setCurrentCardIndex(m_deck.cardCount() - 1);
-    showCardView();
 }
 
 void DeckWorkspace::deleteCurrentCard()
@@ -534,7 +534,6 @@ void DeckWorkspace::duplicateCurrentCard()
     markDirty();
     syncModel();
     setCurrentCardIndex(m_deck.cardCount() - 1);
-    showCardView();
 }
 
 void DeckWorkspace::copy()
@@ -663,7 +662,6 @@ bool DeckWorkspace::undeleteCard()
     m_currentCardIndex = insertIndex;
     refreshCardEditor();
     setCurrentCardIndex(insertIndex);
-    showCardView();
     return true;
 }
 
@@ -766,28 +764,9 @@ void DeckWorkspace::applyStoredAppearance()
     }
 
     const QPalette systemPalette = palette();
-    const auto systemColor = [systemPalette](DeckColorRole role) {
-        switch (role) {
-        case DeckColorRole::IndexForeground:
-            return systemPalette.color(QPalette::ButtonText);
-        case DeckColorRole::DataForeground:
-            return systemPalette.color(QPalette::Text);
-        case DeckColorRole::NameForeground:
-        case DeckColorRole::TextForeground:
-            return systemPalette.color(QPalette::WindowText);
-        case DeckColorRole::IndexBackground:
-            return systemPalette.color(QPalette::Button);
-        case DeckColorRole::DataBackground:
-            return systemPalette.color(QPalette::Base);
-        case DeckColorRole::CardBackground:
-            return systemPalette.color(QPalette::Window);
-        default:
-            return systemPalette.color(QPalette::WindowText);
-        }
-    };
-    auto roleColor = [&appearance, systemColor](DeckColorRole role, QPalette::ColorRole) {
+    auto roleColor = [&appearance, &systemPalette](DeckColorRole role, QPalette::ColorRole) {
         if (appearance.useSystemColors) {
-            return systemColor(role);
+            return deckSystemColor(role, systemPalette);
         }
         const int index = static_cast<int>(role);
         if (index >= 0 && index < appearance.customColors.size()) {
@@ -796,7 +775,7 @@ void DeckWorkspace::applyStoredAppearance()
                 return customColor;
             }
         }
-        return systemColor(role);
+        return deckSystemColor(role, systemPalette);
     };
 
     const QColor dataForeground = roleColor(DeckColorRole::DataForeground, QPalette::Text);
@@ -811,6 +790,12 @@ void DeckWorkspace::applyStoredAppearance()
     tablePalette.setColor(QPalette::Base, indexBackground);
     tablePalette.setColor(QPalette::AlternateBase, indexBackground);
     m_tableView->setPalette(tablePalette);
+    QPalette viewportPalette = m_tableView->viewport()->palette();
+    viewportPalette.setColor(QPalette::Window, indexBackground);
+    viewportPalette.setColor(QPalette::Base, indexBackground);
+    viewportPalette.setColor(QPalette::AlternateBase, indexBackground);
+    m_tableView->viewport()->setPalette(viewportPalette);
+    m_tableView->viewport()->setAutoFillBackground(true);
     QPalette headerPalette = m_tableView->horizontalHeader()->palette();
     headerPalette.setColor(QPalette::Button, indexBackground);
     headerPalette.setColor(QPalette::Window, indexBackground);
@@ -818,8 +803,15 @@ void DeckWorkspace::applyStoredAppearance()
     headerPalette.setColor(QPalette::WindowText, indexForeground);
     m_tableView->horizontalHeader()->setPalette(headerPalette);
     m_tableView->verticalHeader()->setPalette(headerPalette);
+    const QString headerStyle = QStringLiteral(
+        "QHeaderView::section { background-color: %1; color: %2; }")
+                                    .arg(indexBackground.name(), indexForeground.name());
+    m_tableView->horizontalHeader()->setStyleSheet(headerStyle);
+    m_tableView->verticalHeader()->setStyleSheet(headerStyle);
     if (auto* corner = m_tableView->findChild<QAbstractButton*>(QStringLiteral("deckTableCornerButton"))) {
         corner->setPalette(headerPalette);
+        corner->setStyleSheet(QStringLiteral("background-color: %1; color: %2;")
+                                  .arg(indexBackground.name(), indexForeground.name()));
         for (QLabel* label : corner->findChildren<QLabel*>()) {
             label->setPalette(headerPalette);
         }

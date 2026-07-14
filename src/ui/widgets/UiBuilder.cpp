@@ -1,5 +1,6 @@
 #include "UiBuilder.h"
 
+#include "DeckSystemColors.h"
 #include "Deck.h"
 #include "UiIds.h"
 #include "UiResourceData.h"
@@ -567,25 +568,7 @@ private:
         if (!m_useSystemColors) {
             return m_customColors.at(role);
         }
-
-        const QPalette systemPalette = palette();
-        switch (static_cast<DeckColorRole>(role)) {
-        case DeckColorRole::IndexForeground:
-            return systemPalette.color(QPalette::ButtonText);
-        case DeckColorRole::DataForeground:
-            return systemPalette.color(QPalette::Text);
-        case DeckColorRole::NameForeground:
-        case DeckColorRole::TextForeground:
-            return systemPalette.color(QPalette::WindowText);
-        case DeckColorRole::IndexBackground:
-            return systemPalette.color(QPalette::Button);
-        case DeckColorRole::DataBackground:
-            return systemPalette.color(QPalette::Base);
-        case DeckColorRole::CardBackground:
-            return systemPalette.color(QPalette::Window);
-        default:
-            return systemPalette.color(QPalette::WindowText);
-        }
+        return deckSystemColor(static_cast<DeckColorRole>(role), palette());
     }
 
     int paletteIndexAt(const QPoint& point) const
@@ -684,24 +667,7 @@ private:
     QColor colorForRole(DeckColorRole role) const
     {
         if (m_useSystemColors) {
-            const QPalette systemPalette = palette();
-            switch (role) {
-            case DeckColorRole::IndexForeground:
-                return systemPalette.color(QPalette::ButtonText);
-            case DeckColorRole::DataForeground:
-                return systemPalette.color(QPalette::Text);
-            case DeckColorRole::NameForeground:
-            case DeckColorRole::TextForeground:
-                return systemPalette.color(QPalette::WindowText);
-            case DeckColorRole::DataBackground:
-                return systemPalette.color(QPalette::Base);
-            case DeckColorRole::IndexBackground:
-                return systemPalette.color(QPalette::Button);
-            case DeckColorRole::CardBackground:
-                return systemPalette.color(QPalette::Window);
-            default:
-                return systemPalette.color(QPalette::WindowText);
-            }
+            return deckSystemColor(role, palette());
         }
         const int index = static_cast<int>(role);
         return index >= 0 && index < m_colors.size() && QColor::isValidColorName(m_colors.at(index))
