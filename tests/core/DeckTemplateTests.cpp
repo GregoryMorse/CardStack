@@ -64,6 +64,11 @@ private slots:
         }
 
         const Deck software = createDeckFromTemplateName(QStringLiteral("Software Library"));
+        QVERIFY(software.description().isEmpty());
+        QVERIFY(software.appearance().dataFont.startsWith(QStringLiteral("Arial,")));
+        QVERIFY(software.appearance().nameFont.startsWith(QStringLiteral("Arial,")));
+        QVERIFY(software.appearance().textFont.startsWith(QStringLiteral("Arial,")));
+        QVERIFY(software.appearance().indexFont.startsWith(QStringLiteral("Arial,")));
         QCOMPARE(software.fieldCount(), 11);
         QCOMPARE(software.fieldAt(0).name(), QStringLiteral("Product"));
         QCOMPARE(software.fieldAt(0).maxLength(), 30);
@@ -120,6 +125,7 @@ private slots:
 
         Deck source(QStringLiteral("Source"));
         source.addField(FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64));
+        source.setDescription(QStringLiteral("Source description"));
         source.addField(FieldDefinition(QStringLiteral("Memo"), FieldType::Notes, 8192));
         source.addCard(CardRecord({QStringLiteral("Existing"), QStringLiteral("Do not copy records")}));
         CardTemplateLayout sourceLayout;
@@ -139,6 +145,7 @@ private slots:
 
         const Deck patterned = createDeckPatternedAfterDeck(source, QStringLiteral("Patterned"));
         QCOMPARE(patterned.name(), QStringLiteral("Patterned"));
+        QCOMPARE(patterned.description(), QStringLiteral("Source description"));
         QCOMPARE(patterned.fieldCount(), 2);
         QCOMPARE(patterned.cardCount(), 0);
         QCOMPARE(patterned.reportCount(), 1);

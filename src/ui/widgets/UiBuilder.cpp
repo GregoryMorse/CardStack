@@ -457,12 +457,12 @@ public:
         : QWidget(parent)
         , m_customColors({
               QColor(0, 0, 0),
-              QColor(0, 0, 128),
-              QColor(128, 0, 0),
-              QColor(128, 0, 128),
+              QColor(0, 0, 0),
+              QColor(0, 0, 0),
+              QColor(0, 0, 0),
               QColor(255, 255, 255),
               QColor(192, 192, 192),
-              QColor(255, 255, 224),
+              QColor(255, 255, 255),
           })
     {
         setFocusPolicy(Qt::StrongFocus);
@@ -568,14 +568,23 @@ private:
             return m_customColors.at(role);
         }
 
+        const QPalette systemPalette = palette();
         switch (static_cast<DeckColorRole>(role)) {
+        case DeckColorRole::IndexForeground:
+            return systemPalette.color(QPalette::ButtonText);
+        case DeckColorRole::DataForeground:
+            return systemPalette.color(QPalette::Text);
+        case DeckColorRole::NameForeground:
+        case DeckColorRole::TextForeground:
+            return systemPalette.color(QPalette::WindowText);
         case DeckColorRole::IndexBackground:
-            return QColor(QStringLiteral("#c0c0c0"));
+            return systemPalette.color(QPalette::Button);
         case DeckColorRole::DataBackground:
+            return systemPalette.color(QPalette::Base);
         case DeckColorRole::CardBackground:
-            return QColor(QStringLiteral("#ffffff"));
+            return systemPalette.color(QPalette::Window);
         default:
-            return QColor(QStringLiteral("#000000"));
+            return systemPalette.color(QPalette::WindowText);
         }
     }
 
@@ -675,13 +684,24 @@ private:
     QColor colorForRole(DeckColorRole role) const
     {
         if (m_useSystemColors) {
-            if (role == DeckColorRole::IndexBackground) {
-                return QColor(QStringLiteral("#c0c0c0"));
+            const QPalette systemPalette = palette();
+            switch (role) {
+            case DeckColorRole::IndexForeground:
+                return systemPalette.color(QPalette::ButtonText);
+            case DeckColorRole::DataForeground:
+                return systemPalette.color(QPalette::Text);
+            case DeckColorRole::NameForeground:
+            case DeckColorRole::TextForeground:
+                return systemPalette.color(QPalette::WindowText);
+            case DeckColorRole::DataBackground:
+                return systemPalette.color(QPalette::Base);
+            case DeckColorRole::IndexBackground:
+                return systemPalette.color(QPalette::Button);
+            case DeckColorRole::CardBackground:
+                return systemPalette.color(QPalette::Window);
+            default:
+                return systemPalette.color(QPalette::WindowText);
             }
-            if (role == DeckColorRole::DataBackground || role == DeckColorRole::CardBackground) {
-                return QColor(QStringLiteral("#ffffff"));
-            }
-            return QColor(QStringLiteral("#000000"));
         }
         const int index = static_cast<int>(role);
         return index >= 0 && index < m_colors.size() && QColor::isValidColorName(m_colors.at(index))

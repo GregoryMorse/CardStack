@@ -133,6 +133,9 @@ private slots:
         QCOMPARE(fieldCaptions.first()->objectName(), QStringLiteral("fieldCaption_1"));
         QCOMPARE(fieldCaptions.first()->alignment(), Qt::AlignRight | Qt::AlignVCenter);
         QVERIFY(!fieldCaptions.first()->autoFillBackground());
+        QVERIFY(fieldCaptions.first()->geometry().left() >= 0);
+        QVERIFY(fieldCaptions.first()->width() >=
+                fieldCaptions.first()->fontMetrics().horizontalAdvance(fieldCaptions.first()->text()));
         QVERIFY(fieldCaptions.first()->geometry().right() < notesEditor->geometry().left());
     }
 

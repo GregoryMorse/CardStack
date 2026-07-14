@@ -116,7 +116,7 @@ QVector<FieldDefinition> fieldDefinitionsFromLegacyFields(const QVector<LegacyTe
 Deck deckWithFields(QString name, const QVector<FieldDefinition>& fields)
 {
     Deck deck(std::move(name));
-    deck.setDescription(QStringLiteral("Created from a built-in CardStack template decoded from the legacy template catalog."));
+    deck.setDescription(QString());
     for (const FieldDefinition& field : fields) {
         deck.addField(field);
     }
@@ -230,13 +230,13 @@ DeckAppearance builtInAppearance(int legacyResourceId)
         || legacyResourceId == 106 || legacyResourceId == 108 || legacyResourceId == 109;
     appearance.dataFont = serializedFont(thirteenPixelData ? 13 : 12);
     appearance.customColors = {
+        QStringLiteral("#000000"),
+        QStringLiteral("#000000"),
+        QStringLiteral("#000000"),
+        QStringLiteral("#000000"),
+        QStringLiteral("#ffffff"),
         QStringLiteral("#c0c0c0"),
-        QStringLiteral("#0000ff"),
-        QStringLiteral("#ff00ff"),
-        QStringLiteral("#000000"),
-        QStringLiteral("#00ffff"),
-        QStringLiteral("#000000"),
-        QStringLiteral("#000000"),
+        QStringLiteral("#ffffff"),
     };
     appearance.useSystemColors = true;
     return appearance;
@@ -537,7 +537,7 @@ Deck createDeckFromScratch(QString deckName)
     }
 
     Deck deck(std::move(deckName));
-    deck.setDescription(QStringLiteral("Designed from scratch."));
+    deck.setDescription(QString());
     deck.addField(textField(QStringLiteral("New Data Box")));
     deck.setSortKeys({{0, false}});
     deck.setCardTemplateLayout(generatedLayoutForFields(deck.fields()));
@@ -554,7 +554,7 @@ Deck createDeckPatternedAfterDeck(const Deck& sourceDeck, QString deckName)
     }
 
     Deck deck(std::move(deckName));
-    deck.setDescription(QStringLiteral("Patterned after an existing deck."));
+    deck.setDescription(sourceDeck.description());
     for (const FieldDefinition& field : sourceDeck.fields()) {
         deck.addField(field);
     }

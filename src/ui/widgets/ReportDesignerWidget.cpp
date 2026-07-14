@@ -193,6 +193,20 @@ protected:
         if (printableArea.isValid() && !printableArea.isEmpty()) {
             painter.setPen(QPen(guideBlue, 1, Qt::DotLine));
             painter.drawRect(printableArea.adjusted(0.0, 0.0, -1.0, -1.0));
+            if (m_report->formType == ReportFormType::Report) {
+                const qreal headerMils = m_report->headerHeight * 1000.0 / 96.0;
+                const qreal footerMils = m_report->footerHeight * 1000.0 / 96.0;
+                const qreal headerY = printableArea.top() + headerMils * yScale;
+                const qreal footerY = printableArea.bottom() - footerMils * yScale;
+                if (headerY > printableArea.top() && headerY < printableArea.bottom()) {
+                    painter.drawLine(QPointF(printableArea.left(), headerY),
+                                     QPointF(printableArea.right(), headerY));
+                }
+                if (footerY > printableArea.top() && footerY < printableArea.bottom()) {
+                    painter.drawLine(QPointF(printableArea.left(), footerY),
+                                     QPointF(printableArea.right(), footerY));
+                }
+            }
         }
 
         for (int index = 0; index < m_report->frames.size(); ++index) {
@@ -515,7 +529,9 @@ void ReportDesignerWidget::applyForm(
     int marginRight,
     int marginBottom,
     int horizontalGutter,
-    int verticalGutter)
+    int verticalGutter,
+    int headerHeight,
+    int footerHeight)
 {
     pushUndoState();
     m_report.formType = formType == ReportFormType::Unknown ? ReportFormType::Report : formType;
@@ -529,6 +545,12 @@ void ReportDesignerWidget::applyForm(
     m_report.marginBottom = std::max(0, marginBottom);
     m_report.horizontalGutter = std::max(0, horizontalGutter);
     m_report.verticalGutter = std::max(0, verticalGutter);
+    m_report.headerHeight = m_report.formType == ReportFormType::Report
+        ? std::max(0, headerHeight)
+        : 0;
+    m_report.footerHeight = m_report.formType == ReportFormType::Report
+        ? std::max(0, footerHeight)
+        : 0;
     if (m_canvas != nullptr) {
         m_canvas->setReport(&m_report);
     }
@@ -824,6 +846,13 @@ void ReportDesignerWidget::normalizeReport()
     m_report.marginBottom = std::max(0, m_report.marginBottom);
     m_report.horizontalGutter = std::max(0, m_report.horizontalGutter);
     m_report.verticalGutter = std::max(0, m_report.verticalGutter);
+    if (m_report.formType == ReportFormType::Report) {
+        m_report.headerHeight = m_report.headerHeight > 0 ? m_report.headerHeight : 72;
+        m_report.footerHeight = m_report.footerHeight > 0 ? m_report.footerHeight : 72;
+    } else {
+        m_report.headerHeight = 0;
+        m_report.footerHeight = 0;
+    }
 }
 
 void ReportDesignerWidget::buildUi()

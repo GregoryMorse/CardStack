@@ -512,6 +512,8 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
         "form_type INTEGER NOT NULL,"
         "form_width INTEGER NOT NULL,"
         "form_height INTEGER NOT NULL,"
+        "header_height INTEGER NOT NULL DEFAULT 0,"
+        "footer_height INTEGER NOT NULL DEFAULT 0,"
         "rows INTEGER NOT NULL,"
         "columns INTEGER NOT NULL,"
         "margin_left INTEGER NOT NULL DEFAULT 0,"
@@ -946,12 +948,12 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
     reportQuery.prepare(QStringLiteral(
         "INSERT INTO reports("
         "id, deck_id, ordinal, name, format_magic, legacy_offset, entry_size, header_size, declared_frame_count,"
-        "form_type, form_width, form_height, rows, columns,"
+        "form_type, form_width, form_height, header_height, footer_height, rows, columns,"
         "margin_left, margin_top, margin_right, margin_bottom, horizontal_gutter, vertical_gutter,"
         "paper_style_id, page_width, page_height, orientation,"
         "data_font_face, data_font_height,"
         "text_font_face, text_font_height, legacy_header"
-        ") VALUES(?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        ") VALUES(?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 
     QSqlQuery frameQuery(m_database);
     frameQuery.prepare(QStringLiteral(
@@ -977,23 +979,25 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
         reportQuery.bindValue(8, reportFormTypeToInt(report.formType));
         reportQuery.bindValue(9, report.formWidth);
         reportQuery.bindValue(10, report.formHeight);
-        reportQuery.bindValue(11, report.rows);
-        reportQuery.bindValue(12, report.columns);
-        reportQuery.bindValue(13, report.marginLeft);
-        reportQuery.bindValue(14, report.marginTop);
-        reportQuery.bindValue(15, report.marginRight);
-        reportQuery.bindValue(16, report.marginBottom);
-        reportQuery.bindValue(17, report.horizontalGutter);
-        reportQuery.bindValue(18, report.verticalGutter);
-        reportQuery.bindValue(19, report.paperStyleId);
-        reportQuery.bindValue(20, report.pageWidth);
-        reportQuery.bindValue(21, report.pageHeight);
-        reportQuery.bindValue(22, report.orientation);
-        reportQuery.bindValue(23, report.dataFont.faceName.isNull() ? QStringLiteral("") : report.dataFont.faceName);
-        reportQuery.bindValue(24, report.dataFont.legacyHeight);
-        reportQuery.bindValue(25, report.textFont.faceName.isNull() ? QStringLiteral("") : report.textFont.faceName);
-        reportQuery.bindValue(26, report.textFont.legacyHeight);
-        reportQuery.bindValue(27, report.legacyHeader.isNull() ? QByteArray("") : report.legacyHeader);
+        reportQuery.bindValue(11, report.headerHeight);
+        reportQuery.bindValue(12, report.footerHeight);
+        reportQuery.bindValue(13, report.rows);
+        reportQuery.bindValue(14, report.columns);
+        reportQuery.bindValue(15, report.marginLeft);
+        reportQuery.bindValue(16, report.marginTop);
+        reportQuery.bindValue(17, report.marginRight);
+        reportQuery.bindValue(18, report.marginBottom);
+        reportQuery.bindValue(19, report.horizontalGutter);
+        reportQuery.bindValue(20, report.verticalGutter);
+        reportQuery.bindValue(21, report.paperStyleId);
+        reportQuery.bindValue(22, report.pageWidth);
+        reportQuery.bindValue(23, report.pageHeight);
+        reportQuery.bindValue(24, report.orientation);
+        reportQuery.bindValue(25, report.dataFont.faceName.isNull() ? QStringLiteral("") : report.dataFont.faceName);
+        reportQuery.bindValue(26, report.dataFont.legacyHeight);
+        reportQuery.bindValue(27, report.textFont.faceName.isNull() ? QStringLiteral("") : report.textFont.faceName);
+        reportQuery.bindValue(28, report.textFont.legacyHeight);
+        reportQuery.bindValue(29, report.legacyHeader.isNull() ? QByteArray("") : report.legacyHeader);
         if (!reportQuery.exec()) {
             setError(errorMessage, reportQuery.lastError());
             return false;
@@ -1039,7 +1043,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
     QSqlQuery reportQuery(m_database);
     if (!reportQuery.exec(QStringLiteral(
             "SELECT id, name, format_magic, legacy_offset, entry_size, header_size, declared_frame_count,"
-            "form_type, form_width, form_height, rows, columns,"
+            "form_type, form_width, form_height, header_height, footer_height, rows, columns,"
             "margin_left, margin_top, margin_right, margin_bottom, horizontal_gutter, vertical_gutter,"
             "paper_style_id, page_width, page_height, orientation,"
             "data_font_face, data_font_height,"
@@ -1068,23 +1072,25 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         report.formType = reportFormTypeFromInt(reportQuery.value(7).toInt());
         report.formWidth = reportQuery.value(8).toInt();
         report.formHeight = reportQuery.value(9).toInt();
-        report.rows = reportQuery.value(10).toInt();
-        report.columns = reportQuery.value(11).toInt();
-        report.marginLeft = reportQuery.value(12).toInt();
-        report.marginTop = reportQuery.value(13).toInt();
-        report.marginRight = reportQuery.value(14).toInt();
-        report.marginBottom = reportQuery.value(15).toInt();
-        report.horizontalGutter = reportQuery.value(16).toInt();
-        report.verticalGutter = reportQuery.value(17).toInt();
-        report.paperStyleId = reportQuery.value(18).toInt();
-        report.pageWidth = reportQuery.value(19).toInt();
-        report.pageHeight = reportQuery.value(20).toInt();
-        report.orientation = reportQuery.value(21).toInt();
-        report.dataFont.faceName = reportQuery.value(22).toString();
-        report.dataFont.legacyHeight = reportQuery.value(23).toInt();
-        report.textFont.faceName = reportQuery.value(24).toString();
-        report.textFont.legacyHeight = reportQuery.value(25).toInt();
-        report.legacyHeader = reportQuery.value(26).toByteArray();
+        report.headerHeight = reportQuery.value(10).toInt();
+        report.footerHeight = reportQuery.value(11).toInt();
+        report.rows = reportQuery.value(12).toInt();
+        report.columns = reportQuery.value(13).toInt();
+        report.marginLeft = reportQuery.value(14).toInt();
+        report.marginTop = reportQuery.value(15).toInt();
+        report.marginRight = reportQuery.value(16).toInt();
+        report.marginBottom = reportQuery.value(17).toInt();
+        report.horizontalGutter = reportQuery.value(18).toInt();
+        report.verticalGutter = reportQuery.value(19).toInt();
+        report.paperStyleId = reportQuery.value(20).toInt();
+        report.pageWidth = reportQuery.value(21).toInt();
+        report.pageHeight = reportQuery.value(22).toInt();
+        report.orientation = reportQuery.value(23).toInt();
+        report.dataFont.faceName = reportQuery.value(24).toString();
+        report.dataFont.legacyHeight = reportQuery.value(25).toInt();
+        report.textFont.faceName = reportQuery.value(26).toString();
+        report.textFont.legacyHeight = reportQuery.value(27).toInt();
+        report.legacyHeader = reportQuery.value(28).toByteArray();
 
         frameQuery.bindValue(0, reportId);
         if (!frameQuery.exec()) {

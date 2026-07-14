@@ -274,13 +274,22 @@ constexpr int IndexBarVerticalMarginPx = 1;
 constexpr int IndexBarButtonGapPx = 1;
 constexpr int IndexBarNativeTextPaddingPx = 2;
 constexpr int ReportFormListMinimumHeightPx = 116;
-constexpr int ReportFormDialogBottomPaddingPx = 54;
 constexpr int ReportDesignerWindowWidthPx = 920;
 constexpr int ReportDesignerWindowHeightPx = 620;
 constexpr int TemplateDesignerWindowWidthPx = 940;
 constexpr int TemplateDesignerWindowHeightPx = 620;
 constexpr int HtmlDialogWidthPx = 760;
 constexpr int HtmlDialogHeightPx = 620;
+
+QFont storedDeckFont(const QString& serialized)
+{
+    QFont fallback(QStringLiteral("Arial"));
+    if (serialized.count(QLatin1Char(',')) < 9) {
+        return fallback;
+    }
+    QFont stored;
+    return stored.fromString(serialized) ? stored : fallback;
+}
 
 struct ReportFormPreset {
     ReportFormType type = ReportFormType::Report;
@@ -394,6 +403,9 @@ QVector<ReportFormPreset> reportFormPresets(ReportFormType type)
         preset.horizontalGutter = values.value(11);
         preset.verticalGutter = values.value(12);
         preset.paperStyleId = nameId + 1;
+        if (preset.formWidth <= 0 || preset.formHeight <= 0) {
+            continue;
+        }
         presets.append(std::move(preset));
     }
     return presets;
@@ -408,6 +420,13 @@ void applyReportFormPreset(ReportDefinition* report, const ReportFormPreset& pre
     report->formType = preset.type;
     report->formWidth = preset.formWidth;
     report->formHeight = preset.formHeight;
+    if (preset.type == ReportFormType::Report) {
+        report->headerHeight = report->headerHeight > 0 ? report->headerHeight : 72;
+        report->footerHeight = report->footerHeight > 0 ? report->footerHeight : 72;
+    } else {
+        report->headerHeight = 0;
+        report->footerHeight = 0;
+    }
     report->rows = preset.rows;
     report->columns = preset.columns;
     report->marginLeft = preset.marginLeft;
@@ -1182,6 +1201,11 @@ bool renderReportToPrinter(
 }
 
 } // namespace
+
+QFont MainWindow::fontForDeckRole(const QString& serialized)
+{
+    return storedDeckFont(serialized);
+}
 
 MainWindow::MainWindow(QWidget* parent, bool openInitialSample, bool restorePreviousSession)
     : QMainWindow(parent)
@@ -2356,7 +2380,8 @@ void MainWindow::handleDeckCommand(int commandId)
         return;
     case Command::ConfigureDataFont: {
         bool accepted = false;
-        const QFont font = QFontDialog::getFont(&accepted, workspace->font(), this, tr("Data Font"));
+        const QFont font = QFontDialog::getFont(
+            &accepted, fontForDeckRole(workspace->deck().appearance().dataFont), this, tr("Data Font"));
         if (accepted) {
             workspace->applyDataFont(font);
         }
@@ -2364,7 +2389,8 @@ void MainWindow::handleDeckCommand(int commandId)
     }
     case Command::ConfigureNameFont: {
         bool accepted = false;
-        const QFont font = QFontDialog::getFont(&accepted, workspace->font(), this, tr("Name Font"));
+        const QFont font = QFontDialog::getFont(
+            &accepted, fontForDeckRole(workspace->deck().appearance().nameFont), this, tr("Name Font"));
         if (accepted) {
             workspace->applyNameFont(font);
         }
@@ -2372,7 +2398,8 @@ void MainWindow::handleDeckCommand(int commandId)
     }
     case Command::ConfigureTextFont: {
         bool accepted = false;
-        const QFont font = QFontDialog::getFont(&accepted, workspace->font(), this, tr("Text Font"));
+        const QFont font = QFontDialog::getFont(
+            &accepted, fontForDeckRole(workspace->deck().appearance().textFont), this, tr("Text Font"));
         if (accepted) {
             workspace->applyTextFont(font);
         }
@@ -2380,7 +2407,8 @@ void MainWindow::handleDeckCommand(int commandId)
     }
     case Command::ConfigureIndexFont: {
         bool accepted = false;
-        const QFont font = QFontDialog::getFont(&accepted, workspace->font(), this, tr("Index Font"));
+        const QFont font = QFontDialog::getFont(
+            &accepted, fontForDeckRole(workspace->deck().appearance().indexFont), this, tr("Index Font"));
         if (accepted) {
             workspace->applyIndexFont(font);
         }
@@ -3295,7 +3323,9 @@ void MainWindow::handleReportDesignerCommand(int commandId)
             report.marginRight,
             report.marginBottom,
             report.horizontalGutter,
-            report.verticalGutter);
+            report.verticalGutter,
+            report.headerHeight,
+            report.footerHeight);
         statusBar()->showMessage(tr("Report form changed."), StatusMessageTimeoutMs);
         return;
     }
@@ -3487,7 +3517,14 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
             return;
         }
         bool accepted = false;
-        const QFont selected = QFontDialog::getFont(&accepted, owner->font(), this, tr("Template Font"));
+        const DeckAppearance& appearance = owner->deck().appearance();
+        const QString serialized = commandId == Command::ConfigureDataFont
+            ? appearance.dataFont
+            : commandId == Command::ConfigureNameFont
+                ? appearance.nameFont
+                : commandId == Command::ConfigureTextFont ? appearance.textFont : appearance.indexFont;
+        const QFont selected = QFontDialog::getFont(
+            &accepted, fontForDeckRole(serialized), this, tr("Template Font"));
         if (!accepted) {
             return;
         }
@@ -4376,32 +4413,14 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
     }
 
     auto* list = uiControl<QListWidget>(*dialog, Control::ReportFormList);
-    const auto fitChooseFormGroup = [dialog = dialog.get(), list]() {
-        if (list == nullptr) {
-            return;
-        }
-        const QList<QGroupBox*> groups = dialog->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly);
-        for (QGroupBox* group : groups) {
-            if (!group->title().contains(QStringLiteral("Choose a form"), Qt::CaseInsensitive)) {
-                continue;
-            }
-            QRect geometry = group->geometry();
-            geometry.setBottom(std::max(geometry.bottom(), list->geometry().bottom() + 8));
-            group->setGeometry(geometry);
-        }
-    };
     if (list != nullptr) {
         QRect listGeometry = list->geometry();
         listGeometry.setHeight(std::max(listGeometry.height(), ReportFormListMinimumHeightPx));
         list->setGeometry(listGeometry);
-        fitChooseFormGroup();
-        const int requiredHeight = listGeometry.bottom() + ReportFormDialogBottomPaddingPx;
-        if (dialog->height() < requiredHeight) {
-            dialog->resize(dialog->width(), requiredHeight);
-            dialog->setMinimumHeight(requiredHeight);
-        }
+        list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     }
-    const auto populateList = [this, list, dialog = dialog.get()](ReportFormType type) {
+    const auto populateList = [this, list](ReportFormType type) {
         if (list == nullptr) {
             return;
         }
@@ -4423,11 +4442,19 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 return QString::localeAwareCompare(leftName, rightName) < 0;
             });
         int firstColumnWidth = 0;
+        int secondColumnWidth = 0;
+        int thirdColumnWidth = 0;
         for (const ReportFormPreset& preset : presets) {
             const QString label = preset.label;
             firstColumnWidth = std::max(
                 firstColumnWidth,
                 list->fontMetrics().horizontalAdvance(label.section(QLatin1Char('\t'), 0, 0)));
+            secondColumnWidth = std::max(
+                secondColumnWidth,
+                list->fontMetrics().horizontalAdvance(label.section(QLatin1Char('\t'), 1, 1).trimmed()));
+            thirdColumnWidth = std::max(
+                thirdColumnWidth,
+                list->fontMetrics().horizontalAdvance(label.section(QLatin1Char('\t'), 2, -1).simplified()));
         }
         for (int displayIndex = 0; displayIndex < presetOrder.size(); ++displayIndex) {
             const int index = presetOrder.at(displayIndex);
@@ -4436,16 +4463,21 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             item->setData(Qt::UserRole, index);
             item->setData(Qt::AccessibleTextRole, label);
             if (label.contains(QLatin1Char('\t'))) {
-                item->setSizeHint(QSize(0, list->fontMetrics().height() + 8));
+                item->setSizeHint(QSize(firstColumnWidth + secondColumnWidth + thirdColumnWidth + 40,
+                                        list->fontMetrics().height() + 8));
                 auto* row = new QWidget(list);
                 auto* rowLayout = new QHBoxLayout(row);
                 rowLayout->setContentsMargins(4, 0, 4, 0);
                 rowLayout->setSpacing(12);
                 auto* name = new QLabel(label.section(QLatin1Char('\t'), 0, 0), row);
                 name->setFixedWidth(firstColumnWidth);
-                auto* size = new QLabel(label.section(QLatin1Char('\t'), 1, -1).simplified(), row);
+                auto* size = new QLabel(label.section(QLatin1Char('\t'), 1, 1).trimmed(), row);
+                size->setFixedWidth(secondColumnWidth);
+                auto* qualifier = new QLabel(label.section(QLatin1Char('\t'), 2, -1).simplified(), row);
+                qualifier->setMinimumWidth(thirdColumnWidth);
                 rowLayout->addWidget(name);
-                rowLayout->addWidget(size, 1);
+                rowLayout->addWidget(size);
+                rowLayout->addWidget(qualifier, 1);
                 list->setItemWidget(item, row);
             } else {
                 item->setText(label);
@@ -4453,28 +4485,6 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         }
         if (list->count() > 0) {
             list->setCurrentRow(0);
-        }
-        const int rowHeight = std::max(1, list->sizeHintForRow(0));
-        const int listHeight = std::max(
-            ReportFormListMinimumHeightPx,
-            rowHeight * std::max(1, list->count()) + 2 * list->frameWidth() + 6);
-        QRect listGeometry = list->geometry();
-        listGeometry.setHeight(listHeight);
-        list->setGeometry(listGeometry);
-        const QList<QGroupBox*> groups = dialog->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly);
-        for (QGroupBox* group : groups) {
-            if (!group->title().contains(QStringLiteral("Choose a form"), Qt::CaseInsensitive)) {
-                continue;
-            }
-            QRect geometry = group->geometry();
-            geometry.setBottom(std::max(geometry.bottom(), listGeometry.bottom() + 8));
-            group->setGeometry(geometry);
-        }
-
-        const int requiredHeight = listGeometry.bottom() + ReportFormDialogBottomPaddingPx;
-        if (dialog->height() < requiredHeight) {
-            dialog->resize(dialog->width(), requiredHeight);
-            dialog->setMinimumHeight(requiredHeight);
         }
     };
 
@@ -4505,6 +4515,12 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
 
     bool useCustomForm = false;
     if (auto* customButton = uiControl<QAbstractButton>(*dialog, Control::ReportFormCustom)) {
+        const int requiredWidth = customButton->fontMetrics().horizontalAdvance(customButton->text()) + 16;
+        if (customButton->width() < requiredWidth) {
+            QRect geometry = customButton->geometry();
+            geometry.setLeft(std::max(0, geometry.right() - requiredWidth + 1));
+            customButton->setGeometry(geometry);
+        }
         connect(customButton, &QAbstractButton::clicked, dialog.get(), [&useCustomForm, dialog = dialog.get()]() {
             useCustomForm = true;
             dialog->accept();
@@ -4531,10 +4547,10 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
     if (selectedPresetIndex < 0 || selectedPresetIndex >= selectedPresets.size()) {
         selectedPresetIndex = 0;
     }
-    if (!useCustomForm && !selectedPresets.isEmpty()) {
-        const ReportFormPreset& selectedPreset = selectedPresets.at(selectedPresetIndex);
-        useCustomForm = selectedPreset.formWidth <= 0 || selectedPreset.formHeight <= 0;
+    if (selectedPresets.isEmpty()) {
+        return false;
     }
+    const ReportFormPreset selectedPreset = selectedPresets.at(selectedPresetIndex);
 
     if (useCustomForm) {
         std::unique_ptr<QDialog> defineDialog = UiBuilder::createDialog(QStringLiteral("DEFINEFORM"), this, dialogContext());
@@ -4543,16 +4559,28 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             return false;
         }
 
-        setEditText(*defineDialog, Control::DefineFormWidth, QString::number(std::max(1, report->formWidth) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormHeight, QString::number(std::max(1, report->formHeight) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormMarginLeft, QString::number(std::max(0, report->marginLeft) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormMarginTop, QString::number(std::max(0, report->marginTop) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormMarginRight, QString::number(std::max(0, report->marginRight) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormMarginBottom, QString::number(std::max(0, report->marginBottom) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormHorizontalGutter, QString::number(std::max(0, report->horizontalGutter) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormVerticalGutter, QString::number(std::max(0, report->verticalGutter) / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormRows, QString::number(std::max(1, report->rows)));
-        setEditText(*defineDialog, Control::DefineFormColumns, QString::number(std::max(1, report->columns)));
+        setEditText(*defineDialog, Control::DefineFormWidth, QString::number(selectedPreset.formWidth / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormHeight, QString::number(selectedPreset.formHeight / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormMarginLeft, QString::number(selectedPreset.marginLeft / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormMarginTop, QString::number(selectedPreset.marginTop / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormMarginRight, QString::number(selectedPreset.marginRight / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormMarginBottom, QString::number(selectedPreset.marginBottom / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormHorizontalGutter, QString::number(selectedPreset.horizontalGutter / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormVerticalGutter, QString::number(selectedPreset.verticalGutter / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormRows,
+                    selectedType == ReportFormType::Report
+                        ? QString::number((report->headerHeight > 0 ? report->headerHeight : 72) / 96.0, 'f', 2)
+                        : QString::number(std::max(1, selectedPreset.rows)));
+        setEditText(*defineDialog, Control::DefineFormColumns,
+                    selectedType == ReportFormType::Report
+                        ? QString::number((report->footerHeight > 0 ? report->footerHeight : 72) / 96.0, 'f', 2)
+                        : QString::number(std::max(1, selectedPreset.columns)));
+        if (auto* paperSize = uiControl<QComboBox>(*defineDialog, Control::DefineFormPageSize)) {
+            paperSize->clear();
+            paperSize->addItem(
+                selectedPreset.label.section(QLatin1Char('\t'), 0, 0), selectedPreset.paperStyleId);
+            paperSize->setCurrentIndex(0);
+        }
         const auto setDefineEditWidth = [defineDialog = defineDialog.get()](int controlId, int width) {
             if (auto* edit = uiControl<QLineEdit>(*defineDialog, controlId)) {
                 QRect geometry = edit->geometry();
@@ -4574,8 +4602,8 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
              }) {
             setDefineEditWidth(controlId, DefineFormMeasureEditWidthPx);
         }
-        setDefineEditWidth(Control::DefineFormRows, DefineFormCountEditWidthPx);
-        setDefineEditWidth(Control::DefineFormColumns, DefineFormCountEditWidthPx);
+        setDefineEditWidth(Control::DefineFormRows, DefineFormMeasureEditWidthPx);
+        setDefineEditWidth(Control::DefineFormColumns, DefineFormMeasureEditWidthPx);
 
         auto* defineFormGroup = new QButtonGroup(defineDialog.get());
         defineFormGroup->setExclusive(true);
@@ -4595,7 +4623,11 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 orientationGroup->addButton(button, controlId);
             }
         }
-        setChecked(*defineDialog, report->formWidth > report->formHeight ? Control::DefineFormLandscape : Control::DefineFormPortrait, true);
+        setChecked(*defineDialog,
+                   selectedPreset.orientation != 0 || selectedPreset.formWidth > selectedPreset.formHeight
+                       ? Control::DefineFormLandscape
+                       : Control::DefineFormPortrait,
+                   true);
 
         const auto currentDefineType = [defineDialog = defineDialog.get()] {
             if (isChecked(*defineDialog, Control::DefineFormCard)) {
@@ -4640,8 +4672,8 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             const QString typeName = formTypeName(type);
             const int widthMils = formMeasureValue(*defineDialog, Control::DefineFormWidth, DefaultReportPageWidthMils);
             const int heightMils = formMeasureValue(*defineDialog, Control::DefineFormHeight, DefaultReportPageHeightMils);
-            int rows = positiveEditValue(*defineDialog, Control::DefineFormRows, 1);
-            int columns = positiveEditValue(*defineDialog, Control::DefineFormColumns, 1);
+            const int rows = multiCell ? positiveEditValue(*defineDialog, Control::DefineFormRows, 1) : 1;
+            const int columns = multiCell ? positiveEditValue(*defineDialog, Control::DefineFormColumns, 1) : 1;
 
             if (auto* groupBox = uiControl<QGroupBox>(*defineDialog, Control::DefineFormCountGroup)) {
                 groupBox->setTitle(multiCell
@@ -4659,20 +4691,13 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 Control::DefineFormComputedHeight,
                 tr("%1 height (in): %2").arg(typeName, formatInches(heightMils)));
 
-            if (!multiCell) {
-                rows = 1;
-                columns = 1;
-                setEditText(*defineDialog, Control::DefineFormRows, QStringLiteral("1"));
-                setEditText(*defineDialog, Control::DefineFormColumns, QStringLiteral("1"));
-            }
             setControlsEnabled(
                 {
-                    Control::DefineFormRows,
-                    Control::DefineFormColumns,
                     Control::DefineFormHorizontalGutter,
                     Control::DefineFormVerticalGutter,
                 },
                 multiCell);
+            setControlsEnabled({Control::DefineFormRows, Control::DefineFormColumns}, true);
 
             if (auto* sample = UiBuilder::controlById(defineDialog, Control::DefineFormSample)) {
                 sample->setProperty("formSample", true);
@@ -4697,6 +4722,7 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             defineDialog = defineDialog.get(),
             adjustMeasureEdit,
             adjustCountEdit,
+            currentDefineType,
             updateDefineFormState
         ](int spinControlId, int editControlId, bool measure) {
             auto* spinBox = uiControl<QSpinBox>(*defineDialog, spinControlId);
@@ -4712,7 +4738,11 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 const int previous = spinBox->property("lastValue").toInt();
                 const int delta = value - previous;
                 spinBox->setProperty("lastValue", value);
-                if (measure) {
+                const bool reportDimension =
+                    currentDefineType() == ReportFormType::Report
+                    && (editControlId == Control::DefineFormRows
+                        || editControlId == Control::DefineFormColumns);
+                if (measure || reportDimension) {
                     adjustMeasureEdit(editControlId, delta * 5);
                 } else {
                     adjustCountEdit(editControlId, delta);
@@ -4780,8 +4810,14 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         if (isChecked(*defineDialog, Control::DefineFormLandscape) && preset.formHeight > preset.formWidth) {
             std::swap(preset.formWidth, preset.formHeight);
         }
-        preset.rows = positiveEditValue(*defineDialog, Control::DefineFormRows, preset.type == ReportFormType::Label ? DefaultLabelRows : 1);
-        preset.columns = positiveEditValue(*defineDialog, Control::DefineFormColumns, preset.type == ReportFormType::Label ? DefaultLabelColumns : 1);
+        preset.rows = preset.type == ReportFormType::Report
+            ? 1
+            : positiveEditValue(*defineDialog, Control::DefineFormRows,
+                                preset.type == ReportFormType::Label ? DefaultLabelRows : 1);
+        preset.columns = preset.type == ReportFormType::Report
+            ? 1
+            : positiveEditValue(*defineDialog, Control::DefineFormColumns,
+                                preset.type == ReportFormType::Label ? DefaultLabelColumns : 1);
         preset.marginLeft = formMeasureValue(*defineDialog, Control::DefineFormMarginLeft, 0);
         preset.marginTop = formMeasureValue(*defineDialog, Control::DefineFormMarginTop, 0);
         preset.marginRight = formMeasureValue(*defineDialog, Control::DefineFormMarginRight, 0);
@@ -4801,6 +4837,12 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 ? LabelFormNameLastId + 1
                 : ReportFormNameLastId + 1;
         applyReportFormPreset(report, preset);
+        if (preset.type == ReportFormType::Report) {
+            report->headerHeight = qRound(
+                formMeasureValue(*defineDialog, Control::DefineFormRows, 750) * 96.0 / 1000.0);
+            report->footerHeight = qRound(
+                formMeasureValue(*defineDialog, Control::DefineFormColumns, 750) * 96.0 / 1000.0);
+        }
         return true;
     }
 

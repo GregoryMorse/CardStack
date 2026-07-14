@@ -168,6 +168,8 @@ private slots:
         QCOMPARE(result.reports.at(2).formType, ReportFormType::Report);
         QCOMPARE(result.reports.at(2).formWidth, 8500);
         QCOMPARE(result.reports.at(2).formHeight, 11000);
+        QCOMPARE(result.reports.at(2).headerHeight, 96);
+        QCOMPARE(result.reports.at(2).footerHeight, 96);
         QCOMPARE(result.reports.at(2).declaredFrameCount, 14);
         QCOMPARE(result.reports.at(2).frames.at(12).systemTokens, QVector<QString>{QStringLiteral("reportname")});
         QCOMPARE(result.reports.at(2).frames.at(13).systemTokens, QVector<QString>{QStringLiteral("page")});

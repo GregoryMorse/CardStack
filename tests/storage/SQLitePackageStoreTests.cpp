@@ -40,6 +40,8 @@ Deck makeDeckWithCardsLayoutAndReport()
     report.formType = ReportFormType::Report;
     report.formWidth = 8500;
     report.formHeight = 11000;
+    report.headerHeight = 72;
+    report.footerHeight = 84;
     ReportFrameDefinition titleFrame;
     titleFrame.kind = ReportFrameKind::Data;
     titleFrame.bounds = QRect(240, 300, 3000, 240);
@@ -105,6 +107,8 @@ private slots:
         QCOMPARE(loaded.cardTemplateLayout().frames.at(0).fieldIndex, 0);
         QCOMPARE(loaded.cardTemplateLayout().frames.at(1).cornerRadius, 120);
         QCOMPARE(loaded.reportAt(0).name, QStringLiteral("Shelf List"));
+        QCOMPARE(loaded.reportAt(0).headerHeight, 72);
+        QCOMPARE(loaded.reportAt(0).footerHeight, 84);
         QCOMPARE(loaded.reportAt(0).frames.at(0).fieldPlaceholders, QVector<QString>({QStringLiteral("Title")}));
     }
 

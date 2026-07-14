@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
 #include <QGroupBox>
 #include <QLabel>
 #include <QKeySequence>
@@ -449,6 +450,17 @@ class MainWindowActionTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void resolvesPersistedRoleFontsForFontDialogs()
+    {
+        const QFont stored = MainWindow::fontForDeckRole(
+            QStringLiteral("Arial,-1,13,5,400,0,0,0,0,0"));
+        QCOMPARE(stored.family(), QStringLiteral("Arial"));
+        QCOMPARE(stored.pixelSize(), 13);
+
+        const QFont fallback = MainWindow::fontForDeckRole(QStringLiteral("not-a-font"));
+        QCOMPARE(fallback.family(), QStringLiteral("Arial"));
+    }
+
     void exposesStartupMenuCommands()
     {
         MainWindow window(nullptr, false);
@@ -1556,16 +1568,51 @@ private slots:
 
         bool sawDefineFormState = false;
         handleNextDialogByLegacyName(QStringLiteral("REPORTFORM"), [](QDialog* dialog) {
+            auto* list = qobject_cast<QListWidget*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportFormList));
+            auto* card = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportFormCard));
+            auto* report = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::ReportFormReport));
             auto* customButton = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog, UiIds::Control::ReportFormCustom));
+            QVERIFY(list != nullptr);
+            QVERIFY(card != nullptr);
+            QVERIFY(report != nullptr);
             QVERIFY(customButton != nullptr);
+            QCOMPARE(list->count(), 5);
+            QCOMPARE(list->currentRow(), 0);
+            const QRect fixedListGeometry = list->geometry();
+            for (int row = 0; row < list->count(); ++row) {
+                QVERIFY(!list->item(row)->data(Qt::AccessibleTextRole).toString().contains(
+                    QStringLiteral("User Defined"), Qt::CaseInsensitive));
+            }
+            QWidget* firstRow = list->itemWidget(list->item(0));
+            QVERIFY(firstRow != nullptr);
+            QCOMPARE(firstRow->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly).size(), 3);
+            QVERIFY(customButton->width() >=
+                    customButton->fontMetrics().horizontalAdvance(customButton->text()) + 8);
+            card->click();
+            QCoreApplication::processEvents();
+            QCOMPARE(list->count(), 30);
+            QCOMPARE(list->currentRow(), 0);
+            QCOMPARE(list->geometry(), fixedListGeometry);
+            report->click();
+            QCoreApplication::processEvents();
+            QCOMPARE(list->count(), 5);
+            QCOMPARE(list->currentRow(), 0);
+            QCOMPARE(list->geometry(), fixedListGeometry);
             customButton->click();
         });
         handleNextDialogByLegacyName(QStringLiteral("DEFINEFORM"), [&sawDefineFormState](QDialog* dialog) {
             auto* label = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog, UiIds::Control::DefineFormLabel));
+            auto* report = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormReport));
             auto* landscape = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog, UiIds::Control::DefineFormLandscape));
+            auto* pageSize = qobject_cast<QComboBox*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormPageSize));
             auto* rows = qobject_cast<QLineEdit*>(
                 UiBuilder::controlById(dialog, UiIds::Control::DefineFormRows));
             auto* columns = qobject_cast<QLineEdit*>(
@@ -1583,7 +1630,9 @@ private slots:
             QWidget* sample = UiBuilder::controlById(dialog, UiIds::Control::DefineFormSample);
 
             QVERIFY(label != nullptr);
+            QVERIFY(report != nullptr);
             QVERIFY(landscape != nullptr);
+            QVERIFY(pageSize != nullptr);
             QVERIFY(rows != nullptr);
             QVERIFY(columns != nullptr);
             QVERIFY(width != nullptr);
@@ -1592,6 +1641,13 @@ private slots:
             QVERIFY(widthLabel != nullptr);
             QVERIFY(heightLabel != nullptr);
             QVERIFY(sample != nullptr);
+
+            QVERIFY(report->isChecked());
+            QVERIFY(rows->isEnabled());
+            QVERIFY(columns->isEnabled());
+            QCOMPARE(width->text().toDouble(), 8.5);
+            QCOMPARE(height->text().toDouble(), 14.0);
+            QCOMPARE(pageSize->currentText(), QStringLiteral("Legal"));
 
             label->click();
             landscape->click();

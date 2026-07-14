@@ -129,6 +129,8 @@ ReportDefinition standardReportShell(
     report.formType = ReportFormType::Report;
     report.formWidth = StandardReportPageWidthMils;
     report.formHeight = StandardReportPageHeightMils;
+    report.headerHeight = 72;
+    report.footerHeight = 72;
     report.rows = 1;
     report.columns = 1;
     report.marginLeft = 0;
@@ -293,6 +295,8 @@ ReportDefinition report(
     result.formType = formType;
     result.formWidth = formWidth;
     result.formHeight = formHeight;
+    result.headerHeight = formType == ReportFormType::Report ? 96 : 0;
+    result.footerHeight = formType == ReportFormType::Report ? 96 : 0;
     result.rows = rows;
     result.columns = columns;
     result.dataFont = std::move(dataFont);

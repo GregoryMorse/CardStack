@@ -1129,6 +1129,12 @@ private slots:
         QVERIFY(deckPreview->property("hasDeckPreview").toBool());
         QCOMPARE(deckPreview->geometry().left(), roleCombo->geometry().left());
         QVERIFY(deckPreview->geometry().right() < swatchGrid->geometry().left());
+        QCOMPARE(
+            UiBuilder::colorDialogColors(dialog.get()),
+            QStringList({QStringLiteral("#000000"), QStringLiteral("#000000"),
+                         QStringLiteral("#000000"), QStringLiteral("#000000"),
+                         QStringLiteral("#ffffff"), QStringLiteral("#c0c0c0"),
+                         QStringLiteral("#ffffff")}));
         roleCombo->setCurrentIndex(1);
         useSystem->setChecked(true);
         QCoreApplication::processEvents();

@@ -17,6 +17,8 @@ constexpr int ReportNameOffset = 0x0a;
 constexpr int ReportNameLength = 64;
 constexpr int FormWidthOffset = 0x4b;
 constexpr int FormHeightOffset = 0x4d;
+constexpr int HeaderHeightOffset = 0x4f;
+constexpr int FooterHeightOffset = 0x51;
 constexpr int FrameCountOffset = 0x53;
 constexpr int RowsOffset = 0x55;
 constexpr int ColumnsOffset = 0x57;
@@ -254,6 +256,8 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         report.name = readNullTerminatedAscii(bytes, offset + ReportNameOffset, ReportNameLength);
         report.formWidth = readU16(bytes, offset + FormWidthOffset);
         report.formHeight = readU16(bytes, offset + FormHeightOffset);
+        report.headerHeight = readU16(bytes, offset + HeaderHeightOffset);
+        report.footerHeight = readU16(bytes, offset + FooterHeightOffset);
         report.rows = readU16(bytes, offset + RowsOffset);
         report.columns = readU16(bytes, offset + ColumnsOffset);
         report.formType = formTypeFromLegacyValue(readU16(bytes, offset + FormTypeOffset));

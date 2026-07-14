@@ -112,6 +112,8 @@ struct ReportDefinition {
     ReportFormType formType = ReportFormType::Unknown;
     int formWidth = 0;
     int formHeight = 0;
+    int headerHeight = 0;
+    int footerHeight = 0;
     int rows = 0;
     int columns = 0;
     int marginLeft = 0;

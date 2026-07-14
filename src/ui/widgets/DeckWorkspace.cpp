@@ -746,15 +746,24 @@ void DeckWorkspace::applyStoredAppearance()
         m_tableView->verticalHeader()->setFont(storedFont);
     }
 
-    const auto systemColor = [](DeckColorRole role) {
+    const QPalette systemPalette = palette();
+    const auto systemColor = [systemPalette](DeckColorRole role) {
         switch (role) {
+        case DeckColorRole::IndexForeground:
+            return systemPalette.color(QPalette::ButtonText);
+        case DeckColorRole::DataForeground:
+            return systemPalette.color(QPalette::Text);
+        case DeckColorRole::NameForeground:
+        case DeckColorRole::TextForeground:
+            return systemPalette.color(QPalette::WindowText);
         case DeckColorRole::IndexBackground:
-            return QColor(QStringLiteral("#c0c0c0"));
+            return systemPalette.color(QPalette::Button);
         case DeckColorRole::DataBackground:
+            return systemPalette.color(QPalette::Base);
         case DeckColorRole::CardBackground:
-            return QColor(QStringLiteral("#ffffff"));
+            return systemPalette.color(QPalette::Window);
         default:
-            return QColor(QStringLiteral("#000000"));
+            return systemPalette.color(QPalette::WindowText);
         }
     };
     auto roleColor = [&appearance, systemColor](DeckColorRole role, QPalette::ColorRole) {
@@ -1164,9 +1173,11 @@ void DeckWorkspace::rebuildCardEditor()
                     caption->setObjectName(QStringLiteral("fieldCaption_%1").arg(fieldIndex));
                     caption->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
                     caption->setAutoFillBackground(false);
-                    const int availableWidth = std::max(0, rect.left() - 18);
-                    const int captionWidth = std::min(caption->sizeHint().width() + 4, availableWidth);
-                    caption->setGeometry(rect.left() - captionWidth - 6, rect.top(), captionWidth, rect.height());
+                    const int desiredWidth = caption->fontMetrics().horizontalAdvance(fieldCaption) + 8;
+                    const int captionRight = rect.left() - 6;
+                    const int captionLeft = std::max(0, captionRight - desiredWidth);
+                    caption->setGeometry(
+                        captionLeft, rect.top(), std::max(0, captionRight - captionLeft), rect.height());
                     caption->show();
                     templateLabels.append(caption);
                 }

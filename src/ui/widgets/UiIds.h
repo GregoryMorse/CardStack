@@ -174,6 +174,7 @@ inline constexpr int DefineFormHeight = 303;
 inline constexpr int DefineFormHeightSpin = 304;
 inline constexpr int DefineFormWidth = 305;
 inline constexpr int DefineFormWidthSpin = 306;
+inline constexpr int DefineFormPageSize = 307;
 inline constexpr int DefineFormMarginTop = 308;
 inline constexpr int DefineFormMarginTopSpin = 309;
 inline constexpr int DefineFormMarginLeft = 310;

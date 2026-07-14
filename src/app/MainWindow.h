@@ -15,6 +15,7 @@ class QAction;
 class QCloseEvent;
 class QShowEvent;
 class QEvent;
+class QFont;
 class QLabel;
 class QMdiArea;
 class QMdiSubWindow;
@@ -36,6 +37,7 @@ public:
         bool openInitialSample = false,
         bool restorePreviousSession = false);
     ~MainWindow() override;
+    static QFont fontForDeckRole(const QString& serialized);
 
 protected:
     void closeEvent(QCloseEvent* event) override;

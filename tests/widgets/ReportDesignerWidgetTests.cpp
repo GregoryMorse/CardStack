@@ -164,7 +164,11 @@ private slots:
             500,
             500,
             500,
-            500);
+            500,
+            0,
+            0,
+            72,
+            84);
 
         const ReportDefinition report = designer.report();
         QCOMPARE(report.formType, ReportFormType::Report);
@@ -172,6 +176,8 @@ private slots:
         QCOMPARE(report.marginTop, 500);
         QCOMPARE(report.marginRight, 500);
         QCOMPARE(report.marginBottom, 500);
+        QCOMPARE(report.headerHeight, 72);
+        QCOMPARE(report.footerHeight, 84);
         QVERIFY(designer.isDirty());
     }
 

@@ -55,7 +55,9 @@ public:
         int marginRight = 0,
         int marginBottom = 0,
         int horizontalGutter = 0,
-        int verticalGutter = 0);
+        int verticalGutter = 0,
+        int headerHeight = 0,
+        int footerHeight = 0);
 
 signals:
     void commandRequested(int commandId);
