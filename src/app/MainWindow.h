@@ -6,6 +6,8 @@
 #include "UiBuilder.h"
 
 #include <QMainWindow>
+#include <QHash>
+#include <QPointer>
 
 #include <optional>
 #include <memory>
@@ -22,6 +24,7 @@ class QMdiArea;
 class QMdiSubWindow;
 class QResizeEvent;
 class QPrinter;
+class QLockFile;
 class QToolBar;
 class QWidget;
 
@@ -116,6 +119,10 @@ private:
     bool exportTemplatePackageFromDesigner(TemplateDesignerWidget* designer);
     bool exportReportPackageFromDesigner(ReportDesignerWidget* designer);
     bool confirmCloseDeckWindow(QMdiSubWindow* subWindow);
+    DeckWorkspace* designerOwner(const QWidget* designer) const;
+    DeckWorkspace* findOpenDeck(const QString& path) const;
+    std::shared_ptr<QLockFile> acquireDeckLock(const QString& path);
+    void trackDesignerOwner(QWidget* designer, DeckWorkspace* workspace);
     bool closeAllSubWindowsWithPrompts();
     QByteArray captureDeckWindowSession() const;
     void saveWindowSession(const QByteArray& deckWindows);
@@ -153,6 +160,9 @@ private:
     bool m_phoneLogCalls = false;
     bool m_enterWorksLikeTab = false;
     int m_currentMenuId = 0;
+    QHash<const QWidget*, QPointer<DeckWorkspace>> m_designerOwners;
+    QHash<DeckWorkspace*, std::shared_ptr<QLockFile>> m_documentLocks;
+    QHash<TemplateDesignerWidget*, std::shared_ptr<Deck>> m_templateDrafts;
 };
 
 } // namespace CardStack

@@ -1,4 +1,5 @@
 #include "LegacyReportReader.h"
+#include "ReportFontCodec.h"
 #include "LegacyOemCodec.h"
 
 #include <QFile>
@@ -23,8 +24,8 @@ constexpr int FrameCountOffset = 0x53;
 constexpr int RowsOffset = 0x55;
 constexpr int ColumnsOffset = 0x57;
 constexpr int FormTypeOffset = 0x59;
-constexpr int DataFontOffset = 0x6c;
-constexpr int TextFontOffset = 0x9e;
+constexpr int DataFontOffset = 0x8d;
+constexpr int TextFontOffset = 0x5b;
 
 constexpr int FrameTextOffset = 0x10;
 constexpr int FrameTextLength = 0x7a;
@@ -97,13 +98,8 @@ ReportFormType formTypeFromLegacyValue(int value)
 
 ReportFontDefinition readFontDefinition(const QByteArray& bytes, int offset)
 {
-    ReportFontDefinition font;
-    if (offset < 0 || offset >= bytes.size()) {
-        return font;
-    }
-
-    font.legacyHeight = static_cast<qint8>(bytes.at(offset));
-    font.faceName = readNullTerminatedAscii(bytes, offset + 1, 31);
+    ReportFontDefinition font = decodeReportFont(bytes, offset);
+    font.faceName = readNullTerminatedAscii(bytes, offset + 18, 32);
     return font;
 }
 
@@ -164,10 +160,12 @@ ReportFrameDefinition readFrame(const QByteArray& bytes, int offset, int coordin
     frame.order = readU16(bytes, offset + 0x04);
     frame.band = readU16(bytes, offset + 0x06);
 
-    const int left = readU16(bytes, offset + 0x08) * coordinateScale;
-    const int top = readU16(bytes, offset + 0x0a) * coordinateScale;
-    const int right = readU16(bytes, offset + 0x0c) * coordinateScale;
-    const int bottom = readU16(bytes, offset + 0x0e) * coordinateScale;
+    Q_UNUSED(coordinateScale);
+    constexpr qreal MilsPerSourcePixel = 1000.0 / 96.0;
+    const int left = qRound(readU16(bytes, offset + 0x08) * MilsPerSourcePixel);
+    const int top = qRound(readU16(bytes, offset + 0x0a) * MilsPerSourcePixel);
+    const int right = qRound(readU16(bytes, offset + 0x0c) * MilsPerSourcePixel);
+    const int bottom = qRound(readU16(bytes, offset + 0x0e) * MilsPerSourcePixel);
     frame.bounds = QRect(left, top, std::max(0, right - left), std::max(0, bottom - top));
 
     frame.text = readNullTerminatedAscii(bytes, offset + FrameTextOffset, FrameTextLength);
@@ -176,7 +174,7 @@ ReportFrameDefinition readFrame(const QByteArray& bytes, int offset, int coordin
     frame.kind = classifyFrame(frame.text, frame.fieldPlaceholders, frame.systemTokens);
     frame.printEntireContentsFlag = static_cast<quint8>(bytes.at(offset + FramePrintEntireContentsOffset));
     frame.validationFlags = static_cast<quint8>(bytes.at(offset + FrameValidationFlagsOffset));
-    frame.styleFlags = static_cast<quint8>(bytes.at(offset + FrameStyleFlagsOffset));
+    frame.styleFlags = decodeReportStyleFlags(static_cast<quint8>(bytes.at(offset + FrameStyleFlagsOffset)));
     if (frame.kind == ReportFrameKind::LineOrBox) {
         frame.lineBoxShape = static_cast<quint8>(bytes.at(offset + FrameLineBoxShapeOffset));
         frame.lineStyle = normalizedLineStyle(readU16(bytes, offset + FrameLineStyleOffset));
@@ -206,11 +204,11 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
 {
     constexpr int PaperStyleIdOffset = 0x00bf;
     constexpr int MarginBottomOffset = 0x00c1;
-    constexpr int MarginTopOffset = 0x00c3;
-    constexpr int MarginLeftOffset = 0x00c5;
-    constexpr int MarginRightOffset = 0x00c7;
-    constexpr int PageWidthOffset = 0x00c9;
-    constexpr int PageHeightOffset = 0x00cb;
+    constexpr int MarginTopOffset = 0x00c7;
+    constexpr int MarginLeftOffset = 0x00c3;
+    constexpr int MarginRightOffset = 0x00c5;
+    constexpr int PageWidthOffset = 0x00cb;
+    constexpr int PageHeightOffset = 0x00c9;
     constexpr int OrientationOffset = 0x00cd;
     constexpr int HorizontalGutterOffset = 0x03c9;
     constexpr int VerticalGutterOffset = 0x03cb;
@@ -256,8 +254,8 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         report.name = readNullTerminatedAscii(bytes, offset + ReportNameOffset, ReportNameLength);
         report.formWidth = readU16(bytes, offset + FormWidthOffset);
         report.formHeight = readU16(bytes, offset + FormHeightOffset);
-        report.headerHeight = readU16(bytes, offset + HeaderHeightOffset);
-        report.footerHeight = readU16(bytes, offset + FooterHeightOffset);
+        report.headerHeight = qRound(readU16(bytes, offset + HeaderHeightOffset) * (1000.0 / 96.0));
+        report.footerHeight = qRound(readU16(bytes, offset + FooterHeightOffset) * (1000.0 / 96.0));
         report.rows = readU16(bytes, offset + RowsOffset);
         report.columns = readU16(bytes, offset + ColumnsOffset);
         report.formType = formTypeFromLegacyValue(readU16(bytes, offset + FormTypeOffset));
@@ -282,6 +280,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
             report.frames.append(readFrame(bytes, frameBase + frameIndex * FrameRecordSize, coordinateScale));
         }
 
+        classifyReportBands(&report);
         result.reports.append(report);
         offset += entrySize;
     }

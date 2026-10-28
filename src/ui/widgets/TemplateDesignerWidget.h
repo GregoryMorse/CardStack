@@ -33,6 +33,9 @@ public:
     const CardTemplateLayout& layoutDefinition() const;
     const QVector<FieldDefinition>& fieldDefinitions() const;
     QStringList fieldNames() const;
+    const DeckAppearance& appearance() const { return m_appearance; }
+    void markSaved();
+    bool addDataField(const QString& name, int length, bool phone = false, bool showName = true);
     int selectedFrameIndex() const;
     const CardTemplateFrame* selectedFrameDefinition() const;
     int selectedFieldIndex() const;

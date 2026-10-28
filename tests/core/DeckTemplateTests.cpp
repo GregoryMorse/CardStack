@@ -122,7 +122,7 @@ private slots:
         QCOMPARE(mailingListTemplate->reports.first().formatMagic, QStringLiteral("RPT@#$A"));
         QCOMPARE(mailingListTemplate->reports.first().frames.first().kind, ReportFrameKind::Data);
         QCOMPARE(mailingListTemplate->reports.first().frames.first().fieldPlaceholders, QVector<QString>{QStringLiteral("First Name")});
-        QCOMPARE(mailingListTemplate->reports.first().frames.first().bounds, QRect(240, 240, 1560, 210));
+        QCOMPARE(mailingListTemplate->reports.first().frames.first().bounds, QRect(250, 250, 1625, 219));
     }
 
     void supportsScratchAndPatternedDeckCreation()

@@ -241,7 +241,7 @@ QVector<DeckSortKey> defaultSortKeysForTemplate(int legacyResourceId)
 DeckAppearance builtInAppearance(int legacyResourceId)
 {
     auto serializedFont = [](int pixelSize) {
-        return QStringLiteral("Arial,-1,%1,5,400,0,0,0,0,0").arg(pixelSize);
+        return QStringLiteral("Arial,-1,%1,5,50,0,0,0,0,0").arg(pixelSize);
     };
 
     DeckAppearance appearance;
@@ -588,6 +588,7 @@ Deck createDeckPatternedAfterDeck(const Deck& sourceDeck, QString deckName)
         deck.addReport(report);
     }
     deck.setCardTemplateLayout(sourceDeck.cardTemplateLayout());
+    deck.setAppearance(sourceDeck.appearance());
     return deck;
 }
 

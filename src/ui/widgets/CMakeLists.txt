@@ -1,4 +1,7 @@
 qt_add_library(cardstack_widgets STATIC
+    ApplicationAppearance.h
+    FrameDrawingStyle.h
+    ReportTextLayout.h
     CardDetailPanel.cpp
     CardDetailPanel.h
     CardTableModel.cpp

@@ -1,6 +1,7 @@
 #include "TemplateDesignerWidget.h"
 
 #include "DeckSystemColors.h"
+#include "FrameDrawingStyle.h"
 #include "UiIds.h"
 
 #include <QAbstractItemView>
@@ -241,15 +242,17 @@ protected:
             painter.setFont(frameFont);
 
             switch (frame.kind) {
-            case CardTemplateFrameKind::LineOrBox:
-                if (frame.lineBoxShape == CardTemplateLineBoxShape::HorizontalLine) {
-                    painter.drawLine(frameRect.left(), frameRect.center().y(), frameRect.right(), frameRect.center().y());
-                } else if (frame.lineBoxShape == CardTemplateLineBoxShape::VerticalLine) {
-                    painter.drawLine(frameRect.center().x(), frameRect.top(), frameRect.center().x(), frameRect.bottom());
-                } else {
-                    painter.drawRoundedRect(frameRect, frame.cornerRadius, frame.cornerRadius);
-                }
+            case CardTemplateFrameKind::LineOrBox: {
+                ReportFrameDefinition drawing;
+                drawing.lineBoxShape = frame.lineBoxShape == CardTemplateLineBoxShape::HorizontalLine
+                    ? ReportLineShapeHorizontal : frame.lineBoxShape == CardTemplateLineBoxShape::VerticalLine
+                        ? ReportLineShapeVertical : ReportLineShapeBox;
+                drawing.lineStyle = frame.lineStyle;
+                drawing.fillPattern = frame.fillPattern;
+                drawing.cornerRadius = frame.cornerRadius;
+                FrameDrawingStyle::draw(painter, frameRect, drawing, logicalScale);
                 break;
+            }
             case CardTemplateFrameKind::DataBox:
             case CardTemplateFrameKind::NotesBox: {
                 painter.fillRect(
@@ -586,9 +589,34 @@ void TemplateDesignerWidget::addTextFrameWithText(const QString& text, quint8 st
     markDirty();
 }
 
+bool TemplateDesignerWidget::addDataField(const QString& name, int length, bool phone, bool showName)
+{
+    const QString cleanName = name.trimmed();
+    if (cleanName.isEmpty() || length < 1 || std::any_of(m_fields.cbegin(), m_fields.cend(),
+        [&cleanName](const auto& field) { return field.name().compare(cleanName, Qt::CaseInsensitive) == 0; })) return false;
+    pushUndoState();
+    m_fields.append(FieldDefinition(cleanName, FieldType::Text, length, showName, phone));
+    const int fieldIndex = static_cast<int>(m_fields.size()) - 1;
+    m_fieldCombo->addItem(cleanName, fieldIndex);
+    CardTemplateFrame frame = defaultFrame(CardTemplateFrameKind::DataBox);
+    frame.fieldIndex = fieldIndex;
+    frame.text = cleanName;
+    frame.bounds = normalizedFrameBounds(frame.bounds, m_layout);
+    m_layout.frames.append(frame);
+    refreshFrameTable();
+    selectFrame(static_cast<int>(m_layout.frames.size()) - 1);
+    markDirty();
+    return true;
+}
+
 void TemplateDesignerWidget::addDataBoxFrame()
 {
-    addDataBoxFrameForField({}, 0);
+    QString name = tr("Data Box");
+    int suffix = 2;
+    while (std::any_of(m_fields.cbegin(), m_fields.cend(), [&name](const auto& field) {
+        return field.name().compare(name, Qt::CaseInsensitive) == 0;
+    })) name = tr("Data Box %1").arg(suffix++);
+    addDataField(name, 255);
 }
 
 void TemplateDesignerWidget::addDataBoxFrameForField(const QString& fieldName, quint8 styleFlags)
@@ -632,7 +660,7 @@ void TemplateDesignerWidget::addNotesBoxFrame()
         frame.fieldIndex = m_fields.size() - 1;
         frame.text = fieldName;
         if (m_fieldCombo != nullptr) {
-            m_fieldCombo->addItem(fieldName);
+            m_fieldCombo->addItem(fieldName, frame.fieldIndex);
         }
     }
     m_layout.frames.append(frame);
@@ -777,17 +805,22 @@ void TemplateDesignerWidget::updateSelectedFrameFromToolbar(
 
 void TemplateDesignerWidget::setAppearance(DeckAppearance appearance)
 {
+    if (m_appearance == appearance) return;
     m_appearance = std::move(appearance);
-    if (m_canvas != nullptr) {
-        m_canvas->setAppearance(m_appearance);
-    }
+    if (m_canvas != nullptr) m_canvas->setAppearance(m_appearance);
+    markDirty();
+}
+
+void TemplateDesignerWidget::markSaved()
+{
+    m_dirty = false;
+    emit dirtyChanged(false);
 }
 
 void TemplateDesignerWidget::save()
 {
     applyPropertyEdits();
-    m_dirty = false;
-    emit dirtyChanged(false);
+    markSaved();
     emit saveRequested(m_layout);
 }
 

@@ -48,7 +48,12 @@ void installVisualTestFonts()
             continue;
         }
 
-        QApplication::setFont(QFont(families.first(), 9));
+        // Native gallery captures retain the production font. Offscreen builds
+        // only need a fallback if the platform supplied no installed family.
+        const QString current = QApplication::font().family();
+        if (!QFontDatabase::families().contains(current, Qt::CaseInsensitive)
+            && qEnvironmentVariable("QT_QPA_PLATFORM") == QLatin1String("offscreen"))
+            QApplication::setFont(QFont(families.first(), 9));
         return;
     }
 }

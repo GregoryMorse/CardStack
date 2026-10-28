@@ -5,6 +5,8 @@ qt_add_library(cardstack_sqlite STATIC
     SQLitePackageStore.h
     SQLiteDeckStore.cpp
     SQLiteDeckStore.h
+    SQLiteSnapshot.cpp
+    SQLiteSnapshot.h
 )
 
 target_link_libraries(cardstack_sqlite

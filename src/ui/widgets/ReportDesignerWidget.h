@@ -44,6 +44,7 @@ public:
     void commitPendingEdits();
     void markDirty();
     void setReportName(const QString& name);
+    void setReportIdentity(const QString& id) { m_report.documentId = id; }
     void applyForm(
         ReportFormType formType,
         int formWidth,
@@ -57,7 +58,8 @@ public:
         int horizontalGutter = 0,
         int verticalGutter = 0,
         int headerHeight = 0,
-        int footerHeight = 0);
+        int footerHeight = 0,
+        int pageWidth = 0, int pageHeight = 0, int orientation = -1, int paperStyleId = 0);
 
 signals:
     void commandRequested(int commandId);

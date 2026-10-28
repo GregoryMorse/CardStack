@@ -1,4 +1,5 @@
 #include "UiBuilder.h"
+#include "DeckSecurity.h"
 
 #include "DeckSystemColors.h"
 #include "Deck.h"
@@ -4281,8 +4282,9 @@ void initializeSecurityDialog(QDialog* dialog, const UiBuilder::DialogContext& c
         return;
     }
 
-    password->setMaxLength(8);
+    password->setMaxLength(context.legacyPasswordRules ? 8 : DeckSecurity::MaximumPasswordCharacters);
     password->setEchoMode(QLineEdit::Password);
+    if (!context.legacyPasswordRules) return;
     QObject::connect(password, &QLineEdit::textChanged, dialog, [password](const QString& text) {
         const QString upper = text.left(8).toUpper();
         if (text == upper) {

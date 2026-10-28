@@ -1,3 +1,4 @@
+#include <QVariant>
 #include "ReportPreviewDialog.h"
 
 #include "UiIds.h"
@@ -8,6 +9,8 @@
 #include <QPainter>
 #include <QWheelEvent>
 #include <QWidget>
+#include <QGridLayout>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <memory>
@@ -91,8 +94,8 @@ protected:
 private:
     QRectF pageRect() const
     {
-        const qreal reportWidth = std::max(1, m_report.formWidth);
-        const qreal reportHeight = std::max(1, m_report.formHeight);
+        const qreal reportWidth = ReportPrintEngine::pageSizeMils(m_report).width();
+        const qreal reportHeight = ReportPrintEngine::pageSizeMils(m_report).height();
         const qreal reportAspect = reportWidth / reportHeight;
 
         QRectF available = rect().adjusted(6, 6, -10, -10);
@@ -147,6 +150,14 @@ std::unique_ptr<QDialog> ReportPreviewDialog::create(
         return {};
     }
 
+    dialog->setProperty("previewRecordCount", records.size());
+    QVariantList rows;
+    for (const auto& record : records) {
+        QVariantMap row;
+        for (auto it = record.fieldValues.cbegin(); it != record.fieldValues.cend(); ++it) row.insert(it.key(), it.value());
+        rows.append(row);
+    }
+    dialog->setProperty("previewFieldRows", rows);
     auto currentPageIndex = std::make_shared<int>(0);
     const QVector<ReportPrintPage> safePages = pages.isEmpty() ? ReportPrintEngine::paginate(report, records) : pages;
 
@@ -201,6 +212,39 @@ std::unique_ptr<QDialog> ReportPreviewDialog::create(
     }
     updatePageState();
 
+    if (canvas != nullptr) {
+        auto* layout = new QGridLayout(dialog.get());
+        layout->setContentsMargins(12, 12, 12, 12);
+        layout->setHorizontalSpacing(12);
+        layout->setVerticalSpacing(10);
+        if (auto* status = uiControl<QLabel>(dialog.get(), Control::PreviewPageStatus))
+            layout->addWidget(status, 0, 0);
+        if (auto* title = uiControl<QLabel>(dialog.get(), Control::PreviewTitle)) {
+            title->setWordWrap(true);
+            layout->addWidget(title, 0, 1);
+        }
+        canvas->setMinimumSize(320, 320);
+        canvas->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        layout->addWidget(canvas, 1, 0, 1, 2);
+        auto* buttons = new QVBoxLayout;
+        for (int id : {Control::Ok, Control::Cancel}) {
+            if (auto* button = uiControl<QAbstractButton>(dialog.get(), id)) {
+                button->setMinimumWidth(120);
+                buttons->addWidget(button);
+            }
+        }
+        buttons->addSpacing(16);
+        for (int id : {Control::PreviewNextPage, Control::PreviewFirstPage})
+            if (auto* button = uiControl<QAbstractButton>(dialog.get(), id)) buttons->addWidget(button);
+        buttons->addStretch(1);
+        layout->addLayout(buttons, 1, 2);
+        layout->setColumnStretch(1, 1);
+        layout->setRowStretch(1, 1);
+        dialog->setMinimumSize(640, 480);
+        dialog->resize(960, 720);
+        dialog->setSizeGripEnabled(true);
+        layout->activate();
+    }
     return dialog;
 }
 

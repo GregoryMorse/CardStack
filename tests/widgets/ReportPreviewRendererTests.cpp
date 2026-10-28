@@ -1,4 +1,9 @@
 #include "ReportPreviewRenderer.h"
+#include "FrameDrawingStyle.h"
+#include "ReportTextLayout.h"
+#include <QPrinter>
+#include <QPrinterInfo>
+#include <QFile>
 
 #include <QAbstractButton>
 #include <QDir>
@@ -12,6 +17,7 @@
 #include <QWheelEvent>
 
 #include "DeckTemplate.h"
+#include "BuiltInReportTemplates.h"
 #include "LegacyReportReader.h"
 #include "UiIds.h"
 #include "UiBuilder.h"
@@ -22,7 +28,6 @@ using namespace CardStack;
 
 namespace {
 
-constexpr int ManualPreviewImageLimit = 40;
 constexpr int ManualPreviewImageWidth = 960;
 constexpr int ManualPreviewImageHeight = 720;
 
@@ -177,9 +182,22 @@ ReportPreviewData previewDataForTemplate(const DeckTemplate& deckTemplate, int s
 {
     ReportPreviewData data;
     for (const FieldDefinition& field : deckTemplate.fields) {
-        data.fieldValues.insert(
-            field.name(),
-            QStringLiteral("%1 sample %2").arg(field.name()).arg(sampleIndex));
+        const QString key = field.name().toLower();
+        QString value = QStringLiteral("Sample");
+        if (key.contains(QLatin1String("name"))) value = key.contains(QLatin1String("last")) ? QStringLiteral("Morgan") : QStringLiteral("Alex");
+        else if (key.contains(QLatin1String("title")) || key == QLatin1String("product")) value = QStringLiteral("Field Notes");
+        else if (key.contains(QLatin1String("author")) || key.contains(QLatin1String("artist"))) value = QStringLiteral("A. Morgan");
+        else if (key.contains(QLatin1String("company")) || key.contains(QLatin1String("publisher"))) value = QStringLiteral("North Press");
+        else if (key.contains(QLatin1String("initial"))) value = QStringLiteral("A.");
+        else if (key.contains(QLatin1String("year"))) value = QStringLiteral("2026");
+        else if (key.contains(QLatin1String("pages"))) value = QStringLiteral("184");
+        else if (key.contains(QLatin1String("phone")) || key.contains(QLatin1String("fax"))) value = QStringLiteral("555-0123");
+        else if (key.contains(QLatin1String("state"))) value = QStringLiteral("CA");
+        else if (key.contains(QLatin1String("zip"))) value = QStringLiteral("94000");
+        else if (key.contains(QLatin1String("city"))) value = QStringLiteral("Oakland");
+        else if (key.contains(QLatin1String("address"))) value = QStringLiteral("42 Maple St");
+        else if (field.isNotes()) value = QStringLiteral("A short note.");
+        data.fieldValues.insert(field.name(), value.left(std::max(1, field.maxLength())));
     }
     data.systemValues.insert(QStringLiteral("page"), QString::number(sampleIndex));
     return data;
@@ -199,20 +217,25 @@ bool writePreviewImage(const ReportDefinition& report, const ReportPreviewData& 
     for (int index = 0; index < recordCount; ++index) {
         ReportPreviewData record = data;
         for (auto iterator = record.fieldValues.begin(); iterator != record.fieldValues.end(); ++iterator) {
-            iterator.value() = QStringLiteral("%1 %2").arg(iterator.value()).arg(index + 1);
+            if (iterator.value().isEmpty()) iterator.value() = QString::number(index + 1);
         }
         records.append(record);
     }
-    const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records.size());
+    const QVector<ReportPrintPage> pages = ReportPrintEngine::paginate(report, records);
 
     QPainter painter(&image);
+    const QSizeF paper = ReportPrintEngine::pageSizeMils(report);
+    const qreal scale = std::min((image.width() - 40.0) / paper.width(), (image.height() - 40.0) / paper.height());
+    const QRectF page((image.width() - paper.width() * scale) / 2.0,
+                      (image.height() - paper.height() * scale) / 2.0,
+                      paper.width() * scale, paper.height() * scale);
     if (!pages.isEmpty()) {
         ReportPrintEngine::renderPage(
             &painter,
             report,
             records,
             pages.first(),
-            QRectF(20, 20, image.width() - 40, image.height() - 40));
+            page);
     } else {
         ReportPreviewRenderer::render(
             &painter,
@@ -231,6 +254,222 @@ class ReportPreviewRendererTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void fillPatternsHaveCorrectDensityDirectionAndWeight()
+    {
+        int previous = -1;
+        for (int pattern = ReportFillPattern5Percent; pattern <= ReportFillPattern90Percent; ++pattern) {
+            const QImage image = FrameDrawingStyle::fillBrush(pattern).textureImage();
+            QVERIFY(!image.isNull());
+            int filled = 0;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x)
+                    filled += image.pixelColor(x, y).alpha() > 0 ? 1 : 0;
+            QVERIFY(filled > previous);
+            previous = filled;
+        }
+        const QImage horizontal = FrameDrawingStyle::fillBrush(ReportFillPatternLightHorizontal).textureImage();
+        const QImage vertical = FrameDrawingStyle::fillBrush(ReportFillPatternLightVertical).textureImage();
+        QVERIFY(horizontal.pixelColor(4, 0).alpha() > 0);
+        QCOMPARE(horizontal.pixelColor(0, 4).alpha(), 0);
+        QVERIFY(vertical.pixelColor(0, 4).alpha() > 0);
+        QCOMPARE(vertical.pixelColor(4, 0).alpha(), 0);
+        QVERIFY(FrameDrawingStyle::fillBrush(ReportFillPatternDarkHorizontal).textureImage()
+            != FrameDrawingStyle::fillBrush(ReportFillPatternLightHorizontal).textureImage());
+    }
+
+    void builtInReportsUseRealFontsPaperAndDerivedBands()
+    {
+        bool bibliographySeen = false;
+        for (const auto& deckTemplate : builtInDeckTemplates()) {
+            for (const auto& report : deckTemplate.reports) {
+                QVERIFY(report.dataFont.legacyHeight < 0);
+                QVERIFY(report.textFont.legacyHeight < 0);
+                QVERIFY(report.pageWidth > 0);
+                QVERIFY(report.pageHeight > 0);
+                const auto pages = ReportPrintEngine::paginate(report, 1);
+                QVERIFY(!pages.isEmpty());
+                QImage rendered(480, 640, QImage::Format_ARGB32_Premultiplied);
+                rendered.fill(Qt::white);
+                QPainter painter(&rendered);
+                ReportPreviewData record = previewDataForTemplate(deckTemplate, 1);
+                ReportPrintEngine::renderPage(&painter, report, {record}, pages.first(), QRectF(0, 0, 480, 640));
+                painter.end();
+                QVERIFY2(hasInk(rendered), qPrintable(report.name));
+                if (deckTemplate.legacyResourceId == 105 && report.legacyOffset == 0) {
+                    QCOMPARE(report.marginTop, 62);
+                    QCOMPARE(report.marginLeft, 500);
+                    QCOMPARE(report.marginRight, 500);
+                    QCOMPARE(report.marginBottom, 0);
+                    QCOMPARE(report.pageHeight - report.marginTop - report.marginBottom, report.formHeight);
+                }
+                for (const auto& frame : report.frames) QVERIFY(frame.band <= ReportFooterBand);
+                if (report.name == QLatin1String("Bibliography")) {
+                    bibliographySeen = true;
+                    QCOMPARE(report.frames[0].band, ReportBodyBand);
+                    QCOMPARE(report.frames[1].band, ReportBodyBand);
+                    QCOMPARE(report.frames[2].band, ReportBodyBand);
+                    QCOMPARE(report.frames[5].band, ReportHeaderBand);
+                    QCOMPARE(report.frames.last().band, ReportFooterBand);
+                    QCOMPARE(report.dataFont.legacyHeight, -98);
+                    QCOMPARE(ReportPrintEngine::pageSizeMils(report), QSizeF(8500, 11000));
+                }
+            }
+        }
+        QVERIFY(bibliographySeen);
+    }
+
+    void continuationFieldsAreCompleteAndExhaustedFieldsStayBlank()
+    {
+        ReportDefinition report;
+        report.formType = ReportFormType::Report;
+        report.formWidth = 8500;
+        report.formHeight = 11000;
+        report.dataFont = {QStringLiteral("Arial"), -100};
+        for (int index = 0; index < 2; ++index) {
+            ReportFrameDefinition frame;
+            frame.kind = ReportFrameKind::Data;
+            frame.bounds = QRect(500 + index * 2500, 500, 1800, 400);
+            frame.text = index == 0 ? QStringLiteral("[Short]") : QStringLiteral("[Long]");
+            frame.fieldPlaceholders = {index == 0 ? QStringLiteral("Short") : QStringLiteral("Long")};
+            frame.printEntireContentsFlag = 1;
+            report.frames.append(frame);
+        }
+        ReportPreviewData values;
+        values.fieldValues.insert(QStringLiteral("Short"), QStringLiteral("short field"));
+        values.fieldValues.insert(QStringLiteral("Long"), QStringLiteral("Long paragraph with Unicode text. ").repeated(80));
+        const auto pages = ReportPrintEngine::paginate(report, QVector<ReportPreviewData>{values});
+        QString shortOutput, longOutput;
+        int continuationCount = 0;
+        for (const auto& page : pages) {
+            for (const auto& cell : page.cells) {
+                ++continuationCount;
+                QVERIFY(cell.fieldValueOverrides.contains(QStringLiteral("Short")));
+                QVERIFY(cell.fieldValueOverrides.contains(QStringLiteral("Long")));
+                shortOutput += cell.fieldValueOverrides.value(QStringLiteral("Short"));
+                longOutput += cell.fieldValueOverrides.value(QStringLiteral("Long"));
+            }
+        }
+        QVERIFY(continuationCount > 1);
+        QCOMPARE(shortOutput, values.fieldValues.value(QStringLiteral("Short")));
+        QCOMPARE(longOutput, values.fieldValues.value(QStringLiteral("Long")));
+    }
+
+    void paperLayoutResetsPortraitAndHonorsPhysicalDimensions()
+    {
+        ReportDefinition report;
+        report.formWidth = 8500;
+        report.formHeight = 14000;
+        report.pageWidth = 8500;
+        report.pageHeight = 14000;
+        const auto portrait = ReportPrintEngine::pageLayout(report);
+        QCOMPARE(portrait.orientation(), QPageLayout::Portrait);
+        const QSizeF dimensions = portrait.fullRect(QPageLayout::Inch).size();
+        QVERIFY(qAbs(dimensions.width() - 8.5) < 0.01);
+        QVERIFY(qAbs(dimensions.height() - 14.0) < 0.01);
+        report.orientation = 1;
+        const auto landscape = ReportPrintEngine::pageLayout(report);
+        QCOMPARE(landscape.orientation(), QPageLayout::Landscape);
+        report.orientation = 0;
+        QCOMPARE(ReportPrintEngine::pageLayout(report).orientation(), QPageLayout::Portrait);
+    }
+
+    void fontSizingUsesTenthsOfPointsNotDevicePixelCaps()
+    {
+        const QFont font = ReportTextLayout::font({QStringLiteral("Arial"), -100}, ReportStyleFlagBold);
+        QCOMPARE(font.pixelSize(), 139);
+        QVERIFY(font.bold());
+        ReportDefinition report;
+        report.formWidth = 8500;
+        report.formHeight = 11000;
+        report.textFont = {QStringLiteral("Arial"), -100};
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Text;
+        frame.bounds = QRect(500, 500, 3000, 500);
+        frame.text = QStringLiteral("Physical font size");
+        report.frames.append(frame);
+        const auto inkBounds = [&](int scale) {
+            QImage image(816 * scale, 1056 * scale, QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::white);
+            QPainter painter(&image);
+            ReportPreviewRenderer::render(&painter, report, image.rect());
+            painter.end();
+            QRect bounds;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x)
+                    if (image.pixelColor(x, y).lightness() < 200)
+                        bounds = bounds.isNull() ? QRect(x, y, 1, 1) : bounds.united(QRect(x, y, 1, 1));
+            return bounds;
+        };
+        const QRect one = inkBounds(1), two = inkBounds(2);
+        QVERIFY(!one.isEmpty());
+        QVERIFY(qAbs(two.width() - one.width() * 2) <= 4);
+        QVERIFY(qAbs(two.height() - one.height() * 2) <= 4);
+    }
+
+    void nativePrintToPdfWhenExplicitlyEnabledAndAvailable()
+    {
+        if (!qEnvironmentVariableIsSet("CARDSTACK_TEST_NATIVE_PDF"))
+            QSKIP("Set CARDSTACK_TEST_NATIVE_PDF for the optional native PDF-printer integration test.");
+        QString printerName;
+        for (const auto& info : QPrinterInfo::availablePrinters()) {
+            if (info.printerName().contains(QStringLiteral("Print to PDF"), Qt::CaseInsensitive)) {
+                printerName = info.printerName();
+                break;
+            }
+        }
+        if (printerName.isEmpty()) QSKIP("A native Print to PDF printer is not available.");
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("native-print.pdf"));
+        QPrinter printer(QPrinter::HighResolution);
+        printer.setPrinterName(printerName);
+        printer.setOutputFileName(path);
+        printer.setOutputFormat(QPrinter::NativeFormat);
+        ReportDefinition report = makeReport();
+        report.formType = ReportFormType::Report;
+        report.formWidth = report.pageWidth = 8500;
+        report.formHeight = report.pageHeight = 11000;
+        report.frames.resize(1);
+        report.frames[0].bounds = QRect(500, 500, 7500, 500);
+        printer.setPageLayout(ReportPrintEngine::pageLayout(report));
+        printer.setFullPage(true);
+        ReportPreviewData data;
+        data.fieldValues.insert(QStringLiteral("Project"), QStringLiteral("Native PDF integration"));
+        const QVector<ReportPreviewData> records{data};
+        const auto pages = ReportPrintEngine::paginate(report, records);
+        QPainter painter;
+        QVERIFY(painter.begin(&printer));
+        ReportPrintEngine::renderPage(&painter, report, records, pages.first(), painter.viewport());
+        QVERIFY(painter.end());
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo(path).size() > 0, 10000);
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.read(5) == QByteArray("%PDF-"));
+    }
+    void resolvesAbbreviatedNamesAndOmitsMissingOptionalFields()
+    {
+        ReportFrameDefinition frame;
+        frame.text = QStringLiteral("Service: [Customer servic]; optional: [Title]; {MISSING}");
+        ReportPreviewData data;
+        data.fieldValues.insert(QStringLiteral("Customer service"), QStringLiteral("555-0100"));
+        data.fieldValues.insert(QStringLiteral("CUSTOMER SERVICE"), QStringLiteral("555-0100"));
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Service: 555-0100; optional: ; "));
+        data.fieldValues.insert(QStringLiteral("Customer services"), QStringLiteral("Other"));
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Service: ; optional: ; "));
+        for (const auto& deckTemplate : builtInDeckTemplates()) {
+            auto sample = previewDataForTemplate(deckTemplate, 1);
+            for (const auto& report : deckTemplate.reports) {
+                sample.systemValues.insert(QStringLiteral("reportname"), report.name);
+                for (const auto& item : report.frames) {
+                    const QString text = ReportPreviewRenderer::resolveFrameText(item, sample);
+                    QVERIFY2(!text.contains(QLatin1Char('[')) && !text.contains(QLatin1Char('{')),
+                             qPrintable(deckTemplate.name + QStringLiteral(" / ") + report.name + QStringLiteral(": ") + text));
+                }
+            }
+        }
+    }
+
     void resolvesFieldAndSystemPlaceholders()
     {
         const ReportDefinition report = makeReport();
@@ -437,11 +676,6 @@ private slots:
         for (const DeckTemplate& deckTemplate : builtInDeckTemplates()) {
             ReportPreviewData data = previewDataForTemplate(deckTemplate, written + 1);
             for (const ReportDefinition& report : deckTemplate.reports) {
-                if (written >= ManualPreviewImageLimit) {
-                    qInfo("Wrote %d manual report preview images to %s", written, qPrintable(outputDirectory.absolutePath()));
-                    return;
-                }
-
                 data.systemValues.insert(QStringLiteral("reportname"), report.name);
                 const QString fileName = QStringLiteral("%1_%2_%3.png")
                                              .arg(written, 2, 10, QLatin1Char('0'))
@@ -449,11 +683,34 @@ private slots:
                 QVERIFY2(
                     writePreviewImage(report, data, outputDirectory.filePath(fileName)),
                     qPrintable(fileName));
+                if ((deckTemplate.legacyResourceId == 101 && (report.legacyOffset == 0 || report.legacyOffset == 2253))
+                    || (deckTemplate.legacyResourceId == 105 && report.legacyOffset == 0)) {
+                    UiBuilder::DialogContext context;
+                    context.reportNames = {report.name};
+                    auto preview = ReportPreviewDialog::create(nullptr, context, report, data);
+                    QVERIFY(preview != nullptr);
+                    preview->show();
+                    QVERIFY(QTest::qWaitForWindowExposed(preview.get()));
+                    QCoreApplication::processEvents();
+                    const QString previewFile = QStringLiteral("preview_%1_%2.png")
+                        .arg(safeFileStem(deckTemplate.name), safeFileStem(report.name));
+                    QVERIFY(preview->grab().save(outputDirectory.filePath(previewFile)));
+                    preview->close();
+                }
                 ++written;
             }
         }
 
-        QVERIFY(written > 1);
+        const Deck genericDeck = createDeckFromTemplate(builtInDeckTemplates().first());
+        const ReportPreviewData genericData = previewDataForTemplate(builtInDeckTemplates().first(), 1);
+        for (const auto& report : standardReportDefinitionsForDeck(genericDeck, QStringLiteral("Default Page Report"), QStringLiteral("Default Row Report"))) {
+            const QString fileName = QStringLiteral("%1_%2.png").arg(written, 2, 10, QLatin1Char('0')).arg(safeFileStem(report.name));
+            auto data = genericData;
+            data.systemValues.insert(QStringLiteral("reportname"), report.name);
+            QVERIFY2(writePreviewImage(report, data, outputDirectory.filePath(fileName)), qPrintable(fileName));
+            ++written;
+        }
+        QCOMPARE(written, 48);
         qInfo("Wrote %d manual report preview images to %s", written, qPrintable(outputDirectory.absolutePath()));
     }
 
@@ -522,6 +779,15 @@ private slots:
         QVERIFY(pageStatus->geometry().bottom() < canvas->geometry().top());
         QVERIFY(firstPage->geometry().left() > canvas->geometry().right());
         QVERIFY(nextPage->geometry().left() > canvas->geometry().right());
+        dialog->show();
+        QCoreApplication::processEvents();
+        const QSize before = canvas->size();
+        dialog->resize(dialog->width() + 120, dialog->height() + 80);
+        QCoreApplication::processEvents();
+        QVERIFY(canvas->width() > before.width());
+        QVERIFY(canvas->height() > before.height());
+        QVERIFY(title->geometry().bottom() < canvas->geometry().top());
+        QVERIFY(!canvas->geometry().intersects(nextPage->geometry()));
     }
 
     void createsUiPreviewDialogWithPageNavigation()

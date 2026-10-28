@@ -161,13 +161,13 @@
   <p>The Colors dialog changes deck color roles. On Windows, system palette mode follows desktop control colors; other platforms use the normal Qt palette.</p>
 
   <h3>Security prompts</h3>
-  <p>Legacy password prompts use the old import-compatible eight-character uppercase rules only when reading protected legacy files. Modern deck security is separate and can use stronger rules.</p>
+  <p>Legacy password prompts use the old import-compatible eight-character uppercase rules only when reading protected legacy files. Modern deck passwords preserve case, spaces, and the complete password; the eight-character rule does not apply to newly configured deck security.</p>
 
   <h3>User name</h3>
   <p>User name prompts collect display metadata for workflows that need an operator or author name.</p>
 
   <h2>Security and passwords</h2>
-  <p>Legacy password handling is used only for importing protected legacy decks. Modern CardStack security is separate from those legacy limits and should use contemporary password expectations. Add or remove modern deck security from the Configure menu.</p>
+  <p>Add or remove deck security from the Configure menu. New passwords are case-sensitive, may include spaces and Unicode, and may contain up to 1,024 characters. CardStack stores a salted password verifier, not the password. Select data encryption to encrypt and authenticate the entire saved deck, including cards, notes, reports, and layout metadata. Without data encryption, the password prompt protects access through CardStack but does not conceal the file from other database tools. A forgotten encryption password cannot be recovered. Previous CardStack files are migrated when saved; remove and add security to replace a previous eight-character password with a modern one. Template and report exports are unencrypted sharing files, so check their contents before sharing them.</p>
 
   <h2>Phone dialing</h2>
   <p><strong>Phone &gt; Dial</strong> copies the chosen number and asks the operating system to open a <code>tel:</code> link. This works with whatever phone/calling application is registered on the platform.</p>

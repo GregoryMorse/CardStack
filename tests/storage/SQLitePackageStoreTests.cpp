@@ -82,6 +82,29 @@ class SQLitePackageStoreTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void templateSharingPreservesEveryAppearanceRole()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        Deck source = makeDeckWithCardsLayoutAndReport();
+        DeckAppearance appearance;
+        appearance.dataFont = QStringLiteral("Data font");
+        appearance.nameFont = QStringLiteral("Caption font");
+        appearance.textFont = QStringLiteral("Text font");
+        appearance.indexFont = QStringLiteral("Index font");
+        appearance.useSystemColors = false;
+        for (int index = 0; index < appearance.customColors.size(); ++index)
+            appearance.customColors[index] = QStringLiteral("#12345%1").arg(index);
+        source.setAppearance(appearance);
+        const QString path = directory.filePath(QStringLiteral("appearance.cstemplate"));
+        QString error;
+        QVERIFY2(SQLitePackageStore::saveTemplatePackage(source, path, &error), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(SQLitePackageStore::loadTemplatePackage(path, &loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.appearance(), appearance);
+        QCOMPARE(loaded.cardCount(), 0);
+    }
     void savesTemplatePackagesWithoutCards()
     {
         QTemporaryDir directory;

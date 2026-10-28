@@ -1,6 +1,6 @@
 {
   "name": "cardstack",
-  "version-string": "0.1.0",
+  "version-string": "1.1.0",
   "description": "Modern cross-platform card database application with SQLite storage and legacy import support",
   "dependencies": [
     "qtbase"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CardRecord.h"
+#include "DeckSecurity.h"
 #include "CardTemplateLayout.h"
 #include "FieldDefinition.h"
 #include "ImportExportProfile.h"
@@ -103,7 +104,16 @@ public:
     void setCardTemplateLayout(CardTemplateLayout layout);
     void setLegacyControlRecord(QByteArray record);
     void setAppearance(DeckAppearance appearance);
-    void setSecurity(QString password, bool encrypted);
+    bool setSecurity(QString password, bool encrypted);
+    bool passwordMatches(const QString& password) const;
+    bool unlockSecurity(const QString& password);
+    void restoreSecurityRecord(QString record, bool encrypted, DeckSecurity::Key key = {});
+    const DeckSecurity::Key& securityKey() const;
+    const QString& documentId() const;
+    void setDocumentId(QString id);
+    const QString& storagePath() const;
+    const QByteArray& storageFingerprint() const;
+    void setStorageOrigin(QString path, QByteArray fingerprint);
     void clearSecurity();
     void setReport(int index, ReportDefinition report);
     void removeReport(int index);
@@ -123,6 +133,10 @@ private:
     DeckAppearance m_appearance;
     QString m_securityPassword;
     bool m_securityEncrypted = false;
+    DeckSecurity::Key m_securityKey;
+    QString m_documentId;
+    QString m_storagePath;
+    QByteArray m_storageFingerprint;
 };
 
 Deck createSampleProjectDeck();

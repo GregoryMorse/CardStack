@@ -27,7 +27,8 @@ constexpr int StandardReportTitleTopMils = 350;
 constexpr int StandardReportTitleWidthMils = 3600;
 constexpr int StandardReportTitleHeightMils = 300;
 constexpr int StandardReportPageNumberLeftMils = 7600;
-constexpr int StandardReportPageNumberTopMils = 350;
+constexpr int StandardReportPageNumberTopMils = 10600;
+constexpr int StandardReportBandHeightMils = 750;
 constexpr int StandardReportPageNumberWidthMils = 400;
 constexpr int StandardReportPageNumberHeightMils = 300;
 constexpr int StandardRowReportFieldLeftMils = 300;
@@ -43,9 +44,9 @@ constexpr quint8 PrintNormal = 0;
 constexpr quint8 PrintEntireContents = 1;
 constexpr quint8 NoValidationFlags = 0;
 constexpr quint8 TextPlain = 0;
-constexpr quint8 TextBold = ReportStyleFlagBold;
 constexpr quint8 TextItalic = ReportStyleFlagItalic;
-constexpr quint8 TextBoldUnderline = ReportStyleFlagBold | ReportStyleFlagUnderline;
+constexpr quint8 TextUnderline = ReportStyleFlagUnderline;
+constexpr quint8 TextBoldItalic = ReportStyleFlagBold | ReportStyleFlagItalic;
 constexpr int NoLineBoxShape = ReportLineShapeNone;
 constexpr int LegacyBoxShape = ReportLineShapeBox;
 constexpr int LegacyLineShape = ReportLineShapeLegacyAuto;
@@ -129,8 +130,8 @@ ReportDefinition standardReportShell(
     report.formType = ReportFormType::Report;
     report.formWidth = StandardReportPageWidthMils;
     report.formHeight = StandardReportPageHeightMils;
-    report.headerHeight = 72;
-    report.footerHeight = 72;
+    report.headerHeight = StandardReportBandHeightMils;
+    report.footerHeight = StandardReportBandHeightMils;
     report.rows = 1;
     report.columns = 1;
     report.marginLeft = 0;
@@ -212,13 +213,13 @@ QVector<QString> texts(std::initializer_list<const char*> values)
     return result;
 }
 
-QRect scaledReportFrameBounds(QRect bounds, int scale)
+QRect scaledReportFrameBounds(QRect bounds, int)
 {
-    return QRect(
-        bounds.left() * scale,
-        bounds.top() * scale,
-        bounds.width() * scale,
-        bounds.height() * scale);
+    constexpr qreal MilsPerSourcePixel = 1000.0 / 96.0;
+    const int left = qRound(bounds.left() * MilsPerSourcePixel);
+    const int top = qRound(bounds.top() * MilsPerSourcePixel);
+    return QRect(left, top, qRound((bounds.left() + bounds.width()) * MilsPerSourcePixel) - left,
+                 qRound((bounds.top() + bounds.height()) * MilsPerSourcePixel) - top);
 }
 
 ReportFontDefinition font(const char* faceName, int legacyHeight)
@@ -269,7 +270,61 @@ ReportFrameDefinition frame(
     return result;
 }
 
+struct ReportFormDetails {
+    int templateId, offset, headerHeight, footerHeight, paperStyleId;
+    int marginBottom, marginLeft, marginRight, marginTop;
+    int pageWidth, pageHeight, orientation, horizontalGutter, verticalGutter;
+};
+constexpr ReportFormDetails BuiltInFormDetails[] = {
+    {101, 0, 1010, 1021, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {101, 2253, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {101, 4506, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {102, 0, 1010, 1021, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {102, 3028, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {102, 6986, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {102, 10944, 1000, 1000, 10461, 0, 0, 0, 0, 9500, 4125, 0, 0, 0},
+    {102, 13662, 1000, 1000, 10459, 0, 0, 0, 0, 9500, 4125, 1, 0, 0},
+    {102, 16380, 1000, 1000, 10331, 0, 500, 500, 62, 4500, 1000, 0, 0, 0},
+    {102, 19098, 1000, 1000, 10309, 500, 156, 156, 500, 8500, 11000, 0, 188, 0},
+    {103, 0, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {103, 3338, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {103, 6676, 750, 750, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {104, 0, 750, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {105, 0, 1000, 1000, 10349, 0, 500, 500, 62, 4500, 500, 0, 0, 0},
+    {105, 1323, 1000, 1000, 10347, 500, 531, 531, 495, 8500, 11000, 0, 562, 0},
+    {105, 2646, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {106, 0, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {106, 3338, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {106, 5901, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {107, 0, 0, 0, 10311, 500, 156, 156, 500, 8500, 11000, 0, 0, 0},
+    {108, 0, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {108, 1788, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {108, 5901, 1000, 1000, 10335, 500, 500, 500, 498, 8500, 11000, 0, 500, 0},
+    {109, 0, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {110, 0, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {110, 3803, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {110, 7606, 1000, 1000, 10331, 0, 500, 500, 62, 4500, 1000, 0, 0, 0},
+    {110, 9704, 1000, 1000, 10309, 500, 156, 156, 500, 8500, 11000, 0, 188, 0},
+    {110, 11802, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {111, 0, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {111, 2253, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {112, 0, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {112, 3183, 1000, 1000, 10309, 500, 156, 156, 500, 8500, 11000, 0, 188, 0},
+    {112, 5591, 1000, 1000, 10461, 0, 0, 0, 0, 9500, 4125, 0, 0, 0},
+    {112, 8309, 1000, 1000, 10459, 0, 0, 0, 0, 9500, 4125, 1, 0, 0},
+    {112, 11027, 1000, 1000, 10331, 0, 500, 500, 62, 4500, 1000, 0, 0, 0},
+    {112, 13435, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {112, 16463, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {113, 0, 1000, 1000, 10477, 1000, 1750, 1750, 1000, 8500, 11000, 0, 0, 0},
+    {113, 2718, 1000, 1000, 10475, 0, 0, 0, 0, 6000, 3000, 0, 0, 0},
+    {113, 5436, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+    {114, 0, 1000, 1000, 10373, 917, 1069, 1069, 918, 8500, 11000, 0, 237, 0},
+    {114, 2563, 1000, 1000, 10375, 500, 1344, 1344, 495, 8500, 11000, 0, 0, 0},
+    {114, 4196, 1000, 1000, 10551, 0, 0, 0, 0, 8500, 11000, 0, 0, 0},
+};
+
 ReportDefinition report(
+    int templateId,
     int legacyOffset,
     const char* formatMagic,
     int entrySize,
@@ -295,8 +350,8 @@ ReportDefinition report(
     result.formType = formType;
     result.formWidth = formWidth;
     result.formHeight = formHeight;
-    result.headerHeight = formType == ReportFormType::Report ? 96 : 0;
-    result.footerHeight = formType == ReportFormType::Report ? 96 : 0;
+    result.headerHeight = formType == ReportFormType::Report ? 1000 : 0;
+    result.footerHeight = formType == ReportFormType::Report ? 1000 : 0;
     result.rows = rows;
     result.columns = columns;
     result.dataFont = std::move(dataFont);
@@ -305,6 +360,23 @@ ReportDefinition report(
         frame.bounds = scaledReportFrameBounds(frame.bounds, BuiltInReportFrameCoordinateScale);
     }
     result.frames = std::move(frames);
+    for (const auto& details : BuiltInFormDetails) {
+        if (details.templateId != templateId || details.offset != legacyOffset) continue;
+        result.headerHeight = formType == ReportFormType::Report ? details.headerHeight : 0;
+        result.footerHeight = formType == ReportFormType::Report ? details.footerHeight : 0;
+        result.paperStyleId = details.paperStyleId;
+        result.marginBottom = details.marginBottom;
+        result.marginTop = details.marginTop;
+        result.marginLeft = details.marginLeft;
+        result.marginRight = details.marginRight;
+        result.pageWidth = details.pageWidth;
+        result.pageHeight = details.pageHeight;
+        result.orientation = details.orientation;
+        result.horizontalGutter = details.horizontalGutter;
+        result.verticalGutter = details.verticalGutter;
+        break;
+    }
+    classifyReportBands(&result);
     return result;
 }
 
@@ -312,6 +384,7 @@ QVector<ReportDefinition> reports101()
 {
     return {
         report(
+            101,
             0,
             "RPT@#$B",
             2253,
@@ -323,8 +396,8 @@ QVector<ReportDefinition> reports101()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
@@ -372,7 +445,7 @@ QVector<ReportDefinition> reports101()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1943, 0xabcd, 0x0000, 3, 6,
@@ -392,6 +465,7 @@ QVector<ReportDefinition> reports101()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            101,
             2253,
             "RPT@#$B",
             2253,
@@ -403,8 +477,8 @@ QVector<ReportDefinition> reports101()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     3266, 0xabcd, 0x0000, 50, 0,
@@ -412,7 +486,7 @@ QVector<ReportDefinition> reports101()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3421, 0xabcd, 0x0002, 50, 1,
@@ -472,6 +546,7 @@ QVector<ReportDefinition> reports101()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            101,
             4506,
             "RPT@#$B",
             2253,
@@ -483,8 +558,8 @@ QVector<ReportDefinition> reports101()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     5519, 0xabcd, 0x0000, 50, 0,
@@ -492,7 +567,7 @@ QVector<ReportDefinition> reports101()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5674, 0xabcd, 0x0002, 50, 1,
@@ -558,6 +633,7 @@ QVector<ReportDefinition> reports102()
 {
     return {
         report(
+            102,
             0,
             "RPT@#$B",
             3028,
@@ -569,8 +645,8 @@ QVector<ReportDefinition> reports102()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 20, 0,
@@ -618,7 +694,7 @@ QVector<ReportDefinition> reports102()
                     "NAME",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1943, 0xabcd, 0xffff, 25, 6,
@@ -626,7 +702,7 @@ QVector<ReportDefinition> reports102()
                     "COMPANY",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2098, 0xabcd, 0xffff, 25, 7,
@@ -634,7 +710,7 @@ QVector<ReportDefinition> reports102()
                     "PHONE NUMBERS",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2253, 0xabcd, 0x0009, 3, 8,
@@ -650,7 +726,7 @@ QVector<ReportDefinition> reports102()
                     "PHONE LIST",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBoldUnderline,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBoldItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2563, 0xabcd, 0x0000, 25, 10,
@@ -678,6 +754,7 @@ QVector<ReportDefinition> reports102()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            102,
             3028,
             "RPT@#$B",
             3958,
@@ -689,8 +766,8 @@ QVector<ReportDefinition> reports102()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     4041, 0xabcd, 0x0000, 20, 0,
@@ -846,6 +923,7 @@ QVector<ReportDefinition> reports102()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            102,
             6986,
             "RPT@#$B",
             3958,
@@ -857,8 +935,8 @@ QVector<ReportDefinition> reports102()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     7999, 0xabcd, 0x0000, 20, 0,
@@ -1014,19 +1092,20 @@ QVector<ReportDefinition> reports102()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            102,
             10944,
             "RPT@#$B",
             2718,
             1013,
             11,
-            "Envelope (9½ x 4 - portrait)",
+            "Envelope (9\xc2\xbd x 4 - portrait)",
             ReportFormType::Card,
             9500,
             4125,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     11957, 0xabcd, 0x0000, 20, 0,
@@ -1118,19 +1197,20 @@ QVector<ReportDefinition> reports102()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            102,
             13662,
             "RPT@#$B",
             2718,
             1013,
             11,
-            "Envelope (9½ x 4 - landscape)",
+            "Envelope (9\xc2\xbd x 4 - landscape)",
             ReportFormType::Card,
             9500,
             4125,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     14675, 0xabcd, 0x0000, 20, 0,
@@ -1222,19 +1302,20 @@ QVector<ReportDefinition> reports102()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            102,
             16380,
             "RPT@#$B",
             2718,
             1013,
             11,
-            "Address Label (3½ x 15/16 - pin)",
+            "Address Label (3\xc2\xbd x 15/16 - pin)",
             ReportFormType::Label,
             3500,
             938,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -80),
+            font("Arial", -98),
             {
                 frame(
                     17393, 0xabcd, 0x0000, 20, 0,
@@ -1326,6 +1407,7 @@ QVector<ReportDefinition> reports102()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            102,
             19098,
             "RPT@#$B",
             2718,
@@ -1337,8 +1419,8 @@ QVector<ReportDefinition> reports102()
             1000,
             2,
             10,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -120),
             {
                 frame(
                     20111, 0xabcd, 0x0000, 20, 0,
@@ -1436,6 +1518,7 @@ QVector<ReportDefinition> reports103()
 {
     return {
         report(
+            103,
             0,
             "RPT@#$B",
             3338,
@@ -1447,8 +1530,8 @@ QVector<ReportDefinition> reports103()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -100),
+            font("Arial", -100),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 30, 0,
@@ -1456,7 +1539,7 @@ QVector<ReportDefinition> reports103()
                     "[Type]",
                     texts({"Type"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
@@ -1572,6 +1655,7 @@ QVector<ReportDefinition> reports103()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            103,
             3338,
             "RPT@#$B",
             3338,
@@ -1583,8 +1667,8 @@ QVector<ReportDefinition> reports103()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -100),
+            font("Arial", -100),
             {
                 frame(
                     4351, 0xabcd, 0x0000, 30, 0,
@@ -1592,7 +1676,7 @@ QVector<ReportDefinition> reports103()
                     "[Type]",
                     texts({"Type"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4506, 0xabcd, 0x0001, 50, 1,
@@ -1708,6 +1792,7 @@ QVector<ReportDefinition> reports103()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            103,
             6676,
             "RPT@#$B",
             3958,
@@ -1719,8 +1804,8 @@ QVector<ReportDefinition> reports103()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -100),
             {
                 frame(
                     7689, 0xabcd, 0x0001, 50, 0,
@@ -1728,7 +1813,7 @@ QVector<ReportDefinition> reports103()
                     "[Institution]",
                     texts({"Institution"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7844, 0xabcd, 0x0000, 30, 1,
@@ -1736,7 +1821,7 @@ QVector<ReportDefinition> reports103()
                     "[Type]",
                     texts({"Type"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7999, 0xabcd, 0x0006, 20, 2,
@@ -1744,7 +1829,7 @@ QVector<ReportDefinition> reports103()
                     "[Card number]",
                     texts({"Card number"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     8154, 0xabcd, 0x0007, 5, 3,
@@ -1752,7 +1837,7 @@ QVector<ReportDefinition> reports103()
                     "[Expiration]",
                     texts({"Expiration"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     8309, 0xabcd, 0x000a, 11, 4,
@@ -1808,7 +1893,7 @@ QVector<ReportDefinition> reports103()
                     "Exp.",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9394, 0xabcd, 0xffff, 25, 11,
@@ -1816,7 +1901,7 @@ QVector<ReportDefinition> reports103()
                     "Credit Limit:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9549, 0xabcd, 0xffff, 25, 12,
@@ -1824,7 +1909,7 @@ QVector<ReportDefinition> reports103()
                     "Cardholder:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9704, 0xabcd, 0xffff, 25, 13,
@@ -1832,7 +1917,7 @@ QVector<ReportDefinition> reports103()
                     "PIN#",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9859, 0xabcd, 0xffff, 25, 14,
@@ -1840,7 +1925,7 @@ QVector<ReportDefinition> reports103()
                     "Call if lost:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     10014, 0xabcd, 0xffff, 25, 15,
@@ -1848,7 +1933,7 @@ QVector<ReportDefinition> reports103()
                     "Customer Service:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     10169, 0xabcd, 0x0000, 3, 16,
@@ -1864,7 +1949,7 @@ QVector<ReportDefinition> reports103()
                     "Listing of Credit Cards",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     10479, 0xabcd, 0x0000, 25, 18,
@@ -1872,7 +1957,7 @@ QVector<ReportDefinition> reports103()
                     "-{page}-",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
@@ -1882,6 +1967,7 @@ QVector<ReportDefinition> reports104()
 {
     return {
         report(
+            104,
             0,
             "RPT@#$B",
             2253,
@@ -1893,8 +1979,8 @@ QVector<ReportDefinition> reports104()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 25, 0,
@@ -1968,19 +2054,20 @@ QVector<ReportDefinition> reports105()
 {
     return {
         report(
+            105,
             0,
             "RPT@#$B",
             1323,
             1013,
             2,
-            "File Labels (3½ x 7/16 - pin)",
+            "File Labels (3\xc2\xbd x 7/16 - pin)",
             ReportFormType::Label,
             3500,
             438,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
@@ -1988,7 +2075,7 @@ QVector<ReportDefinition> reports105()
                     "[Main Heading]",
                     texts({"Main Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
@@ -2000,6 +2087,7 @@ QVector<ReportDefinition> reports105()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            105,
             1323,
             "RPT@#$B",
             1323,
@@ -2011,8 +2099,8 @@ QVector<ReportDefinition> reports105()
             656,
             2,
             15,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     2336, 0xabcd, 0x0000, 50, 0,
@@ -2020,7 +2108,7 @@ QVector<ReportDefinition> reports105()
                     "[Main Heading]",
                     texts({"Main Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2491, 0xabcd, 0x0001, 50, 1,
@@ -2032,6 +2120,7 @@ QVector<ReportDefinition> reports105()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            105,
             2646,
             "RPT@#$B",
             2253,
@@ -2043,8 +2132,8 @@ QVector<ReportDefinition> reports105()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     3659, 0xabcd, 0x0000, 50, 0,
@@ -2052,7 +2141,7 @@ QVector<ReportDefinition> reports105()
                     "[Main Heading]",
                     texts({"Main Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3814, 0xabcd, 0x0001, 50, 1,
@@ -2060,7 +2149,7 @@ QVector<ReportDefinition> reports105()
                     "- [Sub Heading]",
                     texts({"Sub Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3969, 0xabcd, 0x0002, 35, 2,
@@ -2092,7 +2181,7 @@ QVector<ReportDefinition> reports105()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4589, 0xabcd, 0x0000, 3, 6,
@@ -2118,6 +2207,7 @@ QVector<ReportDefinition> reports106()
 {
     return {
         report(
+            106,
             0,
             "RPT@#$B",
             3338,
@@ -2129,8 +2219,8 @@ QVector<ReportDefinition> reports106()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
@@ -2138,7 +2228,7 @@ QVector<ReportDefinition> reports106()
                     "[Item]",
                     texts({"Item"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
@@ -2226,7 +2316,7 @@ QVector<ReportDefinition> reports106()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2873, 0xabcd, 0x0000, 25, 12,
@@ -2254,6 +2344,7 @@ QVector<ReportDefinition> reports106()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            106,
             3338,
             "RPT@#$B",
             2563,
@@ -2265,8 +2356,8 @@ QVector<ReportDefinition> reports106()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     4351, 0xabcd, 0x0000, 50, 0,
@@ -2274,7 +2365,7 @@ QVector<ReportDefinition> reports106()
                     "[Item]",
                     texts({"Item"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4506, 0xabcd, 0x0001, 50, 1,
@@ -2350,6 +2441,7 @@ QVector<ReportDefinition> reports106()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            106,
             5901,
             "RPT@#$B",
             2563,
@@ -2361,8 +2453,8 @@ QVector<ReportDefinition> reports106()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     6914, 0xabcd, 0x0000, 50, 0,
@@ -2370,7 +2462,7 @@ QVector<ReportDefinition> reports106()
                     "[Item]",
                     texts({"Item"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7069, 0xabcd, 0x0001, 50, 1,
@@ -2452,6 +2544,7 @@ QVector<ReportDefinition> reports107()
 {
     return {
         report(
+            107,
             0,
             "RPT@#$A",
             2364,
@@ -2463,8 +2556,8 @@ QVector<ReportDefinition> reports107()
             1000,
             2,
             10,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -120),
             {
                 frame(
                     969, 0xabcd, 0x0000, OldReportLineOrder30, 0,
@@ -2546,6 +2639,7 @@ QVector<ReportDefinition> reports108()
 {
     return {
         report(
+            108,
             0,
             "RPT@#$B",
             1788,
@@ -2557,8 +2651,8 @@ QVector<ReportDefinition> reports108()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 100, 0,
@@ -2566,7 +2660,7 @@ QVector<ReportDefinition> reports108()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0000, 3, 1,
@@ -2590,7 +2684,7 @@ QVector<ReportDefinition> reports108()
                     "Listings of {reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1633, 0xabcd, 0x0000, 25, 4,
@@ -2602,6 +2696,7 @@ QVector<ReportDefinition> reports108()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            108,
             1788,
             "RPT@#$B",
             4113,
@@ -2613,8 +2708,8 @@ QVector<ReportDefinition> reports108()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     2801, 0xabcd, 0x0000, 100, 0,
@@ -2622,7 +2717,7 @@ QVector<ReportDefinition> reports108()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2956, 0xabcd, 0x0001, 50, 1,
@@ -2758,7 +2853,7 @@ QVector<ReportDefinition> reports108()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5591, 0xabcd, 0x0000, 25, 18,
@@ -2778,6 +2873,7 @@ QVector<ReportDefinition> reports108()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            108,
             5901,
             "RPT@#$B",
             1323,
@@ -2789,8 +2885,8 @@ QVector<ReportDefinition> reports108()
             1656,
             2,
             6,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     6914, 0xabcd, 0x0000, 50, 0,
@@ -2798,7 +2894,7 @@ QVector<ReportDefinition> reports108()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7069, 0xabcd, 0x0001, 50, 1,
@@ -2806,7 +2902,7 @@ QVector<ReportDefinition> reports108()
                     "[Artist]",
                     texts({"Artist"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
@@ -2816,6 +2912,7 @@ QVector<ReportDefinition> reports109()
 {
     return {
         report(
+            109,
             0,
             "RPT@#$B",
             1633,
@@ -2827,8 +2924,8 @@ QVector<ReportDefinition> reports109()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 25, 0,
@@ -2836,7 +2933,7 @@ QVector<ReportDefinition> reports109()
                     "{deckname}",
                     texts({}),
                     texts({"deckname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0000, 25, 1,
@@ -2870,6 +2967,7 @@ QVector<ReportDefinition> reports110()
 {
     return {
         report(
+            110,
             0,
             "RPT@#$B",
             3803,
@@ -2881,8 +2979,8 @@ QVector<ReportDefinition> reports110()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 20, 0,
@@ -2890,7 +2988,7 @@ QVector<ReportDefinition> reports110()
                     "[First Name]",
                     texts({"First Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 2, 1,
@@ -2898,7 +2996,7 @@ QVector<ReportDefinition> reports110()
                     "[Middle Initial]",
                     texts({"Middle Initial"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1323, 0xabcd, 0x0002, 30, 2,
@@ -2906,7 +3004,7 @@ QVector<ReportDefinition> reports110()
                     "[Last Name]",
                     texts({"Last Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1478, 0xabcd, 0x0003, 50, 3,
@@ -3030,6 +3128,7 @@ QVector<ReportDefinition> reports110()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            110,
             3803,
             "RPT@#$B",
             3803,
@@ -3041,8 +3140,8 @@ QVector<ReportDefinition> reports110()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     4816, 0xabcd, 0x0000, 20, 0,
@@ -3050,7 +3149,7 @@ QVector<ReportDefinition> reports110()
                     "[First Name]",
                     texts({"First Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4971, 0xabcd, 0x0001, 2, 1,
@@ -3058,7 +3157,7 @@ QVector<ReportDefinition> reports110()
                     "[Middle Initial]",
                     texts({"Middle Initial"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5126, 0xabcd, 0x0002, 30, 2,
@@ -3066,7 +3165,7 @@ QVector<ReportDefinition> reports110()
                     "[Last Name]",
                     texts({"Last Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5281, 0xabcd, 0x0003, 50, 3,
@@ -3190,19 +3289,20 @@ QVector<ReportDefinition> reports110()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            110,
             7606,
             "RPT@#$B",
             2098,
             1013,
             7,
-            "Address Label (3½ x 15/16 - pin)",
+            "Address Label (3\xc2\xbd x 15/16 - pin)",
             ReportFormType::Label,
             3500,
             938,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     8619, 0xabcd, 0x0000, 20, 0,
@@ -3262,6 +3362,7 @@ QVector<ReportDefinition> reports110()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            110,
             9704,
             "RPT@#$B",
             2098,
@@ -3273,8 +3374,8 @@ QVector<ReportDefinition> reports110()
             1000,
             2,
             10,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     10717, 0xabcd, 0x0000, 20, 0,
@@ -3334,6 +3435,7 @@ QVector<ReportDefinition> reports110()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            110,
             11802,
             "RPT@#$B",
             3028,
@@ -3345,8 +3447,8 @@ QVector<ReportDefinition> reports110()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     12815, 0xabcd, 0x0000, 20, 0,
@@ -3378,7 +3480,7 @@ QVector<ReportDefinition> reports110()
                     "Employee",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     13435, 0xabcd, 0x0010, 30, 4,
@@ -3394,7 +3496,7 @@ QVector<ReportDefinition> reports110()
                     "Contact",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     13745, 0xabcd, 0xffff, 25, 6,
@@ -3402,7 +3504,7 @@ QVector<ReportDefinition> reports110()
                     "Phone",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     13900, 0xabcd, 0x0000, 3, 7,
@@ -3426,7 +3528,7 @@ QVector<ReportDefinition> reports110()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     14365, 0xabcd, 0x0000, 25, 10,
@@ -3460,6 +3562,7 @@ QVector<ReportDefinition> reports111()
 {
     return {
         report(
+            111,
             0,
             "RPT@#$B",
             2253,
@@ -3471,8 +3574,8 @@ QVector<ReportDefinition> reports111()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -120),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
@@ -3480,7 +3583,7 @@ QVector<ReportDefinition> reports111()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
@@ -3540,6 +3643,7 @@ QVector<ReportDefinition> reports111()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            111,
             2253,
             "RPT@#$B",
             2253,
@@ -3551,8 +3655,8 @@ QVector<ReportDefinition> reports111()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -120),
             {
                 frame(
                     3266, 0xabcd, 0x0000, 50, 0,
@@ -3560,7 +3664,7 @@ QVector<ReportDefinition> reports111()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3421, 0xabcd, 0x0001, 50, 1,
@@ -3626,6 +3730,7 @@ QVector<ReportDefinition> reports112()
 {
     return {
         report(
+            112,
             0,
             "RPT@#$B",
             3183,
@@ -3637,8 +3742,8 @@ QVector<ReportDefinition> reports112()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 20, 0,
@@ -3670,7 +3775,7 @@ QVector<ReportDefinition> reports112()
                     "Name",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1633, 0xabcd, 0xffff, 25, 4,
@@ -3678,7 +3783,7 @@ QVector<ReportDefinition> reports112()
                     "Work Phone",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1788, 0xabcd, 0xffff, 25, 5,
@@ -3686,7 +3791,7 @@ QVector<ReportDefinition> reports112()
                     "Home Phone",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1943, 0xabcd, 0x0000, 3, 6,
@@ -3734,7 +3839,7 @@ QVector<ReportDefinition> reports112()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2873, 0xabcd, 0x0000, 25, 12,
@@ -3754,6 +3859,7 @@ QVector<ReportDefinition> reports112()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            112,
             3183,
             "RPT@#$B",
             2408,
@@ -3765,8 +3871,8 @@ QVector<ReportDefinition> reports112()
             1000,
             2,
             10,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     4196, 0xabcd, 0x0000, 20, 0,
@@ -3842,19 +3948,20 @@ QVector<ReportDefinition> reports112()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            112,
             5591,
             "RPT@#$B",
             2718,
             1013,
             11,
-            "Envelope (9½ x 4 - portrait)",
+            "Envelope (9\xc2\xbd x 4 - portrait)",
             ReportFormType::Card,
             9500,
             4125,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -120),
             {
                 frame(
                     6604, 0xabcd, 0x0000, 20, 0,
@@ -3946,19 +4053,20 @@ QVector<ReportDefinition> reports112()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            112,
             8309,
             "RPT@#$B",
             2718,
             1013,
             11,
-            "Envelope (9½ x 4 - landscape)",
+            "Envelope (9\xc2\xbd x 4 - landscape)",
             ReportFormType::Card,
             9500,
             4125,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -120),
             {
                 frame(
                     9322, 0xabcd, 0x0000, 20, 0,
@@ -4050,19 +4158,20 @@ QVector<ReportDefinition> reports112()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            112,
             11027,
             "RPT@#$B",
             2408,
             1013,
             9,
-            "Address Labels (3½ x 15/16 - pin)",
+            "Address Labels (3\xc2\xbd x 15/16 - pin)",
             ReportFormType::Label,
             3500,
             938,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     12040, 0xabcd, 0x0000, 20, 0,
@@ -4138,6 +4247,7 @@ QVector<ReportDefinition> reports112()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            112,
             13435,
             "RPT@#$B",
             3028,
@@ -4149,8 +4259,8 @@ QVector<ReportDefinition> reports112()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -98),
             {
                 frame(
                     14448, 0xabcd, 0x0000, 20, 0,
@@ -4258,6 +4368,7 @@ QVector<ReportDefinition> reports112()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            112,
             16463,
             "RPT@#$B",
             3028,
@@ -4269,8 +4380,8 @@ QVector<ReportDefinition> reports112()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -120),
+            font("Arial", -98),
             {
                 frame(
                     17476, 0xabcd, 0x0000, 20, 0,
@@ -4384,6 +4495,7 @@ QVector<ReportDefinition> reports113()
 {
     return {
         report(
+            113,
             0,
             "RPT@#$B",
             2718,
@@ -4395,8 +4507,8 @@ QVector<ReportDefinition> reports113()
             3000,
             1,
             3,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 30, 0,
@@ -4404,7 +4516,7 @@ QVector<ReportDefinition> reports113()
                     "[Product]",
                     texts({"Product"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 10, 1,
@@ -4412,7 +4524,7 @@ QVector<ReportDefinition> reports113()
                     "Version [Version]",
                     texts({"Version"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1323, 0xabcd, 0x0002, 50, 2,
@@ -4488,6 +4600,7 @@ QVector<ReportDefinition> reports113()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            113,
             2718,
             "RPT@#$B",
             2718,
@@ -4499,8 +4612,8 @@ QVector<ReportDefinition> reports113()
             3000,
             1,
             0,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     3731, 0xabcd, 0x0000, 30, 0,
@@ -4508,7 +4621,7 @@ QVector<ReportDefinition> reports113()
                     "[Product]",
                     texts({"Product"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3886, 0xabcd, 0x0001, 10, 1,
@@ -4516,7 +4629,7 @@ QVector<ReportDefinition> reports113()
                     "Version [Version]",
                     texts({"Version"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4041, 0xabcd, 0x0002, 50, 2,
@@ -4592,6 +4705,7 @@ QVector<ReportDefinition> reports113()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            113,
             5436,
             "RPT@#$B",
             3183,
@@ -4603,8 +4717,8 @@ QVector<ReportDefinition> reports113()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     6449, 0xabcd, 0x0000, 30, 0,
@@ -4628,7 +4742,7 @@ QVector<ReportDefinition> reports113()
                     "Program",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     6914, 0xabcd, 0x0003, 25, 3,
@@ -4652,7 +4766,7 @@ QVector<ReportDefinition> reports113()
                     "Version",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7379, 0xabcd, 0xffff, 25, 6,
@@ -4660,7 +4774,7 @@ QVector<ReportDefinition> reports113()
                     "Serial Number",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7534, 0xabcd, 0xffff, 25, 7,
@@ -4668,7 +4782,7 @@ QVector<ReportDefinition> reports113()
                     "Registered To",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7689, 0xabcd, 0x0000, 3, 8,
@@ -4708,7 +4822,7 @@ QVector<ReportDefinition> reports113()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     8464, 0xabcd, 0x0000, 25, 13,
@@ -4726,6 +4840,7 @@ QVector<ReportDefinition> reports114()
 {
     return {
         report(
+            114,
             0,
             "RPT@#$B",
             2563,
@@ -4737,8 +4852,8 @@ QVector<ReportDefinition> reports114()
             1844,
             2,
             5,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
@@ -4746,7 +4861,7 @@ QVector<ReportDefinition> reports114()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 30, 1,
@@ -4822,6 +4937,7 @@ QVector<ReportDefinition> reports114()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            114,
             2563,
             "RPT@#$B",
             1633,
@@ -4833,8 +4949,8 @@ QVector<ReportDefinition> reports114()
             656,
             1,
             15,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     3576, 0xabcd, 0x0000, 50, 0,
@@ -4842,7 +4958,7 @@ QVector<ReportDefinition> reports114()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3731, 0xabcd, 0x0001, 30, 1,
@@ -4870,6 +4986,7 @@ QVector<ReportDefinition> reports114()
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
+            114,
             4196,
             "RPT@#$B",
             3338,
@@ -4881,8 +4998,8 @@ QVector<ReportDefinition> reports114()
             11000,
             1,
             1,
-            font("Arial", 34),
-            font("Arial", 34),
+            font("Arial", -98),
+            font("Arial", -98),
             {
                 frame(
                     5209, 0xabcd, 0x0000, 50, 0,
@@ -4890,7 +5007,7 @@ QVector<ReportDefinition> reports114()
                     "[Title]",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5364, 0xabcd, 0x0001, 30, 1,
@@ -4994,7 +5111,7 @@ QVector<ReportDefinition> reports114()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7379, 0xabcd, 0x0000, 25, 14,
@@ -5084,14 +5201,14 @@ void applyDefaultReportFonts(
             bool pixelSizeValid = false;
             const int pixelSize = parts.at(2).toInt(&pixelSizeValid);
             if (pixelSizeValid && pixelSize > 0) {
-                result.legacyHeight = pixelSize;
+                result.legacyHeight = -qRound(pixelSize * (720.0 / 96.0));
             }
         }
         if (result.legacyHeight == 0 && parts.size() > 1) {
             bool pointSizeValid = false;
             const double pointSize = parts.at(1).toDouble(&pointSizeValid);
             if (pointSizeValid && pointSize > 0.0) {
-                result.legacyHeight = std::max(1, qRound(pointSize));
+                result.legacyHeight = -std::max(10, qRound(pointSize * 10.0));
             }
         }
         if (result.faceName.isEmpty()) {
@@ -5103,8 +5220,8 @@ void applyDefaultReportFonts(
         return result;
     };
 
-    report->dataFont = fromTemplateFont(deck.appearance().dataFont, 12);
-    report->textFont = fromTemplateFont(deck.appearance().textFont, 13);
+    report->dataFont = fromTemplateFont(deck.appearance().dataFont, -120);
+    report->textFont = fromTemplateFont(deck.appearance().textFont, -130);
 }
 
 } // namespace CardStack

@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "DocumentFile.h"
+#include <QLockFile>
 
 #include "BuiltInReportTemplates.h"
 #include "DelimitedText.h"
@@ -112,6 +114,8 @@
 extern int qInitResources_cardstack_app();
 
 namespace {
+
+constexpr int DefaultReportBandHeightMils = 750;
 
 constexpr auto WindowSessionGroup = "windowSession";
 constexpr auto WindowSessionVersionKey = "version";
@@ -429,8 +433,8 @@ void applyReportFormPreset(ReportDefinition* report, const ReportFormPreset& pre
     report->formWidth = preset.formWidth;
     report->formHeight = preset.formHeight;
     if (preset.type == ReportFormType::Report) {
-        report->headerHeight = report->headerHeight > 0 ? report->headerHeight : 72;
-        report->footerHeight = report->footerHeight > 0 ? report->footerHeight : 72;
+        report->headerHeight = report->headerHeight > 0 ? report->headerHeight : DefaultReportBandHeightMils;
+        report->footerHeight = report->footerHeight > 0 ? report->footerHeight : DefaultReportBandHeightMils;
     } else {
         report->headerHeight = 0;
         report->footerHeight = 0;
@@ -1158,7 +1162,8 @@ QVector<ReportPreviewData> previewDataForDeck(
     const Deck& deck,
     const ReportDefinition& report,
     PrintCardScope scope,
-    int currentCardIndex)
+    int currentCardIndex,
+    const QVector<int>& selectedIndexes = {})
 {
     QVector<ReportPreviewData> records;
     if (deck.cardCount() <= 0) {
@@ -1173,7 +1178,12 @@ QVector<ReportPreviewData> previewDataForDeck(
         return records;
     }
 
-    records.append(previewDataForCard(deck, currentCardIndex, report));
+    if (scope == PrintCardScope::SelectedCards) {
+        for (const int index : selectedIndexes)
+            if (index >= 0 && index < deck.cardCount()) records.append(previewDataForCard(deck, index, report));
+    } else {
+        records.append(previewDataForCard(deck, currentCardIndex, report));
+    }
     return records;
 }
 
@@ -1193,8 +1203,9 @@ bool renderReportToPrinter(
     }
 
     for (int pageIndex = 0; pageIndex < pages.size(); ++pageIndex) {
-        if (pageIndex > 0) {
-            printer->newPage();
+        if (pageIndex > 0 && !printer->newPage()) {
+            painter.end();
+            return false;
         }
         ReportPrintEngine::renderPage(
             &painter,
@@ -1204,8 +1215,7 @@ bool renderReportToPrinter(
             QRectF(painter.viewport()));
     }
 
-    painter.end();
-    return true;
+    return painter.end() && printer->printerState() != QPrinter::Error;
 }
 
 QString virtualUnsavedDeckPath()
@@ -1811,7 +1821,13 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
     }
 
-    if (event->type() == QEvent::KeyPress) {
+    QWidget* keyTarget = qobject_cast<QWidget*>(watched);
+    const DeckWorkspace* keyDeck = activeDeckWorkspace();
+    const bool deckKeyContext = keyDeck != nullptr && keyTarget != nullptr
+        && (keyTarget == keyDeck || keyDeck->isAncestorOf(keyTarget))
+        && QApplication::activeModalWidget() == nullptr
+        && QApplication::activePopupWidget() == nullptr;
+    if (event->type() == QEvent::KeyPress && deckKeyContext) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         if ((keyEvent->key() == Qt::Key_PageUp || keyEvent->key() == Qt::Key_PageDown)
             && (keyEvent->modifiers() == Qt::NoModifier
@@ -1857,7 +1873,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
     }
 
-    if (m_enterWorksLikeTab && event->type() == QEvent::KeyPress) {
+    if (m_enterWorksLikeTab && deckKeyContext && event->type() == QEvent::KeyPress) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter) {
             QWidget* focusWidget = QApplication::focusWidget();
@@ -3443,16 +3459,16 @@ void MainWindow::handlePrintReportCommand()
         return;
     }
 
-    const Deck deckSnapshot = workspace->deck();
-    const int currentCardIndex = workspace->currentCardIndex();
     auto printer = m_printer;
     printer->setFullPage(true);
-    if (report.formWidth > report.formHeight) {
-        printer->setPageOrientation(QPageLayout::Landscape);
-    }
+    printer->setPageLayout(ReportPrintEngine::pageLayout(report));
 
-    const auto buildRecords = [deckSnapshot, report, currentCardIndex](const QDialog& dialog) {
-        return previewDataForDeck(deckSnapshot, report, printScopeFromDialog(dialog), currentCardIndex);
+    const QPointer<DeckWorkspace> source(workspace);
+    const auto buildRecords = [source, report](const QDialog& dialog) {
+        if (source == nullptr) return QVector<ReportPreviewData>();
+        source->commitPendingEdits();
+        return previewDataForDeck(source->deck(), report, printScopeFromDialog(dialog),
+                                  source->currentCardIndex(), source->selectedCardIndexes());
     };
 
     const auto previewSelectedScope = [this, printContext, report, buildRecords](const QDialog& dialog) {
@@ -3522,7 +3538,7 @@ void MainWindow::handleReportDesignerCommand(int commandId)
         return;
     }
 
-    auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
+    auto* owner = designerOwner(designer);
     switch (commandId) {
     case Command::FileNewReport:
         if (owner != nullptr) {
@@ -3597,11 +3613,8 @@ void MainWindow::handleReportDesignerCommand(int commandId)
             if (dialog) {
                 if (auto* nameEdit = uiControl<QLineEdit>(*dialog, Control::SaveDesignName)) {
                     const QString reportName = nameEdit->text().trimmed();
-                    auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
-                    bool ownerReportIndexOk = false;
-                    const int parsedOwnerReportIndex = designer->property("ownerReportIndex").toInt(&ownerReportIndexOk);
-                    const int ownerReportIndex = ownerReportIndexOk ? parsedOwnerReportIndex : -1;
-                    if (reportNameExists(owner, reportName, ownerReportIndex)) {
+                    auto* owner = designerOwner(designer);
+                    if (reportNameExists(owner, reportName, -1)) {
                         QMessageBox::warning(
                             this,
                             tr("Save Report As"),
@@ -3609,6 +3622,7 @@ void MainWindow::handleReportDesignerCommand(int commandId)
                         return;
                     }
                     designer->setReportName(reportName);
+                    designer->setProperty("reportIndex", -1);
                 }
             }
         }
@@ -3786,7 +3800,7 @@ void MainWindow::handleReportDesignerCommand(int commandId)
         const ReportFontDefinition current = dataFont ? designer->report().dataFont : designer->report().textFont;
         QFont initial(current.faceName);
         if (current.legacyHeight != 0) {
-            initial.setPointSize(std::max(1, std::abs(current.legacyHeight)));
+            initial.setPointSizeF(std::max(1.0, std::abs(current.legacyHeight) / 10.0));
         }
         bool accepted = false;
         const QFont selected = QFontDialog::getFont(
@@ -3795,7 +3809,14 @@ void MainWindow::handleReportDesignerCommand(int commandId)
             this,
             dataFont ? tr("Report Data Font") : tr("Report Text Font"));
         if (accepted) {
-            designer->setReportFont(dataFont, {selected.family(), -std::max(1, selected.pointSize())});
+            ReportFontDefinition font = current;
+            font.faceName = selected.family();
+            font.legacyHeight = -std::max(10, qRound(selected.pointSizeF() * 10.0));
+            font.weight = selected.weight();
+            font.italic = selected.italic();
+            font.underline = selected.underline();
+            font.strikeOut = selected.strikeOut();
+            designer->setReportFont(dataFont, std::move(font));
         }
         return;
     }
@@ -3821,7 +3842,8 @@ void MainWindow::handleReportDesignerCommand(int commandId)
             report.horizontalGutter,
             report.verticalGutter,
             report.headerHeight,
-            report.footerHeight);
+            report.footerHeight,
+            report.pageWidth, report.pageHeight, report.orientation, report.paperStyleId);
         statusBar()->showMessage(tr("Report form changed."), StatusMessageTimeoutMs);
         return;
     }
@@ -3887,28 +3909,23 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
         designer->addTextFrameWithText(dialog ? editText(*dialog, Control::FrameText) : QString(), dialog ? frameStyleFlagsFromDialog(*dialog) : 0);
         return;
     }
-    case Command::ToolAddDataBox:
-    {
-        std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("DATAFRAME"), this, dialogContext());
-        if (dialog) {
-            if (auto* fieldList = uiControl<QComboBox>(*dialog, Control::DataFrameFieldList)) {
-                fieldList->clear();
-                fieldList->addItems(designer->fieldNames());
-            }
+    case Command::ToolAddDataBox: {
+        auto dialog = UiBuilder::createDialog(QStringLiteral("TPLDATAFRAME"), this, dialogContext());
+        if (!dialog) return;
+        dialog->setWindowTitle(tr("New Data Box"));
+        QString name = tr("Data Box");
+        int suffix = 2;
+        while (designer->fieldNames().contains(name, Qt::CaseInsensitive)) name = tr("Data Box %1").arg(suffix++);
+        setEditText(*dialog, Control::FrameText, name);
+        setEditText(*dialog, Control::TemplateFieldLength, QStringLiteral("255"));
+        setChecked(*dialog, Control::TemplateFieldShowName, true);
+        while (dialog->exec() == QDialog::Accepted) {
+            if (designer->addDataField(editText(*dialog, Control::FrameText),
+                    positiveEditValue(*dialog, Control::TemplateFieldLength, 255),
+                    isChecked(*dialog, Control::TemplateFieldPhone),
+                    isChecked(*dialog, Control::TemplateFieldShowName))) return;
+            QMessageBox::warning(this, tr("New Data Box"), tr("Enter a unique, nonempty data-box name and a positive length."));
         }
-        if (dialog && dialog->exec() != QDialog::Accepted) {
-            return;
-        }
-        QString fieldName;
-        if (dialog) {
-            fieldName = comboText(*dialog, Control::DataFrameFieldList);
-            if (fieldName.isEmpty()) {
-                if (auto* edit = uiControl<QLineEdit>(*dialog, Control::FrameText)) {
-                    fieldName = edit->text();
-                }
-            }
-        }
-        designer->addDataBoxFrameForField(fieldName, dialog ? frameStyleFlagsFromDialog(*dialog) : 0);
         return;
     }
     case Command::ToolAddNotesBox:
@@ -4010,46 +4027,27 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
     case Command::ConfigureNameFont:
     case Command::ConfigureTextFont:
     case Command::ConfigureIndexFont: {
-        auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
-        if (owner == nullptr) {
-            statusBar()->showMessage(tr("Save the new template before changing template fonts."), StatusMessageTimeoutMs);
-            return;
-        }
+        DeckAppearance appearance = designer->appearance();
         bool accepted = false;
-        const DeckAppearance& appearance = owner->deck().appearance();
-        const QString serialized = commandId == Command::ConfigureDataFont
-            ? appearance.dataFont
-            : commandId == Command::ConfigureNameFont
-                ? appearance.nameFont
-                : commandId == Command::ConfigureTextFont ? appearance.textFont : appearance.indexFont;
+        const QString serialized = commandId == Command::ConfigureDataFont ? appearance.dataFont
+            : commandId == Command::ConfigureNameFont ? appearance.nameFont
+            : commandId == Command::ConfigureTextFont ? appearance.textFont : appearance.indexFont;
         const QFont selected = QFontDialog::getFont(
             &accepted, fontForDeckRole(serialized), this, tr("Template Font"));
-        if (!accepted) {
-            return;
-        }
-        if (commandId == Command::ConfigureDataFont) {
-            owner->applyDataFont(selected);
-        } else if (commandId == Command::ConfigureNameFont) {
-            owner->applyNameFont(selected);
-        } else if (commandId == Command::ConfigureTextFont) {
-            owner->applyTextFont(selected);
-        } else {
-            owner->applyIndexFont(selected);
-        }
-        designer->setAppearance(owner->deck().appearance());
+        if (!accepted) return;
+        if (commandId == Command::ConfigureDataFont) appearance.dataFont = selected.toString();
+        else if (commandId == Command::ConfigureNameFont) appearance.nameFont = selected.toString();
+        else if (commandId == Command::ConfigureTextFont) appearance.textFont = selected.toString();
+        else appearance.indexFont = selected.toString();
+        designer->setAppearance(std::move(appearance));
         return;
     }
     case Command::ConfigureColors: {
-        auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
-        if (owner == nullptr) {
-            statusBar()->showMessage(tr("Save the new template before changing template colors."), StatusMessageTimeoutMs);
-            return;
-        }
         std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHOOSECOLOR"), this, dialogContext());
         if (!dialog) {
             return;
         }
-        DeckAppearance appearance = owner->deck().appearance();
+        DeckAppearance appearance = designer->appearance();
         QStringList colors;
         for (const QString& color : appearance.customColors) {
             colors.append(color);
@@ -4063,8 +4061,7 @@ void MainWindow::handleTemplateDesignerCommand(int commandId)
             appearance.customColors.append(color);
         }
         appearance.useSystemColors = UiBuilder::colorDialogUsesSystemColors(dialog.get());
-        owner->applyAppearance(std::move(appearance));
-        designer->setAppearance(owner->deck().appearance());
+        designer->setAppearance(std::move(appearance));
         return;
     }
     default:
@@ -4099,15 +4096,14 @@ void MainWindow::handleSecurityCommand()
                 QMessageBox::warning(this, tr("CardStack"), tr("Password cannot be empty."));
                 continue;
             }
-            if (password.contains(QLatin1Char(' '))) {
-                QMessageBox::warning(this, tr("CardStack"), tr("Password cannot contain any spaces"));
-                continue;
-            }
             if (!verifyNewSecurityPassword(password)) {
                 continue;
             }
 
-            workspace->setSecurity(password, isChecked(*dialog, Control::SecurityEncryptData));
+            if (!workspace->setSecurity(password, isChecked(*dialog, Control::SecurityEncryptData))) {
+                QMessageBox::critical(this, tr("CardStack"), tr("Could not initialize deck security. No security settings were changed."));
+                return;
+            }
             statusBar()->showMessage(
                 workspace->hasEncryptedSecurity()
                     ? tr("Deck security enabled with data encryption.")
@@ -4133,8 +4129,7 @@ void MainWindow::handleDeckDescriptionCommand()
     DeckWorkspace* workspace = activeDeckWorkspace();
     const bool editingTemplate = workspace == nullptr && activeTemplateDesigner() != nullptr;
     if (editingTemplate) {
-        workspace = qobject_cast<DeckWorkspace*>(
-            activeTemplateDesigner()->property("ownerDeckWorkspace").value<QObject*>());
+        workspace = designerOwner(activeTemplateDesigner());
     }
     if (workspace == nullptr) {
         statusBar()->showMessage(tr("No active deck."), StatusMessageTimeoutMs);
@@ -4185,12 +4180,14 @@ bool MainWindow::verifyNewSecurityPassword(const QString& password)
 QString MainWindow::normalizedSecurityPassword(const QDialog& dialog) const
 {
     const auto* password = uiControl<QLineEdit>(dialog, Control::SecurityPassword);
-    return password == nullptr ? QString() : password->text().left(8).toUpper();
+    return password == nullptr ? QString() : password->text();
 }
 
 std::optional<QString> MainWindow::promptLegacyDeckPassword(const QString& filePath)
 {
-    std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("GETPASSWORD"), this, dialogContext());
+    UiBuilder::DialogContext context = dialogContext();
+    context.legacyPasswordRules = true;
+    std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("GETPASSWORD"), this, context);
     if (!dialog) {
         QMessageBox::warning(this, tr("CardStack Migration"), tr("Legacy password dialog is not available."));
         return std::nullopt;
@@ -4370,9 +4367,9 @@ void MainWindow::showAboutDialog()
     layout->addWidget(logo);
 
     auto* text = new QLabel(
-        tr("<b>CardStack</b><br>"
+        tr("<b>CardStack %1</b><br>"
            "A modern open-source card database built with Qt and SQLite.<br><br>"
-           "License: GPLv3-or-later."),
+           "License: GPLv3-or-later.").arg(QCoreApplication::applicationVersion()),
         &dialog);
     text->setAlignment(Qt::AlignCenter);
     text->setTextFormat(Qt::RichText);
@@ -5085,11 +5082,11 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         setEditText(*defineDialog, Control::DefineFormVerticalGutter, QString::number(selectedPreset.verticalGutter / 1000.0, 'f', 3));
         setEditText(*defineDialog, Control::DefineFormRows,
                     selectedType == ReportFormType::Report
-                        ? QString::number((report->headerHeight > 0 ? report->headerHeight : 72) / 96.0, 'f', 2)
+                        ? QString::number((report->headerHeight > 0 ? report->headerHeight : DefaultReportBandHeightMils) / 1000.0, 'f', 2)
                         : QString::number(std::max(1, selectedPreset.rows)));
         setEditText(*defineDialog, Control::DefineFormColumns,
                     selectedType == ReportFormType::Report
-                        ? QString::number((report->footerHeight > 0 ? report->footerHeight : 72) / 96.0, 'f', 2)
+                        ? QString::number((report->footerHeight > 0 ? report->footerHeight : DefaultReportBandHeightMils) / 1000.0, 'f', 2)
                         : QString::number(std::max(1, selectedPreset.columns)));
         if (auto* paperSize = uiControl<QComboBox>(*defineDialog, Control::DefineFormPageSize)) {
             paperSize->clear();
@@ -5207,6 +5204,10 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             }
             setLabelText(*defineDialog, Control::DefineFormRowsLabel, multiCell ? tr("Rows:") : tr("Header:"));
             setLabelText(*defineDialog, Control::DefineFormColumnsLabel, multiCell ? tr("Columns:") : tr("Footer:"));
+            for (int id : {Control::DefineFormRowsLabel, Control::DefineFormColumnsLabel}) {
+                if (auto* label = uiControl<QLabel>(*defineDialog, id))
+                    label->resize(std::max(label->width(), label->fontMetrics().horizontalAdvance(label->text()) + 2), label->height());
+            }
             setLabelText(
                 *defineDialog,
                 Control::DefineFormComputedWidth,
@@ -5363,10 +5364,8 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 : ReportFormNameLastId + 1;
         applyReportFormPreset(report, preset);
         if (preset.type == ReportFormType::Report) {
-            report->headerHeight = qRound(
-                formMeasureValue(*defineDialog, Control::DefineFormRows, 750) * 96.0 / 1000.0);
-            report->footerHeight = qRound(
-                formMeasureValue(*defineDialog, Control::DefineFormColumns, 750) * 96.0 / 1000.0);
+            report->headerHeight = formMeasureValue(*defineDialog, Control::DefineFormRows, DefaultReportBandHeightMils);
+            report->footerHeight = formMeasureValue(*defineDialog, Control::DefineFormColumns, DefaultReportBandHeightMils);
         }
         return true;
     }
@@ -5539,6 +5538,15 @@ void MainWindow::setActiveDeckPath(const QString& filePath)
 
 bool MainWindow::openDeckFromPath(const QString& filePath)
 {
+    if (DeckWorkspace* existing = findOpenDeck(filePath)) {
+        for (QMdiSubWindow* window : m_mdiArea->subWindowList()) {
+            if (window->widget() == existing) {
+                window->showNormal();
+                m_mdiArea->setActiveSubWindow(window);
+                return true;
+            }
+        }
+    }
     Deck deck;
     QString error;
     if (isCardStackTemplatePath(filePath)) {
@@ -5583,7 +5591,7 @@ bool MainWindow::openDeckFromPath(const QString& filePath)
         return true;
     }
 
-    openDeckWindow(deck, filePath);
+    if (openDeckWindow(deck, filePath) == nullptr) return false;
     statusBar()->showMessage(tr("Opened %1").arg(filePath), StatusMessageTimeoutMs);
     return true;
 }
@@ -5866,31 +5874,33 @@ bool MainWindow::loadDeckFromPath(const QString& filePath, Deck* deck, QString* 
     }
 
     if (isCardStackDeckPath(filePath)) {
-        SQLiteDeckStore store;
-        QString error;
-        if (!store.open(filePath, &error) || !store.loadDeck(deck, &error)) {
-            if (errorMessage != nullptr) {
-                *errorMessage = error;
+        QString password;
+        while (true) {
+            SQLiteDeckStore store;
+            QString error;
+            if (store.open(filePath, &error, password, SQLiteDeckStore::OpenMode::ReadOnly)
+                && store.loadDeck(deck, &error)) {
+                if (deck->name().isEmpty()) deck->setName(QFileInfo(filePath).completeBaseName());
+                return true;
             }
-            return false;
-        }
-        while (deck->hasSecurity()) {
-            const std::optional<QString> password = promptLegacyDeckPassword(filePath);
-            if (!password.has_value()) {
-                if (errorMessage != nullptr) {
-                    *errorMessage = tr("Opening the deck was canceled because it requires a password.");
-                }
+            if (store.securityError() != DeckSecurity::Error::PasswordRequired
+                && store.securityError() != DeckSecurity::Error::WrongPassword) {
+                if (errorMessage != nullptr) *errorMessage = error;
                 return false;
             }
-            if (deck->securityPassword() == password->left(8).toUpper()) {
-                break;
+            if (store.securityError() == DeckSecurity::Error::WrongPassword)
+                QMessageBox::warning(this, tr("CardStack"), tr("The password is incorrect."));
+            auto prompt = UiBuilder::createDialog(QStringLiteral("GETPASSWORD"), this, dialogContext());
+            if (!prompt) return false;
+            prompt->setWindowTitle(tr("Unlock Deck"));
+            if (auto* fileName = uiControl<QLabel>(*prompt, Control::SecurityFileName))
+                fileName->setText(QFileInfo(filePath).fileName());
+            if (prompt->exec() != QDialog::Accepted) {
+                if (errorMessage != nullptr) *errorMessage = tr("Opening the deck was canceled.");
+                return false;
             }
-            QMessageBox::warning(this, tr("CardStack"), tr("ACCESS DENIED: Wrong Password"));
+            password = normalizedSecurityPassword(*prompt);
         }
-        if (deck->name().isEmpty()) {
-            deck->setName(QFileInfo(filePath).completeBaseName());
-        }
-        return true;
     }
 
     if (isDelimitedTextPath(filePath)) {
@@ -6069,6 +6079,7 @@ bool MainWindow::saveActiveDeck()
         return false;
     }
 
+    workspace->setStorageOrigin(filePath, documentFileFingerprint(filePath));
     workspace->clearDirty();
     if (QMdiSubWindow* subWindow = m_mdiArea->activeSubWindow()) {
         updateDeckWindowTitle(subWindow, workspace);
@@ -6096,6 +6107,15 @@ bool MainWindow::saveActiveDeckAs()
     }
 
     const QString filePath = pathWithDefaultDeckSuffix(chosenPath);
+    if (DeckWorkspace* existing = findOpenDeck(filePath); existing != nullptr && existing != workspace) {
+        QMessageBox::warning(this, tr("Save Deck As"), tr("That deck is already open. Choose a different destination."));
+        return false;
+    }
+    std::shared_ptr<QLockFile> newLock;
+    if (activeDeckPath().isEmpty() || documentFileIdentity(filePath) != documentFileIdentity(activeDeckPath())) {
+        newLock = acquireDeckLock(filePath);
+        if (!newLock) return false;
+    }
     workspace->commitPendingEdits();
     QString error;
     if (!SQLitePackageStore::saveDeckPackage(workspace->deck(), filePath, &error)) {
@@ -6104,6 +6124,8 @@ bool MainWindow::saveActiveDeckAs()
     }
 
     setActiveDeckPath(filePath);
+    if (newLock) m_documentLocks.insert(workspace, std::move(newLock));
+    workspace->setStorageOrigin(filePath, documentFileFingerprint(filePath));
     workspace->clearDirty();
     if (QMdiSubWindow* subWindow = m_mdiArea->activeSubWindow()) {
         updateDeckWindowTitle(subWindow, workspace);
@@ -6118,13 +6140,14 @@ bool MainWindow::exportTemplatePackageFromDesigner(TemplateDesignerWidget* desig
         return false;
     }
 
-    auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
-    if (owner == nullptr) {
-        QMessageBox::warning(this, tr("CardStack Templates"), tr("The source deck window is no longer available."));
+    auto* owner = designerOwner(designer);
+    const auto draft = m_templateDrafts.value(designer);
+    if (owner == nullptr && !draft) {
+        QMessageBox::warning(this, tr("CardStack Templates"), tr("The source template is no longer available."));
         return false;
     }
 
-    QString suggestedPath = owner->deck().name();
+    QString suggestedPath = owner != nullptr ? owner->deck().name() : draft->name();
     if (suggestedPath.trimmed().isEmpty()) {
         suggestedPath = tr("template");
     }
@@ -6134,9 +6157,10 @@ bool MainWindow::exportTemplatePackageFromDesigner(TemplateDesignerWidget* desig
         return false;
     }
 
-    Deck templateDeck = owner->deck();
+    Deck templateDeck = owner != nullptr ? owner->deck() : *draft;
     templateDeck.setFields(designer->fieldDefinitions());
     templateDeck.setCardTemplateLayout(designer->layoutDefinition());
+    templateDeck.setAppearance(designer->appearance());
 
     QString error;
     const QString filePath = pathWithDefaultTemplateSuffix(chosenPath);
@@ -6145,6 +6169,9 @@ bool MainWindow::exportTemplatePackageFromDesigner(TemplateDesignerWidget* desig
         return false;
     }
 
+    designer->setProperty("templatePackagePath", filePath);
+    designer->markSaved();
+    if (draft) *draft = std::move(templateDeck);
     statusBar()->showMessage(tr("Exported template %1").arg(filePath), StatusMessageTimeoutMs);
     return true;
 }
@@ -6188,6 +6215,18 @@ bool MainWindow::confirmCloseDeckWindow(QMdiSubWindow* subWindow)
         return true;
     }
 
+    QList<QPointer<QMdiSubWindow>> dependents;
+    for (QMdiSubWindow* candidate : m_mdiArea->subWindowList(QMdiArea::CreationOrder)) {
+        if (designerOwner(candidate->widget()) == workspace) dependents.append(candidate);
+    }
+    for (const QPointer<QMdiSubWindow>& dependent : dependents) {
+        if (dependent != nullptr && !dependent->close()) {
+            dependent->show();
+            m_mdiArea->setActiveSubWindow(dependent);
+            return false;
+        }
+        QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
     workspace->commitPendingEdits();
     if (!workspace->isDirty()) {
         return true;
@@ -6213,11 +6252,10 @@ bool MainWindow::confirmCloseDeckWindow(QMdiSubWindow* subWindow)
 
 bool MainWindow::closeAllSubWindowsWithPrompts()
 {
-    const QList<QMdiSubWindow*> windows = m_mdiArea->subWindowList(QMdiArea::CreationOrder);
-    for (QMdiSubWindow* window : windows) {
-        if (window == nullptr) {
-            continue;
-        }
+    QList<QPointer<QMdiSubWindow>> windows;
+    for (QMdiSubWindow* window : m_mdiArea->subWindowList(QMdiArea::CreationOrder)) windows.append(window);
+    for (const QPointer<QMdiSubWindow>& window : windows) {
+        if (window == nullptr) continue;
         QPointer<QMdiSubWindow> guard(window);
         m_mdiArea->setActiveSubWindow(window);
         window->close();
@@ -6444,8 +6482,7 @@ void MainWindow::updateCommandState()
     if (QAction* action = findUiAction(Command::ConfigureAddSecurity)) {
         const DeckWorkspace* workspace = activeDeckWorkspace();
         if (workspace == nullptr && templateDesigner != nullptr) {
-            workspace = qobject_cast<DeckWorkspace*>(
-                templateDesigner->property("ownerDeckWorkspace").value<QObject*>());
+            workspace = designerOwner(templateDesigner);
         }
         action->setText(workspace != nullptr && workspace->hasSecurity() ? tr("Remove &Security...") : tr("Add &Security..."));
     }
@@ -6679,9 +6716,52 @@ void MainWindow::openSampleDeck()
     openDeckWindow(createSampleProjectDeck());
 }
 
+DeckWorkspace* MainWindow::designerOwner(const QWidget* designer) const
+{
+    return m_designerOwners.value(designer).data();
+}
+
+void MainWindow::trackDesignerOwner(QWidget* designer, DeckWorkspace* workspace)
+{
+    m_designerOwners.insert(designer, workspace);
+    connect(designer, &QObject::destroyed, this, [this, designer]() { m_designerOwners.remove(designer); });
+}
+
+DeckWorkspace* MainWindow::findOpenDeck(const QString& path) const
+{
+    if (path.isEmpty()) return nullptr;
+    const QString identity = documentFileIdentity(path);
+    for (QMdiSubWindow* window : m_mdiArea->subWindowList()) {
+        auto* workspace = qobject_cast<DeckWorkspace*>(window->widget());
+        if (workspace == nullptr) continue;
+        const QString candidate = workspace->property("cardstackFilePath").toString();
+        if (!candidate.isEmpty() && documentFileIdentity(candidate) == identity) return workspace;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<QLockFile> MainWindow::acquireDeckLock(const QString& path)
+{
+    auto lock = std::make_shared<QLockFile>(QFileInfo(path).absoluteFilePath() + QStringLiteral(".lock"));
+    if (!lock->tryLock(0)) {
+        QMessageBox::warning(this, tr("CardStack"),
+            tr("This deck is in use by another application instance, or its folder is not writable."));
+        return {};
+    }
+    return lock;
+}
+
 DeckWorkspace* MainWindow::openDeckWindow(const Deck& deck, const QString& filePath, bool initialDirty)
 {
+    if (DeckWorkspace* existing = findOpenDeck(filePath)) return existing;
+    std::shared_ptr<QLockFile> lock;
+    if (!filePath.isEmpty()) {
+        lock = acquireDeckLock(filePath);
+        if (!lock) return nullptr;
+    }
     auto* workspace = new DeckWorkspace(deck);
+    if (lock) m_documentLocks.insert(workspace, std::move(lock));
+    connect(workspace, &QObject::destroyed, this, [this, workspace]() { m_documentLocks.remove(workspace); });
     workspace->setProperty("cardstackFilePath", filePath);
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(workspace);
     subWindow->setAttribute(Qt::WA_DeleteOnClose);
@@ -6718,10 +6798,23 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
         return;
     }
 
+    if (reportIndex >= 0 && !report.documentId.isEmpty()) {
+        for (QMdiSubWindow* candidate : m_mdiArea->subWindowList()) {
+            auto* existing = qobject_cast<ReportDesignerWidget*>(candidate->widget());
+            if (existing != nullptr && designerOwner(existing) == workspace
+                && existing->property("ownerReportId").toString() == report.documentId) {
+                candidate->show();
+                m_mdiArea->setActiveSubWindow(candidate);
+                return;
+            }
+        }
+    }
     auto* designer = new ReportDesignerWidget(report, workspace->fieldNames());
+    trackDesignerOwner(designer, workspace);
     designer->setProperty("reportIndex", reportIndex);
     designer->setProperty("ownerDeckWorkspace", QVariant::fromValue<QObject*>(workspace));
     designer->setProperty("ownerReportIndex", reportIndex);
+    designer->setProperty("ownerReportId", report.documentId);
     connect(designer, &ReportDesignerWidget::commandRequested, this, [this](int commandId) {
         handleReportDesignerCommand(commandId);
         updateCommandState();
@@ -6747,23 +6840,33 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
         updateCommandState();
     });
     connect(designer, &ReportDesignerWidget::saveRequested, this, [this, designer, subWindow](const ReportDefinition& updatedReport) {
-        auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
+        auto* owner = designerOwner(designer);
         if (owner == nullptr) {
             QMessageBox::warning(this, tr("CardStack Reports"), tr("The source deck window is no longer available."));
             designer->markDirty();
             return;
         }
 
-        int reportIndex = designer->property("reportIndex").toInt();
-        if (reportIndex < 0) {
-            reportIndex = owner->deck().reportCount();
+        int reportIndex = owner->deck().reportCount();
+        if (designer->property("reportIndex").toInt() >= 0) {
+            const QString identity = designer->property("ownerReportId").toString();
+            for (int index = 0; index < owner->deck().reportCount(); ++index) {
+                if (owner->deck().reportAt(index).documentId == identity) {
+                    reportIndex = index;
+                    break;
+                }
+            }
         }
-        if (!owner->saveReportDefinition(reportIndex, updatedReport)) {
+        ReportDefinition saved = updatedReport;
+        if (designer->property("reportIndex").toInt() < 0) saved.documentId.clear();
+        if (!owner->saveReportDefinition(reportIndex, saved)) {
             QMessageBox::warning(this, tr("CardStack Reports"), tr("Could not save the report design."));
             designer->markDirty();
             return;
         }
         designer->setProperty("reportIndex", reportIndex);
+        designer->setProperty("ownerReportId", owner->deck().reportAt(reportIndex).documentId);
+        designer->setReportIdentity(owner->deck().reportAt(reportIndex).documentId);
         subWindow->setWindowTitle(updatedReport.name);
         updateWindowMenuEntries();
         statusBar()->showMessage(tr("Report design saved."), StatusMessageTimeoutMs);
@@ -6790,6 +6893,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
 
     auto* designer = new TemplateDesignerWidget(
         workspace->deck().cardTemplateLayout(), workspace->deck().fields(), nullptr, workspace->deck().appearance());
+    trackDesignerOwner(designer, workspace);
     designer->setProperty("ownerDeckWorkspace", QVariant::fromValue<QObject*>(workspace));
     designer->setProperty("ownerDeckSubWindow", QVariant::fromValue<QObject*>(ownerSubWindow.data()));
 
@@ -6822,7 +6926,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
         updateCommandState();
     });
     connect(designer, &TemplateDesignerWidget::saveRequested, this, [this, designer](const CardTemplateLayout& layout) {
-        auto* owner = qobject_cast<DeckWorkspace*>(designer->property("ownerDeckWorkspace").value<QObject*>());
+        auto* owner = designerOwner(designer);
         if (owner == nullptr) {
             QMessageBox::warning(this, tr("CardStack Templates"), tr("The source deck window is no longer available."));
             designer->markDirty();
@@ -6842,6 +6946,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
             return;
         }
         owner->setCardTemplateLayout(layout);
+        owner->applyAppearance(designer->appearance());
         const QString filePath = owner->property("cardstackFilePath").toString();
         if (!filePath.isEmpty()) {
             owner->commitPendingEdits();
@@ -6852,6 +6957,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
                 return;
             }
 
+            owner->setStorageOrigin(filePath, documentFileFingerprint(filePath));
             owner->clearDirty();
             for (QMdiSubWindow* deckWindow : m_mdiArea->subWindowList()) {
                 if (deckWindow->widget() == owner) {
@@ -6885,6 +6991,7 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
     auto* designer = new TemplateDesignerWidget(
         draftDeck->cardTemplateLayout(), draftDeck->fields(), nullptr, draftDeck->appearance());
     designer->setProperty("draftTemplateDesigner", true);
+    m_templateDrafts.insert(designer, draftDeck);
 
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(designer);
     subWindow->setAttribute(Qt::WA_DeleteOnClose);
@@ -6914,10 +7021,26 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
     connect(designer, &TemplateDesignerWidget::saveRequested, this, [this, designer, draftDeck](const CardTemplateLayout& layout) {
         draftDeck->setFields(designer->fieldDefinitions());
         draftDeck->setCardTemplateLayout(layout);
-        statusBar()->showMessage(tr("Template design saved. Close the designer to create a deck from it."), StatusMessageTimeoutMs);
+        draftDeck->setAppearance(designer->appearance());
+        const QString path = designer->property("templatePackagePath").toString();
+        if (path.isEmpty()) {
+            if (!exportTemplatePackageFromDesigner(designer)) {
+                designer->markDirty();
+                return;
+            }
+        } else {
+            QString error;
+            if (!SQLitePackageStore::saveTemplatePackage(*draftDeck, path, &error)) {
+                QMessageBox::critical(this, tr("CardStack Templates"), tr("Could not save template:\n%1").arg(error));
+                designer->markDirty();
+                return;
+            }
+        }
+        statusBar()->showMessage(tr("Template saved. Close the designer to create a deck from it."), StatusMessageTimeoutMs);
         updateCommandState();
     });
-    connect(subWindow, &QMdiSubWindow::destroyed, this, [this, draftDeck]() {
+    connect(subWindow, &QMdiSubWindow::destroyed, this, [this, draftDeck, designer]() {
+        m_templateDrafts.remove(designer);
         const QMessageBox::StandardButton choice = QMessageBox::question(
             this,
             tr("New Card Deck"),

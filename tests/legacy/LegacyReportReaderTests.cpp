@@ -52,8 +52,12 @@ QByteArray makeSyntheticReportStore()
     putU16(&bytes, 0x55, 1);
     putU16(&bytes, 0x57, 1);
     putU16(&bytes, 0x59, 4);
-    putCString(&bytes, 0x6c, 32, QByteArray(1, '\x12') + QByteArrayLiteral("Arial"));
-    putCString(&bytes, 0x9e, 32, QByteArray(1, '\x12') + QByteArrayLiteral("Courier"));
+    putU16(&bytes, 0x8d, static_cast<quint16>(qint16(-100)));
+    putU16(&bytes, 0x8d + 8, 400);
+    putCString(&bytes, 0x8d + 18, 32, "Arial");
+    putU16(&bytes, 0x5b, static_cast<quint16>(qint16(-120)));
+    putU16(&bytes, 0x5b + 8, 700);
+    putCString(&bytes, 0x5b + 18, 32, "Courier");
 
     putFrame(&bytes, HeaderSize, 0, QRect(20, 30, 300, 40), "Product: [Product]");
     putFrame(&bytes, HeaderSize + FrameSize, 0xffff, QRect(20, 90, 300, 40), "{reportname} - {page}");
@@ -107,11 +111,14 @@ private slots:
         QCOMPARE(report.rows, 1);
         QCOMPARE(report.columns, 1);
         QCOMPARE(report.dataFont.faceName, QStringLiteral("Arial"));
+        QCOMPARE(report.dataFont.legacyHeight, -100);
+        QCOMPARE(report.textFont.legacyHeight, -120);
+        QCOMPARE(report.textFont.weight, 700);
         QCOMPARE(report.textFont.faceName, QStringLiteral("Courier"));
         QCOMPARE(report.frames.size(), 2);
         QCOMPARE(report.frames.at(0).signature, 0xabcd);
         QCOMPARE(report.frames.at(0).kind, ReportFrameKind::Data);
-        QCOMPARE(report.frames.at(0).bounds, QRect(200, 300, 3000, 400));
+        QCOMPARE(report.frames.at(0).bounds, QRect(208, 313, 3125, 416));
         QCOMPARE(report.frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
         QCOMPARE(report.frames.at(1).kind, ReportFrameKind::SystemText);
         QCOMPARE(report.frames.at(1).systemTokens, (QVector<QString>{QStringLiteral("reportname"), QStringLiteral("page")}));
@@ -168,8 +175,8 @@ private slots:
         QCOMPARE(result.reports.at(2).formType, ReportFormType::Report);
         QCOMPARE(result.reports.at(2).formWidth, 8500);
         QCOMPARE(result.reports.at(2).formHeight, 11000);
-        QCOMPARE(result.reports.at(2).headerHeight, 96);
-        QCOMPARE(result.reports.at(2).footerHeight, 96);
+        QCOMPARE(result.reports.at(2).headerHeight, 1000);
+        QCOMPARE(result.reports.at(2).footerHeight, 1000);
         QCOMPARE(result.reports.at(2).declaredFrameCount, 14);
         QCOMPARE(result.reports.at(2).frames.at(12).systemTokens, QVector<QString>{QStringLiteral("reportname")});
         QCOMPARE(result.reports.at(2).frames.at(13).systemTokens, QVector<QString>{QStringLiteral("page")});
@@ -188,7 +195,7 @@ private slots:
         QCOMPARE(frame.lineStyle, ReportLineStyleDash);
         QCOMPARE(frame.order, 50);
         QCOMPARE(frame.fillPattern, ReportFillPatternClear);
-        QCOMPARE(frame.bounds, QRect(200, 300, 3000, 40));
+        QCOMPARE(frame.bounds, QRect(208, 313, 3125, 41));
     }
 };
 

@@ -1,7 +1,13 @@
 #include "DeckWorkspace.h"
+#include "DeckTemplate.h"
 
 #include "Deck.h"
 #include "DeckMerge.h"
+#include "ReportPreviewRenderer.h"
+#include "SQLitePackageStore.h"
+#include "SQLiteDeckStore.h"
+#include <QTemporaryDir>
+#include <QPainter>
 
 #include <QApplication>
 #include <QAbstractButton>
@@ -14,6 +20,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPixmap>
+#include "../support/VisualTestSupport.h"
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QSplitter>
@@ -114,6 +121,144 @@ class DeckWorkspaceTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void cardAndSchemaEditsPreserveUnrelatedDeckState()
+    {
+        Deck source = createDeckWithReport();
+        DeckAppearance appearance = source.appearance();
+        appearance.dataFont = QApplication::font().toString();
+        appearance.useSystemColors = false;
+        appearance.customColors[0] = QStringLiteral("#123456");
+        source.setAppearance(appearance);
+        source.setLegacyControlRecord(QByteArray("source-control"));
+        source.addPhoneCallLogEntry({QStringLiteral("2026-10-28T12:00:00Z"), QStringLiteral("555-0123"), {QStringLiteral("Alpha")}, QByteArray("history")});
+        source.addPhoneCallLogEntry({QStringLiteral("2026-10-28T12:01:00Z"), QStringLiteral("555-0124"), {}, {}});
+        DeckWorkspace workspace(source);
+        auto* edit = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        QVERIFY(edit != nullptr);
+        edit->setText(QStringLiteral("Zulu"));
+        emit edit->editingFinished();
+        QCOMPARE(workspace.deck().phoneCallLogEntries(), source.phoneCallLogEntries());
+        QCOMPARE(workspace.deck().legacyControlRecord(), source.legacyControlRecord());
+        QCOMPARE(workspace.deck().documentId(), source.documentId());
+        QString error;
+        QVERIFY(workspace.redefineFields({FieldDefinition(QStringLiteral("Display Name"), FieldType::Text, 255)}, {0}, &error));
+        QCOMPARE(workspace.deck().appearance(), appearance);
+        QCOMPARE(workspace.deck().phoneCallLogEntries(), source.phoneCallLogEntries());
+        QCOMPARE(workspace.deck().legacyControlRecord(), source.legacyControlRecord());
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("preserved.cardstack"));
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(workspace.deck(), path, &error), qPrintable(error));
+        SQLiteDeckStore reader;
+        QVERIFY2(reader.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.phoneCallLogEntries(), source.phoneCallLogEntries());
+        QCOMPARE(loaded.appearance(), appearance);
+    }
+
+    void builtInCardFontsAndCaptionsFit()
+    {
+        for (const auto& deckTemplate : builtInDeckTemplates()) {
+            Deck deck = createDeckFromTemplate(deckTemplate);
+            QFont dataFont;
+            QVERIFY(dataFont.fromString(deck.appearance().dataFont));
+            QCOMPARE(dataFont.weight(), QFont::Normal);
+            DeckAppearance previous = deck.appearance();
+            previous.dataFont = QStringLiteral("Arial,-1,12,5,400,0,0,0,0,0");
+            deck.setAppearance(previous);
+            QVERIFY(dataFont.fromString(deck.appearance().dataFont));
+            QCOMPARE(dataFont.weight(), QFont::Normal);
+            DeckWorkspace workspace(deck);
+            for (QLabel* caption : workspace.findChildren<QLabel*>()) {
+                if (!caption->objectName().startsWith(QLatin1String("fieldCaption_"))) continue;
+                QVERIFY2(caption->width() >= caption->fontMetrics().horizontalAdvance(caption->text()),
+                         qPrintable(deckTemplate.name + QStringLiteral(": ") + caption->text()));
+            }
+        }
+    }
+
+    void fieldRenameKeepsReportValuesBound()
+    {
+        Deck source = createTwoCardDeck();
+        ReportDefinition report;
+        report.name = QStringLiteral("Names");
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Data;
+        frame.text = QStringLiteral("Name: [Name]");
+        frame.fieldPlaceholders = {QStringLiteral("Name")};
+        report.frames.append(frame);
+        source.addReport(report);
+        DeckWorkspace workspace(source);
+        QString error;
+        QVERIFY(workspace.redefineFields({FieldDefinition(QStringLiteral("Display Name"), FieldType::Text, 255)}, {0}, &error));
+        const auto& saved = workspace.deck().reportAt(0).frames.first();
+        QCOMPARE(saved.text, QStringLiteral("Name: [Display Name]"));
+        QCOMPARE(saved.fieldPlaceholders, QVector<QString>{QStringLiteral("Display Name")});
+        ReportPreviewData values;
+        values.fieldValues.insert(QStringLiteral("Display Name"), QStringLiteral("Alpha"));
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(saved, values), QStringLiteral("Name: Alpha"));
+    }
+
+    void fieldRenameRemapsAbbreviatedReportReferences()
+    {
+        Deck source(QStringLiteral("Support"));
+        source.addField(FieldDefinition(QStringLiteral("Customer service"), FieldType::Text, 255));
+        source.addCard(CardRecord({QStringLiteral("555-0100")}));
+        ReportDefinition report;
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Data;
+        frame.text = QStringLiteral("[Customer servic]");
+        frame.fieldPlaceholders = {QStringLiteral("Customer servic")};
+        report.frames.append(frame);
+        source.addReport(report);
+        DeckWorkspace workspace(source);
+        QString error;
+        QVERIFY(workspace.redefineFields({FieldDefinition(QStringLiteral("Support desk"), FieldType::Text, 255)}, {0}, &error));
+        QCOMPARE(workspace.deck().reportAt(0).frames.first().text, QStringLiteral("[Support desk]"));
+        QCOMPARE(workspace.deck().reportAt(0).frames.first().fieldPlaceholders, QVector<QString>{QStringLiteral("Support desk")});
+    }
+
+    void repeatedFieldViewsSynchronizeAndApplySavedStyles()
+    {
+        Deck source = createTemplateLayoutDeck();
+        CardTemplateLayout layout = source.cardTemplateLayout();
+        layout.frames[0].styleFlags = CardTemplateStyleFlagBold | CardTemplateStyleFlagAlignRight;
+        CardTemplateFrame duplicate = layout.frames[0];
+        duplicate.bounds.translate(1400, 0);
+        layout.frames.append(duplicate);
+        layout.frames[1].styleFlags = CardTemplateStyleFlagItalic | CardTemplateStyleFlagUnderline;
+        source.setCardTemplateLayout(layout);
+        DeckWorkspace workspace(source);
+        const auto editors = workspace.findChildren<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        QCOMPARE(editors.size(), 2);
+        for (auto* editor : editors) {
+            QVERIFY(editor->font().bold());
+            QVERIFY(editor->alignment().testFlag(Qt::AlignRight));
+            QCOMPARE(editor->text(), QStringLiteral("Alpha"));
+        }
+        editors.first()->setText(QStringLiteral("Edited once"));
+        emit editors.first()->editingFinished();
+        QCOMPARE(editors.last()->text(), QStringLiteral("Edited once"));
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Edited once"));
+        auto* label = workspace.findChild<QLabel*>(QStringLiteral("templateTextFrame"));
+        QVERIFY(label->font().italic());
+        QVERIFY(label->font().underline());
+    }
+
+    void selectedPrintingSetIncludesEverySearchMatch()
+    {
+        Deck source = createSmartPasteDeck();
+        source.addCard(CardRecord({QStringLiteral("Beta"), QStringLiteral("Other")}));
+        source.addCard(CardRecord({QStringLiteral("Gamma"), QStringLiteral("Original")}));
+        DeckWorkspace workspace(source);
+        DeckWorkspace::SearchRequest request;
+        request.first.fieldIndex = 1;
+        request.first.text = QStringLiteral("Original");
+        QVERIFY(workspace.find(request));
+        QCOMPARE(workspace.selectedCardIndexes(), QVector<int>({0, 2}));
+    }
     void cardEditorUsesExactTemplateFrameGeometry()
     {
         DeckWorkspace workspace(createTemplateLayoutDeck());
@@ -567,6 +712,30 @@ private slots:
         auto* editor = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
         QVERIFY(editor != nullptr);
         QCOMPARE(editor->text(), QStringLiteral("Beta"));
+    }
+
+
+    void writesEveryBuiltInCardAndTableWhenConfigured()
+    {
+        const QString path = qEnvironmentVariable("CARDSTACK_DECK_GALLERY_DIR");
+        if (path.isEmpty()) QSKIP("Set CARDSTACK_DECK_GALLERY_DIR to capture every built-in card layout.");
+        QDir output(path);
+        QVERIFY(output.mkpath(QStringLiteral(".")));
+        for (const auto& definition : builtInDeckTemplates()) {
+            Deck deck = createDeckFromTemplate(definition);
+            CardRecord sample;
+            for (const auto& field : definition.fields)
+                sample.appendValue(QStringLiteral("%1 sample").arg(field.name()));
+            deck.addCard(sample);
+            DeckWorkspace workspace(deck);
+            workspace.resize(980, 720);
+            QString stem = definition.name.toLower();
+            stem.replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")), QStringLiteral("_"));
+            workspace.showCardView();
+            QVERIFY(Tests::saveWidgetImage(workspace, output, QStringLiteral("builtin_%1_card.png").arg(stem)));
+            workspace.showTableView();
+            QVERIFY(Tests::saveWidgetImage(workspace, output, QStringLiteral("builtin_%1_table.png").arg(stem)));
+        }
     }
 
     void writesManualDeckInspectionImagesWhenConfigured()

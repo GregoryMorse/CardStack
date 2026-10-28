@@ -30,6 +30,7 @@ public:
         QStringList recentSearches;
         QStringList recentReplacements;
         bool searchDirectionAvailable = false;
+        bool legacyPasswordRules = false;
     };
 
     static constexpr int ReportSourceIndexRole = Qt::UserRole;

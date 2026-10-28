@@ -141,7 +141,9 @@ public:
     bool hasSecurity() const;
     bool hasEncryptedSecurity() const;
     bool securityPasswordMatches(const QString& password) const;
-    void setSecurity(const QString& password, bool encrypted);
+    bool setSecurity(const QString& password, bool encrypted);
+    void setStorageOrigin(const QString& path, const QByteArray& fingerprint);
+    QVector<int> selectedCardIndexes() const;
     void clearSecurity();
 
     bool find(const SearchRequest& request);
@@ -158,6 +160,7 @@ signals:
 
 private:
     void applyStoredAppearance();
+    QList<QWidget*> valueEditors() const;
     QWidget* createCardPage();
     QWidget* createTablePage();
     void attachCardDetailPanelToCardPage();

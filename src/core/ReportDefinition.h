@@ -24,7 +24,22 @@ enum class ReportFrameKind {
 
 struct ReportFontDefinition {
     QString faceName;
+    // Signed tenths of a point (720 units per inch), not a font-family byte.
     int legacyHeight = 0;
+    int width = 0;
+    int escapementTenths = 0;
+    int orientationTenths = 0;
+    int weight = 400;
+    bool italic = false;
+    bool underline = false;
+    bool strikeOut = false;
+    quint8 characterSet = 0;
+    quint8 outputPrecision = 3;
+    quint8 clipPrecision = 2;
+    quint8 quality = 1;
+    quint8 pitchAndFamily = 0x20 | 0x02; // Swiss family, variable pitch.
+
+    bool operator==(const ReportFontDefinition&) const = default;
 };
 
 struct ReportFrameDefinition {
@@ -103,6 +118,7 @@ inline constexpr int ReportFillPatternLightTrellis = 25;
 inline constexpr int ReportFillPatternCount = 26;
 
 struct ReportDefinition {
+    QString documentId;
     QString name;
     QString formatMagic;
     int legacyOffset = 0;
@@ -131,5 +147,23 @@ struct ReportDefinition {
     QByteArray legacyHeader;
     QVector<ReportFrameDefinition> frames;
 };
+
+inline constexpr quint16 ReportBodyBand = 0;
+inline constexpr quint16 ReportHeaderBand = 1;
+inline constexpr quint16 ReportFooterBand = 2;
+
+inline quint16 reportBandForBounds(const ReportDefinition& report, const QRect& bounds)
+{
+    if (report.formType != ReportFormType::Report) return ReportBodyBand;
+    const qreal center = bounds.top() + bounds.height() / 2.0;
+    if (report.headerHeight > 0 && center < report.headerHeight) return ReportHeaderBand;
+    if (report.footerHeight > 0 && center >= report.formHeight - report.footerHeight) return ReportFooterBand;
+    return ReportBodyBand;
+}
+
+inline void classifyReportBands(ReportDefinition* report)
+{
+    for (auto& frame : report->frames) frame.band = reportBandForBounds(*report, frame.bounds);
+}
 
 } // namespace CardStack

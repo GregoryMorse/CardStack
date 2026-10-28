@@ -208,8 +208,7 @@ bool isContainedByDecoration(const QWidget* decoration, const QWidget* widget)
     }
 
     const QRect decorationRect = decoration->geometry().adjusted(-2, -2, 2, 2);
-    const QPoint center = widget->geometry().center();
-    return decorationRect.contains(center);
+    return decorationRect.contains(widget->geometry());
 }
 
 int overlapArea(const QRect& first, const QRect& second)
@@ -713,6 +712,25 @@ private slots:
         QVERIFY(sourceCombo->view()->minimumWidth() >= 280);
     }
 
+    void modernPasswordsKeepCaseSpacesAndLengthWhileImportsKeepTheirRules()
+    {
+        auto modern = UiBuilder::createDialog(QStringLiteral("ADDSECURITY"));
+        auto* edit = qobject_cast<QLineEdit*>(UiBuilder::controlById(modern.get(), UiIds::Control::SecurityPassword));
+        QVERIFY(edit != nullptr);
+        const QString password = QStringLiteral("Abcdefgh Mixed Case phrase");
+        edit->setText(password);
+        QCOMPARE(edit->text(), password);
+        QVERIFY(edit->maxLength() > 8);
+        UiBuilder::DialogContext context;
+        context.legacyPasswordRules = true;
+        auto imported = UiBuilder::createDialog(QStringLiteral("GETPASSWORD"), nullptr, context);
+        auto* previous = qobject_cast<QLineEdit*>(UiBuilder::controlById(imported.get(), UiIds::Control::SecurityPassword));
+        QVERIFY(previous != nullptr);
+        previous->setText(QStringLiteral("mixedcase"));
+        QCOMPARE(previous->text(), QStringLiteral("MIXEDCAS"));
+        QCOMPARE(previous->maxLength(), 8);
+    }
+
     void initializesSecurityDialogForPasswordEntry()
     {
         const UiBuilder::DialogContext context = populatedContext();
@@ -905,7 +923,7 @@ private slots:
             auto* password = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog.get(), UiIds::Control::SecurityPassword));
             QVERIFY(password != nullptr);
             password->setText(QStringLiteral("mixedCase"));
-            QCOMPARE(password->text(), QStringLiteral("MIXEDCAS"));
+            QCOMPARE(password->text(), QStringLiteral("mixedCase"));
         }
 
         {
@@ -1191,6 +1209,36 @@ private slots:
         QCOMPARE(reports->item(2)->data(UiBuilder::ReportSourceIndexRole).toInt(), 3);
         QCOMPARE(reports->item(3)->data(UiBuilder::ReportSourceIndexRole).toInt(), 2);
         QCOMPARE(reports->item(4)->data(UiBuilder::ReportSourceIndexRole).toInt(), 0);
+    }
+
+
+    void dynamicSearchStatesKeepVisibleControlsClear()
+    {
+        for (const QString& name : {QStringLiteral("SEARCH"), QStringLiteral("REPLACE")}) {
+            auto dialog = UiBuilder::createDialog(name, nullptr, populatedContext());
+            QVERIFY(dialog != nullptr);
+            dialog->show();
+            QCoreApplication::processEvents();
+            for (int comparison : {UiIds::Control::SearchCompareNone,
+                                   UiIds::Control::SearchCompareAnd,
+                                   UiIds::Control::SearchCompareOr}) {
+                auto* button = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), comparison));
+                if (button == nullptr) continue;
+                button->click();
+                QCoreApplication::processEvents();
+                const auto controls = dialog->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+                for (QWidget* widget : controls) {
+                    if (widget->isHidden()) continue;
+                    QVERIFY2(dialog->rect().adjusted(-1,-1,1,1).contains(widget->geometry()),
+                             qPrintable(widgetDebugName(widget)));
+                    QVERIFY2(textFitsWidget(widget), qPrintable(widgetDebugName(widget)));
+                }
+                for (qsizetype one = 0; one < controls.size(); ++one)
+                    for (qsizetype two = one + 1; two < controls.size(); ++two)
+                        QVERIFY2(!hasMaterialOverlap(controls[one], controls[two]),
+                            qPrintable(widgetDebugName(controls[one]) + QStringLiteral(" / ") + widgetDebugName(controls[two])));
+            }
+        }
     }
 
     void everyVisibleDialogControlHasSafeGeometry()

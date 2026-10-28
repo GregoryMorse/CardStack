@@ -14,6 +14,7 @@ struct ReportPreviewData {
     QMap<QString, QString> fieldValues;
     QMap<QString, QString> systemValues;
     bool drawFrameOutlines = false;
+    QMap<int, QString> frameTextOverrides;
 };
 
 class ReportPreviewRenderer {

@@ -1,6 +1,15 @@
 #include "SQLiteDeckStore.h"
 
 #include "SQLiteDeckRepository.h"
+#include "SQLiteSnapshot.h"
+#include "ReportFontCodec.h"
+#include "DocumentFile.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QTemporaryFile>
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -165,19 +174,227 @@ SQLiteDeckStore::~SQLiteDeckStore()
     close();
 }
 
-bool SQLiteDeckStore::open(const QString& filePath, QString* errorMessage)
+bool SQLiteDeckStore::initializeMemory(QString* errorMessage)
 {
-    close();
-
     m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
-    m_database.setDatabaseName(filePath);
-
+    m_database.setDatabaseName(QStringLiteral(":memory:"));
     if (!m_database.open()) {
         setError(errorMessage, m_database.lastError());
         return false;
     }
-
     return ensureSchema(errorMessage);
+}
+
+bool SQLiteDeckStore::create(const QString& filePath, QString* errorMessage)
+{
+    close();
+    m_filePath = filePath;
+    bool readable = false;
+    m_initialFingerprint = m_fingerprint = documentFileFingerprint(filePath, &readable);
+    if (!readable) {
+        setError(errorMessage, QStringLiteral("Could not read the destination file."));
+        return false;
+    }
+    if (QFileInfo::exists(filePath)) {
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            setError(errorMessage, file.errorString());
+            return false;
+        }
+        const QByteArray header = file.read(8);
+        if (!DeckSecurity::isEncryptedContainer(header)) {
+            QJsonObject ignored;
+            if (!SQLiteSnapshot::readFile(filePath, &ignored, errorMessage)) return false;
+        }
+    }
+    return initializeMemory(errorMessage);
+}
+
+bool SQLiteDeckStore::open(const QString& filePath, QString* errorMessage,
+                           const QString& password, OpenMode mode)
+{
+    if (!QFileInfo::exists(filePath) && filePath != QLatin1String(":memory:")) {
+        if (mode == OpenMode::ReadOnly) {
+            setError(errorMessage, QStringLiteral("The document does not exist."));
+            return false;
+        }
+        return create(filePath, errorMessage);
+    }
+    if (filePath == QLatin1String(":memory:")) return create(filePath, errorMessage);
+    close();
+    m_filePath = filePath;
+    m_openPassword = password;
+    m_readOnly = mode == OpenMode::ReadOnly;
+    bool readable = false;
+    m_initialFingerprint = m_fingerprint = documentFileFingerprint(filePath, &readable);
+    if (!readable) {
+        setError(errorMessage, QStringLiteral("Could not read the document."));
+        return false;
+    }
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setError(errorMessage, file.errorString());
+        return false;
+    }
+    const QByteArray header = file.peek(8);
+    QJsonObject snapshot;
+    if (DeckSecurity::isEncryptedContainer(header)) {
+        if (file.size() > DeckSecurity::MaximumContainerBytes + 1024) {
+            setError(errorMessage, QStringLiteral("The encrypted document is too large."));
+            return false;
+        }
+        QByteArray plaintext;
+        if (!DeckSecurity::decrypt(file.readAll(), password, &plaintext, &m_credentials, &m_securityError)) {
+            setError(errorMessage, m_securityError == DeckSecurity::Error::PasswordRequired
+                ? QStringLiteral("This document requires a password.")
+                : m_securityError == DeckSecurity::Error::WrongPassword
+                    ? QStringLiteral("The password is incorrect.")
+                    : QStringLiteral("The encrypted document is damaged or has been modified."));
+            return false;
+        }
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(plaintext, &parseError);
+        DeckSecurity::wipe(&plaintext);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            setError(errorMessage, QStringLiteral("The encrypted document snapshot is invalid."));
+            return false;
+        }
+        snapshot = document.object();
+        m_authenticated = true;
+    } else {
+        file.close();
+        if (!SQLiteSnapshot::readFile(filePath, &snapshot, errorMessage)) return false;
+    }
+    if (!initializeMemory(errorMessage)
+        || !SQLiteSnapshot::restore(m_database, snapshot, errorMessage)
+        || !ensureSchema(errorMessage)
+        || !SQLiteSnapshot::checkForeignKeys(m_database, errorMessage)) return false;
+
+    // Upgrade the old plaintext password representation in memory only.
+    QSqlQuery security(m_database);
+    if (!security.exec(QStringLiteral("SELECT security_password FROM decks WHERE id = 1"))) {
+        setError(errorMessage, security.lastError());
+        return false;
+    }
+    if (security.next()) {
+        const QString previous = security.value(0).toString();
+        if (!previous.isEmpty() && !DeckSecurity::isPasswordRecord(previous)) {
+            if (previous.startsWith(QLatin1String("cs1$"))) {
+                setError(errorMessage, QStringLiteral("The password record is invalid."));
+                return false;
+            }
+            const auto credentials = DeckSecurity::createCredentials(previous,
+                DeckSecurity::PasswordPolicy::PreviousEightCharacter);
+            if (credentials.record.isEmpty()) {
+                setError(errorMessage, QStringLiteral("Could not initialize password verification."));
+                return false;
+            }
+            QSqlQuery upgrade(m_database);
+            upgrade.prepare(QStringLiteral("UPDATE decks SET security_password = ? WHERE id = 1"));
+            upgrade.addBindValue(credentials.record);
+            if (!upgrade.exec()) {
+                setError(errorMessage, upgrade.lastError());
+                return false;
+            }
+        }
+    }
+    m_deferPersistence = false;
+    return true;
+}
+
+bool SQLiteDeckStore::persist(QString* errorMessage)
+{
+    if (m_filePath.isEmpty() || m_filePath == QLatin1String(":memory:")) return true;
+    if (m_readOnly) {
+        setError(errorMessage, QStringLiteral("This document was opened read-only."));
+        return false;
+    }
+    bool readable = false;
+    const QByteArray actual = documentFileFingerprint(m_filePath, &readable);
+    if (!readable || actual != m_fingerprint) {
+        setError(errorMessage, QStringLiteral("The document changed on disk. Reopen it before saving to avoid overwriting another edit."));
+        return false;
+    }
+    QJsonObject snapshot;
+    if (!SQLiteSnapshot::capture(m_database, &snapshot, errorMessage)) return false;
+    QSaveFile output(m_filePath);
+    output.setDirectWriteFallback(false);
+    if (!output.open(QIODevice::WriteOnly)) {
+        setError(errorMessage, output.errorString());
+        return false;
+    }
+    QSqlQuery security(m_database);
+    if (!security.exec(QStringLiteral("SELECT security_password, security_encrypted FROM decks WHERE id = 1"))) {
+        setError(errorMessage, security.lastError());
+        return false;
+    }
+    const bool encrypted = security.next() && security.value(1).toInt() != 0;
+    if (encrypted) {
+        const QString record = security.value(0).toString();
+        if (!m_credentials.key || m_credentials.record != record) {
+            setError(errorMessage, QStringLiteral("Unlock the document before saving encrypted data."));
+            return false;
+        }
+        QByteArray plaintext = QJsonDocument(snapshot).toJson(QJsonDocument::Compact);
+        const QByteArray container = DeckSecurity::encrypt(plaintext, record, m_credentials.key);
+        DeckSecurity::wipe(&plaintext);
+        if (container.isEmpty() || output.write(container) != container.size()) {
+            setError(errorMessage, output.errorString().isEmpty()
+                ? QStringLiteral("Could not encrypt the document.") : output.errorString());
+            return false;
+        }
+    } else {
+        const QString directory = QFileInfo(m_filePath).absolutePath();
+        QTemporaryFile temporary(QDir(directory).filePath(QStringLiteral(".cardstack-save-XXXXXX")));
+        if (!temporary.open()) {
+            setError(errorMessage, temporary.errorString());
+            return false;
+        }
+        const QString stagePath = temporary.fileName();
+        temporary.close();
+        const QString connectionName = m_connectionName + QStringLiteral("_stage");
+        bool staged = false;
+        {
+            QSqlDatabase stage = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+            stage.setDatabaseName(stagePath);
+            if (stage.open()) {
+                const QSqlDatabase memory = m_database;
+                m_database = stage;
+                const bool schemaReady = ensureSchema(errorMessage);
+                m_database = memory;
+                staged = schemaReady
+                    && SQLiteSnapshot::restore(stage, snapshot, errorMessage)
+                    && SQLiteSnapshot::checkForeignKeys(stage, errorMessage);
+            } else {
+                setError(errorMessage, stage.lastError());
+            }
+            stage.close();
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+        if (!staged) return false;
+        QFile input(stagePath);
+        if (!input.open(QIODevice::ReadOnly)) {
+            setError(errorMessage, input.errorString());
+            return false;
+        }
+        while (!input.atEnd()) {
+            const QByteArray block = input.read(1024 * 1024);
+            if (block.isEmpty() && input.error() != QFileDevice::NoError) {
+                setError(errorMessage, input.errorString());
+                return false;
+            }
+            if (output.write(block) != block.size()) {
+                setError(errorMessage, output.errorString());
+                return false;
+            }
+        }
+    }
+    if (documentFileFingerprint(m_filePath) != m_fingerprint || !output.commit()) {
+        setError(errorMessage, QStringLiteral("The document could not be replaced safely: %1").arg(output.errorString()));
+        return false;
+    }
+    m_fingerprint = documentFileFingerprint(m_filePath);
+    return true;
 }
 
 bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
@@ -187,6 +404,20 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
         return false;
     }
 
+    if (m_readOnly) {
+        setError(errorMessage, QStringLiteral("This document was opened read-only."));
+        return false;
+    }
+    if (!deck.storagePath().isEmpty()
+        && documentFileIdentity(deck.storagePath()) == documentFileIdentity(m_filePath)
+        && deck.storageFingerprint() != m_initialFingerprint) {
+        setError(errorMessage, QStringLiteral("The document changed on disk. Reopen it before saving."));
+        return false;
+    }
+    if (deck.hasEncryptedSecurity() && !deck.securityKey()) {
+        setError(errorMessage, QStringLiteral("Unlock the document before saving encrypted data."));
+        return false;
+    }
     if (!m_database.transaction()) {
         setError(errorMessage, m_database.lastError());
         return false;
@@ -222,7 +453,10 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
         return false;
     }
 
-    return true;
+    m_credentials = {deck.securityPassword(), deck.securityKey()};
+    m_authenticated = deck.hasSecurity() && deck.securityKey() != nullptr;
+    m_deferPersistence = false;
+    return persist(errorMessage);
 }
 
 bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
@@ -243,8 +477,36 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
         return false;
     }
 
+    if (loaded.hasSecurity()) {
+        if (m_authenticated) {
+            if (m_credentials.record != loaded.securityPassword()) {
+                setError(errorMessage, QStringLiteral("Encrypted document security metadata is inconsistent."));
+                return false;
+            }
+            loaded.restoreSecurityRecord(loaded.securityPassword(), loaded.hasEncryptedSecurity(), m_credentials.key);
+        } else {
+            if (m_openPassword.isNull()) {
+                m_securityError = DeckSecurity::Error::PasswordRequired;
+                setError(errorMessage, QStringLiteral("This document requires a password."));
+                return false;
+            }
+            if (!loaded.unlockSecurity(m_openPassword)) {
+                m_securityError = DeckSecurity::Error::WrongPassword;
+                setError(errorMessage, QStringLiteral("The password is incorrect."));
+                return false;
+            }
+            m_authenticated = true;
+            m_credentials = {loaded.securityPassword(), loaded.securityKey()};
+        }
+    }
+    m_securityError = DeckSecurity::Error::None;
+
     int templateId = 0;
     if (!repository.loadDefaultTemplateId(&templateId, errorMessage)) {
+        return false;
+    }
+    if (templateId <= 0) {
+        setError(errorMessage, QStringLiteral("This document does not contain a deck or template."));
         return false;
     }
 
@@ -262,6 +524,7 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
         return false;
     }
 
+    loaded.setStorageOrigin(m_filePath, m_fingerprint);
     *deck = std::move(loaded);
     return true;
 }
@@ -284,7 +547,7 @@ bool SQLiteDeckStore::setAppSetting(const QString& key, const QString& value, QS
         return false;
     }
 
-    return true;
+    return m_deferPersistence || persist(errorMessage);
 }
 
 bool SQLiteDeckStore::appSetting(const QString& key, QString* value, QString* errorMessage) const
@@ -324,11 +587,21 @@ void SQLiteDeckStore::close()
 
     m_database = QSqlDatabase();
     QSqlDatabase::removeDatabase(m_connectionName);
+    m_filePath.clear();
+    m_openPassword.clear();
+    m_initialFingerprint.clear();
+    m_fingerprint.clear();
+    m_credentials = {};
+    m_authenticated = false;
+    m_readOnly = false;
+    m_deferPersistence = true;
+    m_securityError = DeckSecurity::Error::None;
 }
 
 bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
 {
-    if (!exec(QStringLiteral("PRAGMA foreign_keys = ON"), errorMessage)
+    if (!exec(QStringLiteral("PRAGMA application_id = %1").arg(SQLiteSnapshot::ApplicationId), errorMessage)
+        || !exec(QStringLiteral("PRAGMA foreign_keys = ON"), errorMessage)
         || !exec(QStringLiteral(
             "CREATE TABLE IF NOT EXISTS schema_migrations("
             "version INTEGER PRIMARY KEY,"
@@ -687,17 +960,24 @@ bool SQLiteDeckStore::ensureSchema(QString* errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_reports_deck ON reports(deck_id, ordinal)"), errorMessage)
         || !exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_phone_call_log_deck ON phone_call_log(deck_id, ordinal)"), errorMessage)
         || !migrateEarlySchema(errorMessage)
+        || !ensureColumn(QStringLiteral("reports"), QStringLiteral("document_uuid"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN document_uuid TEXT NOT NULL DEFAULT ''"), errorMessage)
+        || !ensureColumn(QStringLiteral("reports"), QStringLiteral("data_font_details_json"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN data_font_details_json TEXT NOT NULL DEFAULT ''"), errorMessage)
+        || !ensureColumn(QStringLiteral("reports"), QStringLiteral("text_font_details_json"),
+            QStringLiteral("ALTER TABLE reports ADD COLUMN text_font_details_json TEXT NOT NULL DEFAULT ''"), errorMessage)
         || !exec(QStringLiteral(
             "INSERT OR IGNORE INTO schema_migrations(version, name) VALUES(1, 'initial_cardstack_sqlite_schema')"),
             errorMessage)
         || !exec(QStringLiteral(
             "INSERT OR IGNORE INTO schema_migrations(version, name) VALUES(2, 'phone_call_log')"),
             errorMessage)
+        || !exec(QStringLiteral("INSERT OR IGNORE INTO schema_migrations(version, name) VALUES(3, 'report_font_descriptors')"), errorMessage)
         || !exec(QStringLiteral(
             "INSERT OR REPLACE INTO app_settings(key, value, updated_at)"
-            " VALUES('schema_version', '2', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
+            " VALUES('schema_version', '3', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
             errorMessage)
-        || !exec(QStringLiteral("PRAGMA user_version = 2"), errorMessage)) {
+        || !exec(QStringLiteral("PRAGMA user_version = 3"), errorMessage)) {
         return false;
     }
 
@@ -952,8 +1232,8 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
         "margin_left, margin_top, margin_right, margin_bottom, horizontal_gutter, vertical_gutter,"
         "paper_style_id, page_width, page_height, orientation,"
         "data_font_face, data_font_height,"
-        "text_font_face, text_font_height, legacy_header"
-        ") VALUES(?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "text_font_face, text_font_height, legacy_header, data_font_details_json, text_font_details_json, document_uuid"
+        ") VALUES(?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 
     QSqlQuery frameQuery(m_database);
     frameQuery.prepare(QStringLiteral(
@@ -998,6 +1278,9 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
         reportQuery.bindValue(27, report.textFont.faceName.isNull() ? QStringLiteral("") : report.textFont.faceName);
         reportQuery.bindValue(28, report.textFont.legacyHeight);
         reportQuery.bindValue(29, report.legacyHeader.isNull() ? QByteArray("") : report.legacyHeader);
+        reportQuery.bindValue(30, reportFontToJson(report.dataFont));
+        reportQuery.bindValue(31, reportFontToJson(report.textFont));
+        reportQuery.bindValue(32, report.documentId.isNull() ? QStringLiteral("") : report.documentId);
         if (!reportQuery.exec()) {
             setError(errorMessage, reportQuery.lastError());
             return false;
@@ -1047,7 +1330,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
             "margin_left, margin_top, margin_right, margin_bottom, horizontal_gutter, vertical_gutter,"
             "paper_style_id, page_width, page_height, orientation,"
             "data_font_face, data_font_height,"
-            "text_font_face, text_font_height, legacy_header FROM reports WHERE deck_id = 1 ORDER BY ordinal"))) {
+            "text_font_face, text_font_height, legacy_header, data_font_details_json, text_font_details_json, document_uuid FROM reports WHERE deck_id = 1 ORDER BY ordinal"))) {
         setError(errorMessage, reportQuery.lastError());
         return false;
     }
@@ -1064,6 +1347,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         ReportDefinition report;
         const int reportId = reportQuery.value(0).toInt();
         report.name = reportQuery.value(1).toString();
+        report.documentId = reportQuery.value(31).toString();
         report.formatMagic = reportQuery.value(2).toString();
         report.legacyOffset = reportQuery.value(3).toInt();
         report.entrySize = reportQuery.value(4).toInt();
@@ -1091,6 +1375,22 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         report.textFont.faceName = reportQuery.value(26).toString();
         report.textFont.legacyHeight = reportQuery.value(27).toInt();
         report.legacyHeader = reportQuery.value(28).toByteArray();
+        const bool previousFontEncoding = reportQuery.value(29).toString().isEmpty();
+        if (!previousFontEncoding) {
+            report.dataFont = reportFontFromJson(reportQuery.value(29).toString());
+            report.textFont = reportFontFromJson(reportQuery.value(30).toString());
+        } else if (report.legacyHeader.size() >= 0xbf) {
+            report.dataFont = decodeReportFont(report.legacyHeader, 0x8d);
+            report.textFont = decodeReportFont(report.legacyHeader, 0x5b);
+        } else {
+            // Version 1.0 stored a pitch/family byte for imported preset fonts,
+            // or a negative point count for fonts chosen in the modern dialog.
+            const auto upgradeFont = [](ReportFontDefinition* font) {
+                font->legacyHeight = font->legacyHeight > 0 ? -98 : font->legacyHeight * 10;
+            };
+            upgradeFont(&report.dataFont);
+            upgradeFont(&report.textFont);
+        }
 
         frameQuery.bindValue(0, reportId);
         if (!frameQuery.exec()) {
@@ -1122,7 +1422,36 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
             frame.fieldPlaceholders = stringVectorFromJson(frameQuery.value(18).toString());
             frame.systemTokens = stringVectorFromJson(frameQuery.value(19).toString());
             frame.legacyDescriptor = frameQuery.value(20).toByteArray();
+            if (previousFontEncoding && (frame.legacyOffset > 0 || !frame.legacyDescriptor.isEmpty()))
+                frame.styleFlags = decodeReportStyleFlags(frame.styleFlags);
             report.frames.append(std::move(frame));
+        }
+        if (previousFontEncoding) {
+            report.headerHeight = qRound(report.headerHeight * (1000.0 / 96.0));
+            report.footerHeight = qRound(report.footerHeight * (1000.0 / 96.0));
+        }
+        if (previousFontEncoding && (report.legacyHeader.size() >= 0xbf
+            || std::any_of(report.frames.cbegin(), report.frames.cend(), [](const auto& frame) { return frame.band > ReportFooterBand; }))) {
+            if (report.legacyHeader.size() >= 0xcf) {
+                const auto word = [&](int at) { return static_cast<quint8>(report.legacyHeader[at])
+                    | (static_cast<quint8>(report.legacyHeader[at + 1]) << 8); };
+                report.pageWidth = word(0xcb);
+                report.pageHeight = word(0xc9);
+                report.marginBottom = word(0xc1);
+                report.marginLeft = word(0xc3);
+                report.marginRight = word(0xc5);
+                report.marginTop = word(0xc7);
+            }
+            for (auto& frame : report.frames) {
+                constexpr qreal Correction = 100.0 / 96.0;
+                const QRect previous = frame.bounds;
+                const int left = qRound(previous.left() * Correction);
+                const int top = qRound(previous.top() * Correction);
+                frame.bounds = QRect(left, top,
+                    qRound((previous.left() + previous.width()) * Correction) - left,
+                    qRound((previous.top() + previous.height()) * Correction) - top);
+            }
+            classifyReportBands(&report);
         }
 
         deck->addReport(std::move(report));
@@ -1142,14 +1471,18 @@ bool SQLiteDeckStore::savePhoneCallLog(const Deck& deck, QString* errorMessage)
     const QVector<PhoneCallLogEntry>& entries = deck.phoneCallLogEntries();
     for (int index = 0; index < entries.size(); ++index) {
         const PhoneCallLogEntry& entry = entries.at(index);
+        const auto nonNullText = [](const QString& text) {
+            return text.isNull() ? QStringLiteral("") : text;
+        };
         query.bindValue(0, index);
-        query.bindValue(1, entry.calledAtUtc);
-        query.bindValue(2, entry.phoneNumber);
+        query.bindValue(1, nonNullText(entry.calledAtUtc));
+        query.bindValue(2, nonNullText(entry.phoneNumber));
         for (int summaryIndex = 0; summaryIndex < 3; ++summaryIndex) {
             query.bindValue(3 + summaryIndex,
-                summaryIndex < entry.cardSummaryValues.size() ? entry.cardSummaryValues.at(summaryIndex) : QString());
+                summaryIndex < entry.cardSummaryValues.size()
+                    ? nonNullText(entry.cardSummaryValues.at(summaryIndex)) : QStringLiteral(""));
         }
-        query.bindValue(6, entry.rawLegacyBytes);
+        query.bindValue(6, entry.rawLegacyBytes.isNull() ? QByteArray("", 0) : entry.rawLegacyBytes);
         if (!query.exec()) {
             setError(errorMessage, query.lastError());
             return false;
@@ -1178,6 +1511,8 @@ bool SQLiteDeckStore::loadPhoneCallLog(Deck* deck, QString* errorMessage)
             query.value(3).toString(),
             query.value(4).toString(),
         };
+        while (!entry.cardSummaryValues.isEmpty() && entry.cardSummaryValues.last().isEmpty())
+            entry.cardSummaryValues.removeLast();
         entry.rawLegacyBytes = query.value(5).toByteArray();
         entries.append(std::move(entry));
     }

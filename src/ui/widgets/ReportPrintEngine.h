@@ -4,6 +4,8 @@
 #include "ReportPreviewRenderer.h"
 
 #include <QRectF>
+#include <QPageLayout>
+#include <QSizeF>
 #include <QVector>
 
 class QPainter;
@@ -15,6 +17,7 @@ struct ReportPrintCell {
     QRectF target;
     int logicalYOffset = 0;
     QMap<QString, QString> fieldValueOverrides;
+    QMap<int, QString> frameTextOverrides;
 };
 
 struct ReportPrintPage {
@@ -25,6 +28,8 @@ struct ReportPrintPage {
 
 class ReportPrintEngine {
 public:
+    static QSizeF pageSizeMils(const ReportDefinition& report);
+    static QPageLayout pageLayout(const ReportDefinition& report);
     static QVector<ReportPrintPage> paginate(const ReportDefinition& report, int recordCount);
     static QVector<ReportPrintPage> paginate(
         const ReportDefinition& report,

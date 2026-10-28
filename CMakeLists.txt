@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(CardStack
-    VERSION 0.1.0
+    VERSION 1.1.0
     DESCRIPTION "Modern open-source card database"
     LANGUAGES C CXX
 )
@@ -19,6 +19,22 @@ find_package(Qt6 QUIET OPTIONAL_COMPONENTS LinguistTools)
 
 qt_standard_project_setup()
 include(CTest)
+
+# Pin the small cryptographic implementation used for encrypted deck containers.
+include(FetchContent)
+FetchContent_Declare(cardstack_monocypher
+    URL https://monocypher.org/download/monocypher-4.0.3.tar.gz
+    URL_HASH SHA512=40904ada5c7ee4f7741733e38b69a30a4b0561cbffba5ffe7c2dce16136d540251ec0d9056ff606510d3b5b708fb8a40db7e0870d4a0b2dc17ba2bfb880f8965
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(cardstack_monocypher)
+add_library(cardstack_crypto STATIC "${cardstack_monocypher_SOURCE_DIR}/src/monocypher.c")
+target_include_directories(cardstack_crypto SYSTEM PUBLIC "${cardstack_monocypher_SOURCE_DIR}/src")
+set_target_properties(cardstack_crypto PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+)
 
 option(CARDSTACK_ENABLE_GPL_BTRIEVEFILESAVER "Build GPL BtrieveFileSaver migration support" ON)
 option(CARDSTACK_DEPLOY_QT_AFTER_BUILD "Run Qt deployment tooling after building the app on Windows" ON)

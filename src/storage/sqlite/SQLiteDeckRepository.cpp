@@ -125,7 +125,8 @@ bool SQLiteDeckRepository::saveDeckShell(const Deck& deck, QString* errorMessage
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral(
         "INSERT INTO decks(id, uuid, name, description, security_password, security_encrypted, source_format, legacy_metadata_json, legacy_control_record)"
-        " VALUES(1, lower(hex(randomblob(16))), ?, ?, ?, ?, 'cardstack-sqlite', '{}', ?)"));
+        " VALUES(1, ?, ?, ?, ?, ?, 'cardstack-sqlite', '{}', ?)"));
+    query.addBindValue(nonNull(deck.documentId()));
     query.addBindValue(nonNull(deck.name()));
     query.addBindValue(QStringLiteral(""));
     query.addBindValue(nonNull(deck.securityPassword()));
@@ -148,7 +149,7 @@ bool SQLiteDeckRepository::loadDeckShell(Deck* deck, QString* errorMessage)
 
     QSqlQuery query(m_database);
     if (!query.exec(QStringLiteral(
-            "SELECT d.name, t.description, d.security_password, d.security_encrypted, d.legacy_control_record"
+            "SELECT d.name, t.description, d.security_password, d.security_encrypted, d.legacy_control_record, d.uuid"
             " FROM decks d JOIN templates t ON t.deck_id = d.id"
             " WHERE d.id = 1 ORDER BY t.ordinal LIMIT 1"))) {
         setError(errorMessage, query.lastError());
@@ -162,9 +163,14 @@ bool SQLiteDeckRepository::loadDeckShell(Deck* deck, QString* errorMessage)
         if (securityPassword.isEmpty()) {
             deck->clearSecurity();
         } else {
-            deck->setSecurity(securityPassword, query.value(3).toInt() != 0);
+            if (!DeckSecurity::isPasswordRecord(securityPassword)) {
+                setError(errorMessage, QStringLiteral("The deck contains an invalid password record."));
+                return false;
+            }
+            deck->restoreSecurityRecord(securityPassword, query.value(3).toInt() != 0);
         }
         deck->setLegacyControlRecord(query.value(4).toByteArray());
+        deck->setDocumentId(query.value(5).toString());
     }
 
     return true;

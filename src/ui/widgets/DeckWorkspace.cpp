@@ -1,4 +1,7 @@
+#include <QFrame>
+#include <QTextDocument>
 #include "DeckWorkspace.h"
+#include "ReportFieldBindings.h"
 
 #include <QFont>
 #include <QFontMetrics>
@@ -7,6 +10,9 @@
 #include "CardDetailPanel.h"
 #include "CardTableModel.h"
 #include "DeckSystemColors.h"
+#include "FrameDrawingStyle.h"
+#include <QPainter>
+#include <QTextOption>
 #include "PhoneticSearch.h"
 
 #include <QApplication>
@@ -35,6 +41,31 @@
 namespace CardStack {
 
 namespace {
+
+class StyledTemplateFrame : public QFrame {
+public:
+    StyledTemplateFrame(const CardTemplateFrame& frame, QWidget* parent)
+        : QFrame(parent)
+    {
+        m_frame.kind = ReportFrameKind::LineOrBox;
+        m_frame.lineBoxShape = frame.lineBoxShape == CardTemplateLineBoxShape::HorizontalLine
+            ? ReportLineShapeHorizontal : frame.lineBoxShape == CardTemplateLineBoxShape::VerticalLine
+                ? ReportLineShapeVertical : ReportLineShapeBox;
+        m_frame.lineStyle = frame.lineStyle;
+        m_frame.fillPattern = frame.fillPattern;
+        m_frame.cornerRadius = frame.cornerRadius;
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        FrameDrawingStyle::draw(painter, rect(), m_frame, 0.1);
+    }
+private:
+    ReportFrameDefinition m_frame;
+};
 
 constexpr int DefaultTableRowHeightPx = 24;
 constexpr int FallbackIndexFieldIndex = 0;
@@ -68,24 +99,8 @@ void setEditorText(QWidget* editor, const QString& text)
 
 Deck deckWithCards(const Deck& source, const QVector<CardRecord>& cards)
 {
-    Deck updated(source.name());
-    updated.setDescription(source.description());
-    if (source.hasSecurity()) {
-        updated.setSecurity(source.securityPassword(), source.hasEncryptedSecurity());
-    }
-    for (const FieldDefinition& field : source.fields()) {
-        updated.addField(field);
-    }
-    updated.setSortKeys(source.sortKeys());
-    updated.setImportExportProfiles(source.importExportProfiles());
-    updated.setCardTemplateLayout(source.cardTemplateLayout());
-    updated.setAppearance(source.appearance());
-    for (const CardRecord& record : cards) {
-        updated.addCard(record);
-    }
-    for (const ReportDefinition& report : source.reports()) {
-        updated.addReport(report);
-    }
+    Deck updated = source;
+    updated.setCards(cards);
     return updated;
 }
 
@@ -171,14 +186,9 @@ Deck deckWithSchema(
     const QVector<FieldDefinition>& fields,
     const QVector<int>& sourceFieldIndexes)
 {
-    Deck updated(source.name());
-    updated.setDescription(source.description());
-    if (source.hasSecurity()) {
-        updated.setSecurity(source.securityPassword(), source.hasEncryptedSecurity());
-    }
-    for (const FieldDefinition& field : fields) {
-        updated.addField(field);
-    }
+    Deck updated = source;
+    updated.setFields(fields);
+    updated.setCards({});
 
     for (const CardRecord& sourceRecord : source.cards()) {
         CardRecord updatedRecord;
@@ -200,9 +210,46 @@ Deck deckWithSchema(
     updated.setSortKeys(sortKeysForRedefinedFields(source.sortKeys(), sourceFieldIndexes, fields.size()));
     updated.setImportExportProfiles(source.importExportProfiles());
 
-    for (const ReportDefinition& report : source.reports()) {
-        updated.addReport(report);
+    QStringList previousFieldNames;
+    for (const auto& field : source.fields()) previousFieldNames.append(field.name());
+    for (int reportIndex = 0; reportIndex < updated.reportCount(); ++reportIndex) {
+        ReportDefinition report = updated.reportAt(reportIndex);
+        const auto remapName = [&](const QString& name) {
+            const QString canonical = matchingReportFieldName(name, previousFieldNames);
+            for (int index = 0; index < sourceFieldIndexes.size(); ++index) {
+                const int oldIndex = sourceFieldIndexes.at(index);
+                if (oldIndex >= 0 && oldIndex < source.fieldCount()
+                    && source.fieldAt(oldIndex).name().compare(canonical, Qt::CaseInsensitive) == 0) {
+                    return fields.at(index).name();
+                }
+            }
+            return name;
+        };
+        for (ReportFrameDefinition& frame : report.frames) {
+            QString rewritten;
+            int from = 0;
+            while (from < frame.text.size()) {
+                const int open = frame.text.indexOf(QLatin1Char('['), from);
+                const int close = open < 0 ? -1 : frame.text.indexOf(QLatin1Char(']'), open + 1);
+                if (open < 0 || close < 0) {
+                    rewritten += frame.text.mid(from);
+                    break;
+                }
+                rewritten += frame.text.mid(from, open - from);
+                rewritten += QLatin1Char('[') + remapName(frame.text.mid(open + 1, close - open - 1).trimmed())
+                    + QLatin1Char(']');
+                from = close + 1;
+            }
+            frame.text = rewritten;
+            for (QString& name : frame.fieldPlaceholders) name = remapName(name);
+        }
+        updated.setReport(reportIndex, std::move(report));
     }
+    CardTemplateLayout layout = updated.cardTemplateLayout();
+    for (CardTemplateFrame& frame : layout.frames) {
+        if (frame.fieldIndex >= 0) frame.fieldIndex = sourceFieldIndexes.indexOf(frame.fieldIndex);
+    }
+    updated.setCardTemplateLayout(std::move(layout));
     return updated;
 }
 
@@ -671,7 +718,7 @@ void DeckWorkspace::applyDataFont(const QFont& font)
     DeckAppearance appearance = m_deck.appearance();
     appearance.dataFont = font.toString();
     m_deck.setAppearance(std::move(appearance));
-    for (QWidget* editor : m_valueEditors) {
+    for (QWidget* editor : valueEditors()) {
         editor->setFont(font);
     }
     m_tableView->setFont(font);
@@ -731,12 +778,21 @@ void DeckWorkspace::applyAppearance(DeckAppearance appearance)
     markDirty();
 }
 
+QList<QWidget*> DeckWorkspace::valueEditors() const
+{
+    QList<QWidget*> editors;
+    for (QWidget* widget : m_cardEditorContent->findChildren<QWidget*>()) {
+        if (widget->objectName().startsWith(QLatin1String("fieldValue_"))) editors.append(widget);
+    }
+    return editors;
+}
+
 void DeckWorkspace::applyStoredAppearance()
 {
     const DeckAppearance& appearance = m_deck.appearance();
     QFont storedFont;
     if (!appearance.dataFont.isEmpty() && storedFont.fromString(appearance.dataFont)) {
-        for (QWidget* editor : m_valueEditors) {
+        for (QWidget* editor : valueEditors()) {
             editor->setFont(storedFont);
         }
         m_tableView->setFont(storedFont);
@@ -827,7 +883,7 @@ void DeckWorkspace::applyStoredAppearance()
         m_cardDetailPanel->setAppearance(
             indexFont, indexForeground, indexBackground, cardBackground);
     }
-    for (QWidget* editor : m_valueEditors) {
+    for (QWidget* editor : valueEditors()) {
         QPalette editorPalette = editor->palette();
         editorPalette.setColor(QPalette::Text, dataForeground);
         editorPalette.setColor(QPalette::Base, dataBackground);
@@ -842,6 +898,22 @@ void DeckWorkspace::applyStoredAppearance()
             QPalette::WindowText,
             roleColor(isName ? DeckColorRole::NameForeground : DeckColorRole::TextForeground, QPalette::WindowText));
         label->setPalette(labelPalette);
+    }
+    for (QWidget* widget : m_cardEditorContent->findChildren<QWidget*>()) {
+        if (!widget->property("cardFrameStyleFlags").isValid()) continue;
+        const quint8 flags = static_cast<quint8>(widget->property("cardFrameStyleFlags").toUInt());
+        QFont font = widget->font();
+        font.setBold(font.bold() || (flags & CardTemplateStyleFlagBold) != 0);
+        font.setItalic(font.italic() || (flags & CardTemplateStyleFlagItalic) != 0);
+        font.setUnderline(font.underline() || (flags & CardTemplateStyleFlagUnderline) != 0);
+        widget->setFont(font);
+    }
+    for (QLabel* caption : m_cardEditorContent->findChildren<QLabel*>()) {
+        if (!caption->property("cardCaptionRight").isValid()) continue;
+        const int right = caption->property("cardCaptionRight").toInt();
+        const int width = caption->fontMetrics().horizontalAdvance(caption->text()) + 8;
+        const int left = std::max(0, right - width);
+        caption->setGeometry(left, caption->y(), std::max(0, right - left), caption->height());
     }
     QPalette cardPalette = m_cardEditorContent->palette();
     cardPalette.setColor(QPalette::Window, cardBackground);
@@ -996,18 +1068,29 @@ bool DeckWorkspace::hasEncryptedSecurity() const
 
 bool DeckWorkspace::securityPasswordMatches(const QString& password) const
 {
-    return hasSecurity() && m_deck.securityPassword() == password.left(8).toUpper();
+    return m_deck.passwordMatches(password);
 }
 
-void DeckWorkspace::setSecurity(const QString& password, bool encrypted)
+bool DeckWorkspace::setSecurity(const QString& password, bool encrypted)
 {
-    const QString normalizedPassword = password.left(8).toUpper();
-    if (m_deck.securityPassword() == normalizedPassword && m_deck.hasEncryptedSecurity() == encrypted) {
-        return;
-    }
-
-    m_deck.setSecurity(normalizedPassword, encrypted);
+    if (!m_deck.setSecurity(password, encrypted)) return false;
     markDirty();
+    return true;
+}
+
+void DeckWorkspace::setStorageOrigin(const QString& path, const QByteArray& fingerprint)
+{
+    m_deck.setStorageOrigin(path, fingerprint);
+}
+
+QVector<int> DeckWorkspace::selectedCardIndexes() const
+{
+    QVector<int> indexes;
+    if (!m_hasLastSearchRequest) return indexes;
+    for (int index = 0; index < m_deck.cardCount(); ++index) {
+        if (recordMatches(m_deck.cardAt(index), m_lastSearchRequest)) indexes.append(index);
+    }
+    return indexes;
 }
 
 void DeckWorkspace::clearSecurity()
@@ -1102,7 +1185,13 @@ void DeckWorkspace::rebuildCardEditor()
             textEdit->setMinimumHeight(90);
             textEdit->setProperty("maxLength", field.maxLength());
             QObject::connect(textEdit, &QPlainTextEdit::textChanged, textEdit, [this, textEdit, fieldIndex]() {
+                m_valueEditors[fieldIndex] = textEdit;
                 const QString normalized = normalizedFieldValue(fieldIndex, textEdit->toPlainText());
+                for (QWidget* other : m_cardEditorContent->findChildren<QWidget*>(textEdit->objectName())) {
+                    if (other == textEdit) continue;
+                    const QSignalBlocker blocker(other);
+                    setEditorText(other, normalized);
+                }
                 if (normalized == textEdit->toPlainText()) {
                     return;
                 }
@@ -1120,8 +1209,22 @@ void DeckWorkspace::rebuildCardEditor()
             if (field.maxLength() > 0) {
                 lineEdit->setMaxLength(field.maxLength());
             }
-            connect(lineEdit, &QLineEdit::editingFinished, this, [this]() {
+            connect(lineEdit, &QLineEdit::textEdited, lineEdit, [this, lineEdit, fieldIndex](const QString& text) {
+                m_valueEditors[fieldIndex] = lineEdit;
+                for (QWidget* other : m_cardEditorContent->findChildren<QWidget*>(lineEdit->objectName())) {
+                    if (other == lineEdit) continue;
+                    const QSignalBlocker blocker(other);
+                    setEditorText(other, text);
+                }
+            });
+            connect(lineEdit, &QLineEdit::editingFinished, this, [this, lineEdit, fieldIndex]() {
+                m_valueEditors[fieldIndex] = lineEdit;
                 syncCardEditorToDeck();
+                for (QWidget* other : m_cardEditorContent->findChildren<QWidget*>(lineEdit->objectName())) {
+                    if (other == lineEdit) continue;
+                    const QSignalBlocker blocker(other);
+                    setEditorText(other, lineEdit->text());
+                }
                 syncModel();
                 refreshCardStack();
                 refreshCardHeader();
@@ -1188,6 +1291,7 @@ void DeckWorkspace::rebuildCardEditor()
                 const int fieldIndex = captionFieldIndex(frame);
                 label->setObjectName(QStringLiteral("templateTextFrame"));
                 label->setProperty("deckNameCaption", fieldIndex >= 0);
+                label->setProperty("cardFrameStyleFlags", frame.styleFlags);
                 label->setGeometry(rect);
                 label->setAlignment(
                     ((frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
@@ -1203,6 +1307,16 @@ void DeckWorkspace::rebuildCardEditor()
                 }
 
                 QWidget* editor = makeEditor(fieldIndex, m_cardEditorContent);
+                editor->setProperty("cardFrameStyleFlags", frame.styleFlags);
+                const Qt::Alignment alignment = (frame.styleFlags & CardTemplateStyleFlagAlignRight) != 0
+                    ? Qt::AlignRight : (frame.styleFlags & CardTemplateStyleFlagAlignCenter) != 0
+                        ? Qt::AlignHCenter : Qt::AlignLeft;
+                if (auto* lineEdit = qobject_cast<QLineEdit*>(editor)) lineEdit->setAlignment(alignment);
+                if (auto* textEdit = qobject_cast<QPlainTextEdit*>(editor)) {
+                    QTextOption option = textEdit->document()->defaultTextOption();
+                    option.setAlignment(alignment);
+                    textEdit->document()->setDefaultTextOption(option);
+                }
                 const FieldDefinition& field = m_deck.fieldAt(fieldIndex);
                 const QString fieldCaption = frame.text.trimmed().isEmpty()
                     ? field.name()
@@ -1232,6 +1346,7 @@ void DeckWorkspace::rebuildCardEditor()
                 if (field.showName() && !hasSeparateCaption) {
                     auto* caption = new QLabel(fieldCaption, m_cardEditorContent);
                     caption->setObjectName(QStringLiteral("fieldCaption_%1").arg(fieldIndex));
+                    caption->setProperty("cardCaptionRight", rect.left() - 6);
                     caption->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
                     caption->setAutoFillBackground(false);
                     const int desiredWidth = caption->fontMetrics().horizontalAdvance(fieldCaption) + 8;
@@ -1248,7 +1363,7 @@ void DeckWorkspace::rebuildCardEditor()
                 editor->setGeometry(editorRect);
                 editor->show();
             } else if (frame.kind == CardTemplateFrameKind::LineOrBox) {
-                auto* line = new QFrame(m_cardEditorContent);
+                auto* line = new StyledTemplateFrame(frame, m_cardEditorContent);
                 line->setObjectName(QStringLiteral("templateLineBoxFrame"));
                 if (frame.lineBoxShape == CardTemplateLineBoxShape::HorizontalLine) {
                     line->setFrameShape(QFrame::HLine);
@@ -1390,7 +1505,7 @@ void DeckWorkspace::refreshCardEditor()
     refreshCardHeader();
 
     if (m_deck.cardCount() <= 0 || m_currentCardIndex < 0 || m_currentCardIndex >= m_deck.cardCount()) {
-        for (QWidget* editor : m_valueEditors) {
+        for (QWidget* editor : valueEditors()) {
             editor->setEnabled(false);
             setEditorText(editor, {});
         }
@@ -1398,9 +1513,10 @@ void DeckWorkspace::refreshCardEditor()
     }
 
     const CardRecord& record = m_deck.cardAt(m_currentCardIndex);
-    for (int fieldIndex = 0; fieldIndex < m_valueEditors.size(); ++fieldIndex) {
-        m_valueEditors[fieldIndex]->setEnabled(true);
-        setEditorText(m_valueEditors[fieldIndex], record.valueAt(fieldIndex));
+    for (QWidget* editor : valueEditors()) {
+        const QSignalBlocker blocker(editor);
+        editor->setEnabled(true);
+        setEditorText(editor, record.valueAt(editor->property("fieldIndex").toInt()));
     }
 }
 
@@ -1523,9 +1639,7 @@ void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
     m_currentFieldIndex = snapshot.fieldIndex;
     m_viewMode = snapshot.viewMode;
 
-    if (m_valueEditors.size() != m_deck.fieldCount()) {
-        rebuildCardEditor();
-    }
+    rebuildCardEditor();
     syncModel();
     applyStoredAppearance();
     if (m_deck.cardCount() <= 0) {

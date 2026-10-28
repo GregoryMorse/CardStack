@@ -2,6 +2,8 @@
 
 #include "DelimitedText.h"
 
+#include <QUuid>
+#include <QStringList>
 #include <algorithm>
 #include <utility>
 
@@ -15,6 +17,7 @@ const ReportDefinition emptyReport;
 
 Deck::Deck(QString name)
     : m_name(std::move(name))
+    , m_documentId(QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
 }
 
@@ -190,12 +193,14 @@ void Deck::setCards(QVector<CardRecord> cards)
 
 void Deck::addReport(ReportDefinition report)
 {
+    if (report.documentId.isEmpty()) report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_reports.append(std::move(report));
 }
 
 void Deck::insertReport(int index, ReportDefinition report)
 {
     const int safeIndex = std::clamp(index, 0, static_cast<int>(m_reports.size()));
+    if (report.documentId.isEmpty()) report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_reports.insert(safeIndex, std::move(report));
 }
 
@@ -267,19 +272,64 @@ void Deck::setLegacyControlRecord(QByteArray record)
 
 void Deck::setAppearance(DeckAppearance appearance)
 {
+    const auto normalizePreviousFont = [](QString* serialized) {
+        constexpr int PreviousFontComponentCount = 10;
+        constexpr int WeightComponent = 4;
+        QStringList parts = serialized->split(QLatin1Char(','));
+        if (parts.size() == PreviousFontComponentCount && parts.at(WeightComponent) == QLatin1String("400")) {
+            // The ten-component format uses Qt's older 0..99 weight scale.
+            parts[WeightComponent] = QStringLiteral("50");
+            *serialized = parts.join(QLatin1Char(','));
+        }
+    };
+    for (QString* font : {&appearance.dataFont, &appearance.nameFont, &appearance.textFont, &appearance.indexFont})
+        normalizePreviousFont(font);
     m_appearance = std::move(appearance);
 }
 
-void Deck::setSecurity(QString password, bool encrypted)
+bool Deck::setSecurity(QString password, bool encrypted)
 {
-    m_securityPassword = std::move(password);
+    const DeckSecurity::Credentials credentials = DeckSecurity::createCredentials(password);
+    if (credentials.record.isEmpty()) {
+        return false;
+    }
+    restoreSecurityRecord(credentials.record, encrypted, credentials.key);
+    return true;
+}
+
+bool Deck::passwordMatches(const QString& password) const
+{
+    return hasSecurity() && DeckSecurity::unlock(m_securityPassword, password);
+}
+
+bool Deck::unlockSecurity(const QString& password)
+{
+    return !hasSecurity() || DeckSecurity::unlock(m_securityPassword, password, &m_securityKey);
+}
+
+void Deck::restoreSecurityRecord(QString record, bool encrypted, DeckSecurity::Key key)
+{
+    m_securityPassword = std::move(record);
     m_securityEncrypted = encrypted && !m_securityPassword.isEmpty();
+    m_securityKey = std::move(key);
+}
+
+const DeckSecurity::Key& Deck::securityKey() const { return m_securityKey; }
+const QString& Deck::documentId() const { return m_documentId; }
+void Deck::setDocumentId(QString id) { m_documentId = std::move(id); }
+const QString& Deck::storagePath() const { return m_storagePath; }
+const QByteArray& Deck::storageFingerprint() const { return m_storageFingerprint; }
+void Deck::setStorageOrigin(QString path, QByteArray fingerprint)
+{
+    m_storagePath = std::move(path);
+    m_storageFingerprint = std::move(fingerprint);
 }
 
 void Deck::clearSecurity()
 {
     m_securityPassword.clear();
     m_securityEncrypted = false;
+    m_securityKey.reset();
 }
 
 void Deck::setReport(int index, ReportDefinition report)
@@ -288,6 +338,7 @@ void Deck::setReport(int index, ReportDefinition report)
         return;
     }
 
+    if (report.documentId.isEmpty()) report.documentId = m_reports[index].documentId;
     m_reports[index] = std::move(report);
 }
 

@@ -5,6 +5,9 @@
 #include "MainWindow.h"
 #include "ReportDesignerWidget.h"
 #include "SQLiteDeckStore.h"
+#include "SQLitePackageStore.h"
+#include "../support/VisualTestSupport.h"
+#include <QProcess>
 #include "TemplateDesignerWidget.h"
 #include "UiBuilder.h"
 #include "UiIds.h"
@@ -262,6 +265,26 @@ QMdiSubWindow* subWindowForWidget(MainWindow& window, QWidget* child)
     return nullptr;
 }
 
+
+void acceptNextSaveDialog(const QString& path)
+{
+    auto retry = std::make_shared<std::function<void()>>();
+    auto attempts = std::make_shared<int>(200);
+    *retry = [path, retry, attempts]() {
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            auto* dialog = qobject_cast<QFileDialog*>(widget);
+            if (dialog == nullptr || !dialog->isVisible() || dialog->acceptMode() != QFileDialog::AcceptSave) continue;
+            const QFileInfo info(path);
+            dialog->setDirectory(info.absolutePath());
+            dialog->selectFile(info.fileName());
+            static_cast<QDialog*>(dialog)->accept();
+            return;
+        }
+        if (--*attempts > 0) QTimer::singleShot(10, qApp, *retry);
+    };
+    QTimer::singleShot(0, qApp, *retry);
+}
+
 Deck makeSearchWorkflowDeck()
 {
     Deck deck(QStringLiteral("Workflow Deck"));
@@ -340,6 +363,234 @@ class MainWindowWorkflowTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void duplicateOpenReusesTheExistingWorkspace()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeWorkflowDeck(&directory);
+        QVERIFY(!path.isEmpty());
+        MainWindow window(nullptr, false);
+        window.show();
+        DeckWorkspace* first = openWorkflowDeck(&window, path);
+        QVERIFY(first != nullptr);
+        QCOMPARE(openWorkflowDeck(&window, QFileInfo(path).absoluteFilePath()), first);
+        QCOMPARE(window.findChild<QMdiArea*>()->subWindowList().size(), 1);
+    }
+
+    void anotherProcessCannotOpenAnEditingCopy()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeWorkflowDeck(&directory);
+        QVERIFY(!path.isEmpty());
+        QProcess holder;
+        holder.start(QCoreApplication::applicationFilePath(),
+            {QStringLiteral("--hold-document-lock"), path});
+        QVERIFY(holder.waitForStarted(5000));
+        QVERIFY(holder.bytesAvailable() > 0 || holder.waitForReadyRead(5000));
+        QVERIFY(holder.readAllStandardOutput().contains("locked"));
+        MainWindow window(nullptr, false);
+        window.show();
+        chooseMessageBoxButtons({QMessageBox::Ok});
+        QVERIFY(openWorkflowDeck(&window, path) == nullptr);
+        QCOMPARE(window.findChild<QMdiArea*>()->subWindowList().size(), 0);
+        holder.write("\n");
+        holder.closeWriteChannel();
+        QVERIFY(holder.waitForFinished(5000));
+        QCOMPARE(holder.exitCode(), 0);
+        QVERIFY(openWorkflowDeck(&window, path) != nullptr);
+    }
+
+    void closeAllSavesDependentReportBeforeItsDeck()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeWorkflowDeck(&directory);
+        MainWindow window(nullptr, false);
+        window.show();
+        auto* workspace = openWorkflowDeck(&window, path);
+        QVERIFY(workspace != nullptr);
+        handleNextLegacyDialog(QStringLiteral("REPORTFORM"), [](QDialog* dialog) { dialog->accept(); return true; });
+        auto* newReport = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+        QVERIFY(newReport != nullptr);
+        newReport->trigger();
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QVERIFY(designer != nullptr);
+        designer->addTextFrameWithText(QStringLiteral("Saved before owner closes"), ReportStyleFlagBold);
+        chooseMessageBoxButtons({QMessageBox::Save, QMessageBox::Save});
+        auto* closeAll = findCommandAction(window.menuBar(), UiIds::Command::WindowCloseAll);
+        QVERIFY(closeAll != nullptr);
+        closeAll->trigger();
+        QTRY_COMPARE(window.findChild<QMdiArea*>()->subWindowList().size(), 0);
+        SQLiteDeckStore reader;
+        QString error;
+        QVERIFY2(reader.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+        bool found = false;
+        for (const auto& report : loaded.reports())
+            for (const auto& frame : report.frames)
+                found = found || frame.text == QLatin1String("Saved before owner closes");
+        QVERIFY(found);
+    }
+
+    void closeAllHonorsDirtyTemplateCancelAndThenSavesIt()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeWorkflowDeck(&directory);
+        MainWindow window(nullptr, false);
+        window.show();
+        QVERIFY(openWorkflowDeck(&window, path) != nullptr);
+        auto* redefine = findCommandAction(window.menuBar(), UiIds::Command::FileRedefine);
+        QVERIFY(redefine != nullptr);
+        redefine->trigger();
+        auto* designer = window.findChild<TemplateDesignerWidget*>();
+        QVERIFY(designer != nullptr);
+        designer->addTextFrameWithText(QStringLiteral("Preserved template heading"));
+        chooseMessageBoxButtons({QMessageBox::Cancel});
+        findCommandAction(window.menuBar(), UiIds::Command::WindowCloseAll)->trigger();
+        QCOMPARE(window.findChild<QMdiArea*>()->subWindowList().size(), 2);
+        chooseMessageBoxButtons({QMessageBox::Save});
+        findCommandAction(window.menuBar(), UiIds::Command::WindowCloseAll)->trigger();
+        QTRY_COMPARE(window.findChild<QMdiArea*>()->subWindowList().size(), 0);
+        SQLiteDeckStore reader;
+        QString error;
+        QVERIFY2(reader.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+        QVERIFY(std::any_of(loaded.cardTemplateLayout().frames.cbegin(), loaded.cardTemplateLayout().frames.cend(),
+            [](const auto& frame) { return frame.text == QLatin1String("Preserved template heading"); }));
+    }
+
+    void draftTemplateCreatesIndependentFieldsExportsAndBecomesAnEditableDeck()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MainWindow window(nullptr, false);
+        window.resize(1100, 760);
+        window.show();
+        acceptNextNewFileDialog(1);
+        findCommandAction(window.menuBar(), UiIds::Command::FileNew)->trigger();
+        auto* designer = window.findChild<TemplateDesignerWidget*>();
+        QVERIFY(designer != nullptr);
+        for (const QString& name : {QStringLiteral("Artist"), QStringLiteral("Album")}) {
+            handleNextLegacyDialog(QStringLiteral("TPLDATAFRAME"), [name](QDialog* dialog) {
+                setLineEditText(dialog, UiIds::Control::FrameText, name);
+                setLineEditText(dialog, UiIds::Control::TemplateFieldLength, QStringLiteral("120"));
+                dialog->accept();
+                return true;
+            });
+            findCommandAction(window.menuBar(), UiIds::Command::ToolAddDataBox)->trigger();
+        }
+        QCOMPARE(designer->fieldDefinitions().size(), 3);
+        const QString templatePath = directory.filePath(QStringLiteral("music.cstemplate"));
+        acceptNextSaveDialog(templatePath);
+        findCommandAction(window.menuBar(), UiIds::Command::FileSaveAs)->trigger();
+        QVERIFY(QFileInfo::exists(templatePath));
+        const QString gallery = qEnvironmentVariable("CARDSTACK_APP_GALLERY_DIR");
+        if (!gallery.isEmpty()) {
+            QDir output(gallery);
+            QVERIFY(output.mkpath(QStringLiteral(".")));
+            QVERIFY(Tests::saveWidgetImage(window, output, QStringLiteral("app_v11_custom_template.png")));
+        }
+        Deck definition;
+        QString error;
+        QVERIFY2(SQLitePackageStore::loadTemplatePackage(templatePath, &definition, &error), qPrintable(error));
+        QCOMPARE(definition.fieldAt(1).name(), QStringLiteral("Artist"));
+        QCOMPARE(definition.fieldAt(2).name(), QStringLiteral("Album"));
+        chooseMessageBoxButtons({QMessageBox::Yes});
+        QVERIFY(subWindowForWidget(window, designer)->close());
+        QCoreApplication::processEvents();
+        QTRY_VERIFY(activeWorkspace(window) != nullptr);
+        DeckWorkspace* workspace = activeWorkspace(window);
+        for (int index = 1; index <= 2; ++index) {
+            auto* edit = workspace->findChild<QLineEdit*>(QStringLiteral("fieldValue_%1").arg(index));
+            QVERIFY(edit != nullptr);
+            edit->setText(index == 1 ? QStringLiteral("Independent artist") : QStringLiteral("Independent album"));
+            emit edit->editingFinished();
+        }
+        const QString deckPath = directory.filePath(QStringLiteral("music.cardstack"));
+        acceptNextSaveDialog(deckPath);
+        findCommandAction(window.menuBar(), UiIds::Command::FileSaveAs)->trigger();
+        if (!gallery.isEmpty()) {
+            QVERIFY(Tests::saveWidgetImage(window, QDir(gallery), QStringLiteral("app_v11_custom_card.png")));
+            workspace->showTableView();
+            QVERIFY(Tests::saveWidgetImage(window, QDir(gallery), QStringLiteral("app_v11_custom_table.png")));
+        }
+        SQLiteDeckStore reader;
+        QVERIFY2(reader.open(deckPath, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.cardAt(0).valueAt(1), QStringLiteral("Independent artist"));
+        QCOMPARE(loaded.cardAt(0).valueAt(2), QStringLiteral("Independent album"));
+    }
+
+    void modalPageKeysDoNotNavigateTheUnderlyingDeck()
+    {
+        QTemporaryDir directory;
+        const QString path = writeWorkflowDeck(&directory);
+        MainWindow window(nullptr, false);
+        window.show();
+        auto* workspace = openWorkflowDeck(&window, path);
+        QVERIFY(workspace != nullptr);
+        const int original = workspace->currentCardIndex();
+        QDialog modal(&window);
+        QLineEdit edit(&modal);
+        modal.setModal(true);
+        modal.show();
+        QCoreApplication::processEvents();
+        QTest::keyClick(&edit, Qt::Key_PageDown);
+        QCOMPARE(workspace->currentCardIndex(), original);
+        modal.close();
+    }
+
+    void selectedCardsPreviewContainsExactlyTheMatchingRecords()
+    {
+        QTemporaryDir directory;
+        const QString path = writeWorkflowDeck(&directory);
+        MainWindow window(nullptr, false);
+        window.show();
+        auto* workspace = openWorkflowDeck(&window, path);
+        QVERIFY(workspace != nullptr);
+        DeckWorkspace::SearchRequest request;
+        request.first.fieldIndex = 1;
+        request.first.text = QStringLiteral("Red");
+        QVERIFY(workspace->find(request));
+        handleNextLegacyDialog(QStringLiteral("REPORTFORM"), [](QDialog* dialog) { dialog->accept(); return true; });
+        findCommandAction(window.menuBar(), UiIds::Command::FileNewReport)->trigger();
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QVERIFY(designer != nullptr);
+        designer->save();
+        QVERIFY(subWindowForWidget(window, designer)->close());
+        QCoreApplication::processEvents();
+        auto* mdi = window.findChild<QMdiArea*>();
+        mdi->setActiveSubWindow(subWindowForWidget(window, workspace));
+        handleNextLegacyDialog(QStringLiteral("DESIGNREPORTS"), [](QDialog* dialog) {
+            dialog->accept(); return true;
+        });
+        bool inspected = false;
+        handleNextLegacyDialog(QStringLiteral("PRINT"), [&inspected](QDialog* dialog) {
+            auto* selected = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::PrintSelectedCards));
+            if (selected != nullptr) selected->setChecked(true);
+            handleNextLegacyDialog(QStringLiteral("PRINTPREVIEW"), [&inspected](QDialog* preview) {
+                const QVariantList rows = preview->property("previewFieldRows").toList();
+                QStringList names;
+                for (const auto& row : rows) names.append(row.toMap().value(QStringLiteral("Name")).toString());
+                names.sort();
+                inspected = names == QStringList({QStringLiteral("Alpha"), QStringLiteral("Beta")});
+                preview->reject();
+                return true;
+            });
+            auto* preview = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::PrintPreview));
+            if (preview != nullptr) preview->click();
+            dialog->reject();
+            return true;
+        });
+        findCommandAction(window.menuBar(), UiIds::Command::FilePrintReport)->trigger();
+        QVERIFY(inspected);
+    }
     void closeAllPromptsEachDirtyWindowAndStopsOnCancel()
     {
         MainWindow window(nullptr, false);
@@ -1029,7 +1280,7 @@ private slots:
 
         QTRY_VERIFY(workspace->hasSecurity());
         QVERIFY(workspace->hasEncryptedSecurity());
-        QVERIFY(workspace->securityPasswordMatches(QStringLiteral("SECURE")));
+        QVERIFY(workspace->securityPasswordMatches(QStringLiteral("secure")));
 
         int removeDialogStep = 0;
         handleNextLegacyDialog(QStringLiteral("REMOVESECURITY"), [&removeDialogStep](QDialog* dialog) {
@@ -1170,6 +1421,9 @@ private slots:
         QPointer<QMdiSubWindow> designerWindow = subWindowForWidget(window, designer);
         QVERIFY(designerWindow != nullptr);
 
+        QTemporaryDir templateDirectory;
+        QVERIFY(templateDirectory.isValid());
+        acceptNextSaveDialog(templateDirectory.filePath(QStringLiteral("new-template.cstemplate")));
         chooseMessageBoxButtons({QMessageBox::Save, QMessageBox::Yes});
         QVERIFY(designerWindow->close());
         QCoreApplication::processEvents();

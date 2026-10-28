@@ -194,8 +194,8 @@ protected:
             painter.setPen(QPen(guideBlue, 1, Qt::DotLine));
             painter.drawRect(printableArea.adjusted(0.0, 0.0, -1.0, -1.0));
             if (m_report->formType == ReportFormType::Report) {
-                const qreal headerMils = m_report->headerHeight * 1000.0 / 96.0;
-                const qreal footerMils = m_report->footerHeight * 1000.0 / 96.0;
+                const qreal headerMils = m_report->headerHeight;
+                const qreal footerMils = m_report->footerHeight;
                 const qreal headerY = printableArea.top() + headerMils * yScale;
                 const qreal footerY = printableArea.bottom() - footerMils * yScale;
                 if (headerY > printableArea.top() && headerY < printableArea.bottom()) {
@@ -531,7 +531,8 @@ void ReportDesignerWidget::applyForm(
     int horizontalGutter,
     int verticalGutter,
     int headerHeight,
-    int footerHeight)
+    int footerHeight,
+    int pageWidth, int pageHeight, int orientation, int paperStyleId)
 {
     pushUndoState();
     m_report.formType = formType == ReportFormType::Unknown ? ReportFormType::Report : formType;
@@ -545,12 +546,17 @@ void ReportDesignerWidget::applyForm(
     m_report.marginBottom = std::max(0, marginBottom);
     m_report.horizontalGutter = std::max(0, horizontalGutter);
     m_report.verticalGutter = std::max(0, verticalGutter);
+    if (pageWidth > 0) m_report.pageWidth = pageWidth;
+    if (pageHeight > 0) m_report.pageHeight = pageHeight;
+    if (orientation >= 0) m_report.orientation = orientation;
+    if (paperStyleId > 0) m_report.paperStyleId = paperStyleId;
     m_report.headerHeight = m_report.formType == ReportFormType::Report
         ? std::max(0, headerHeight)
         : 0;
     m_report.footerHeight = m_report.formType == ReportFormType::Report
         ? std::max(0, footerHeight)
         : 0;
+    classifyReportBands(&m_report);
     if (m_canvas != nullptr) {
         m_canvas->setReport(&m_report);
     }
@@ -774,7 +780,7 @@ void ReportDesignerWidget::updateSelectedFrameFromToolbar(
 void ReportDesignerWidget::setReportFont(bool dataFont, ReportFontDefinition font)
 {
     ReportFontDefinition& current = dataFont ? m_report.dataFont : m_report.textFont;
-    if (current.faceName == font.faceName && current.legacyHeight == font.legacyHeight) {
+    if (current == font) {
         return;
     }
     pushUndoState();
@@ -847,8 +853,8 @@ void ReportDesignerWidget::normalizeReport()
     m_report.horizontalGutter = std::max(0, m_report.horizontalGutter);
     m_report.verticalGutter = std::max(0, m_report.verticalGutter);
     if (m_report.formType == ReportFormType::Report) {
-        m_report.headerHeight = m_report.headerHeight > 0 ? m_report.headerHeight : 72;
-        m_report.footerHeight = m_report.footerHeight > 0 ? m_report.footerHeight : 72;
+        m_report.headerHeight = std::max(0, m_report.headerHeight);
+        m_report.footerHeight = std::max(0, m_report.footerHeight);
     } else {
         m_report.headerHeight = 0;
         m_report.footerHeight = 0;
@@ -967,6 +973,7 @@ void ReportDesignerWidget::buildUi()
             return;
         }
         m_report.frames[frameIndex].bounds = bounds;
+        m_report.frames[frameIndex].band = reportBandForBounds(m_report, m_report.frames[frameIndex].bounds);
         if (m_selectedFrameIndex != frameIndex) {
             selectFrame(frameIndex);
         } else {
@@ -1169,6 +1176,7 @@ void ReportDesignerWidget::applyPropertyEdits()
     frame.kind = static_cast<ReportFrameKind>(m_kindCombo->currentData().toInt());
     frame.text = m_textEdit->toPlainText();
     frame.bounds = QRect(m_leftSpin->value(), m_topSpin->value(), m_widthSpin->value(), m_heightSpin->value());
+    frame.band = reportBandForBounds(m_report, frame.bounds);
     frame.printEntireContentsFlag = m_printEntireContents->isChecked() ? 1 : 0;
     quint8 styleFlags = 0;
     if (m_boldCheck->isChecked()) {
@@ -1227,7 +1235,9 @@ ReportFrameDefinition ReportDesignerWidget::defaultFrame(ReportFrameKind kind) c
     frame.signature = 0xabcd;
     frame.kind = kind;
     const int offset = 400 + m_report.frames.size() * 180;
-    frame.bounds = QRect(offset, offset, 2200, kind == ReportFrameKind::LineOrBox ? 900 : 420);
+    const int top = m_report.formType == ReportFormType::Report ? std::max(offset, m_report.headerHeight) : offset;
+    frame.bounds = QRect(offset, top, 2200, kind == ReportFrameKind::LineOrBox ? 900 : 420);
+    frame.band = reportBandForBounds(m_report, frame.bounds);
     frame.order = static_cast<quint16>(m_report.frames.size());
     switch (kind) {
     case ReportFrameKind::Data: {

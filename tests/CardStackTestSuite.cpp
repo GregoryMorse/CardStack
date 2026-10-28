@@ -1,4 +1,5 @@
 #include <QApplication>
+#include "ApplicationAppearance.h"
 #include <QEvent>
 #include <QString>
 #include <QTest>
@@ -6,6 +7,7 @@
 #include <QWidget>
 
 #include <cstdio>
+#include <QLockFile>
 #include <functional>
 
 #include "support/VisualTestSupport.h"
@@ -93,6 +95,15 @@ void cleanupTopLevelWidgets()
 int main(int argc, char** argv)
 {
     qputenv("QT_LOGGING_RULES", "qt.qpa.*=false");
+    if (argc == 3 && QString::fromLocal8Bit(argv[1]) == QLatin1String("--hold-document-lock")) {
+        QCoreApplication core(argc, argv);
+        QLockFile lock(QString::fromLocal8Bit(argv[2]) + QStringLiteral(".lock"));
+        if (!lock.tryLock(0)) return 1;
+        std::fputs("locked\n", stdout);
+        std::fflush(stdout);
+        std::getchar();
+        return 0;
+    }
 
     QString selectedTest;
     QVector<char*> forwardedArgs;
@@ -119,6 +130,7 @@ int main(int argc, char** argv)
     int forwardedArgc = forwardedArgs.size();
     char** forwardedArgv = forwardedArgs.data();
     QApplication app(forwardedArgc, forwardedArgv);
+    CardStack::initializeApplicationAppearance(app);
     QCoreApplication::setOrganizationName(QStringLiteral("CardStackTests"));
     QCoreApplication::setApplicationName(QStringLiteral("CardStackTests"));
     CardStack::Tests::installVisualTestFonts();

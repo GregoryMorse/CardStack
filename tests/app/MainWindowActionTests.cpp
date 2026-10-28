@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include <QScopeGuard>
 
 #include "../support/ModalDialogDriver.h"
 #include "../support/VisualTestSupport.h"
@@ -1263,11 +1264,12 @@ private slots:
 
         Deck loadedDirectly;
         SQLiteDeckStore reader;
-        QVERIFY2(reader.open(filePath, &error), qPrintable(error));
+        QVERIFY2(reader.open(filePath, &error, QStringLiteral("SECRET")), qPrintable(error));
         QVERIFY2(reader.loadDeck(&loadedDirectly, &error), qPrintable(error));
         QVERIFY(loadedDirectly.hasSecurity());
         QVERIFY(loadedDirectly.hasEncryptedSecurity());
-        QCOMPARE(loadedDirectly.securityPassword(), QStringLiteral("SECRET"));
+        QVERIFY(loadedDirectly.passwordMatches(QStringLiteral("SECRET")));
+        QVERIFY(loadedDirectly.securityPassword() != QStringLiteral("SECRET"));
 
         MainWindow window(nullptr, false);
         window.show();
@@ -1279,7 +1281,7 @@ private slots:
 
         bool passwordSeen = false;
         acceptNextOpenDialogWithFile(filePath);
-        acceptNextPasswordDialog(QStringLiteral("secret"), &passwordSeen);
+        acceptNextPasswordDialog(QStringLiteral("SECRET"), &passwordSeen);
         openAction->trigger();
         QTRY_VERIFY(passwordSeen);
 
@@ -1634,6 +1636,61 @@ private slots:
         QCOMPARE(report.marginTop, 0);
         QCOMPARE(report.marginRight, 0);
         QCOMPARE(report.marginBottom, 0);
+    }
+
+    void customReportBandMeasurementsUseInchesAndMilsConsistently()
+    {
+        MainWindow window(nullptr, true);
+        window.show();
+        QCoreApplication::processEvents();
+        auto* action = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+        QVERIFY(action != nullptr);
+        handleNextDialogByLegacyName(QStringLiteral("REPORTFORM"), [](QDialog* dialog) {
+            const auto closeOnExit = qScopeGuard([dialog] { if (dialog->isVisible()) dialog->reject(); });
+            auto* custom = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::ReportFormCustom));
+            QVERIFY(custom != nullptr);
+            custom->click();
+        });
+        handleNextDialogByLegacyName(QStringLiteral("DEFINEFORM"), [](QDialog* dialog) {
+            const auto closeOnExit = qScopeGuard([dialog] { if (dialog->isVisible()) dialog->reject(); });
+            auto* rows = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormRows));
+            auto* columns = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormColumns));
+            QVERIFY(rows != nullptr);
+            QVERIFY(columns != nullptr);
+            QCOMPARE(rows->text().toDouble(), 0.75);
+            QCOMPARE(columns->text().toDouble(), 0.75);
+            auto* headerLabel = qobject_cast<QLabel*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormRowsLabel));
+            auto* footerLabel = qobject_cast<QLabel*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormColumnsLabel));
+            QVERIFY(headerLabel != nullptr);
+            QVERIFY(footerLabel != nullptr);
+            QVERIFY(headerLabel->width() >= headerLabel->fontMetrics().horizontalAdvance(headerLabel->text()));
+            QVERIFY(footerLabel->width() >= footerLabel->fontMetrics().horizontalAdvance(footerLabel->text()));
+            QVERIFY(headerLabel->geometry().right() < rows->geometry().left());
+            QVERIFY(footerLabel->geometry().right() < columns->geometry().left());
+            const QString gallery = qEnvironmentVariable("CARDSTACK_APP_GALLERY_DIR");
+            if (!gallery.isEmpty()) {
+                QVERIFY(QDir().mkpath(gallery));
+                QVERIFY(dialog->grab().save(QDir(gallery).filePath(QStringLiteral("app_custom_report_form_initial.png"))));
+            }
+            rows->setText(QStringLiteral("0.50"));
+            columns->setText(QStringLiteral("1.25"));
+            emit rows->editingFinished();
+            emit columns->editingFinished();
+            QCoreApplication::processEvents();
+            if (!gallery.isEmpty())
+                QVERIFY(dialog->grab().save(QDir(gallery).filePath(QStringLiteral("app_custom_report_form_bands.png"))));
+            dialog->accept();
+        });
+        action->trigger();
+        auto* designer = window.findChild<ReportDesignerWidget*>();
+        QTRY_VERIFY(designer != nullptr);
+        QCOMPARE(designer->report().headerHeight, 500);
+        QCOMPARE(designer->report().footerHeight, 1250);
+        designer->addDataFrame();
+        const ReportDefinition saved = designer->report();
+        const auto& frame = saved.frames.last();
+        QVERIFY(frame.bounds.top() >= designer->report().headerHeight);
+        QCOMPARE(frame.band, ReportBodyBand);
     }
 
     void newReportCustomFormUpdatesDefineFormPreviewState()

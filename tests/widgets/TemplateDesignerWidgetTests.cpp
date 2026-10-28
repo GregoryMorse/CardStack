@@ -1,4 +1,5 @@
 ﻿#include "TemplateDesignerWidget.h"
+#include <QApplication>
 
 #include "../support/ModalDialogDriver.h"
 #include "UiIds.h"
@@ -46,6 +47,24 @@ class TemplateDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void addsIndependentDataFieldsAndPreservesAppearance()
+    {
+        TemplateDesignerWidget designer({}, {FieldDefinition(QStringLiteral("Original"), FieldType::Text, 40)});
+        QVERIFY(designer.addDataField(QStringLiteral("Artist"), 80, false, true));
+        QVERIFY(designer.addDataField(QStringLiteral("Album"), 120, false, true));
+        QVERIFY(!designer.addDataField(QStringLiteral("artist"), 80));
+        QCOMPARE(designer.fieldDefinitions().size(), 3);
+        QCOMPARE(designer.layoutDefinition().frames.at(0).fieldIndex, 1);
+        QCOMPARE(designer.layoutDefinition().frames.at(1).fieldIndex, 2);
+        DeckAppearance appearance;
+        appearance.dataFont = QApplication::font().toString();
+        appearance.useSystemColors = false;
+        designer.setAppearance(appearance);
+        QCOMPARE(designer.appearance(), appearance);
+        designer.undo();
+        QCOMPARE(designer.fieldDefinitions().size(), 2);
+    }
     void preservesExactImportedFrameBounds()
     {
         CardTemplateLayout importedLayout;

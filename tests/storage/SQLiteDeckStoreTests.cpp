@@ -1,6 +1,13 @@
+#include <QFileInfo>
 #include "SQLiteDeckStore.h"
 
 #include "DeckTemplate.h"
+#include "DeckSecurity.h"
+#include "DocumentFile.h"
+#include "SQLitePackageStore.h"
+#include <QFile>
+#include <monocypher.h>
+#include <array>
 #include "LegacyDeckReader.h"
 
 #include <QDir>
@@ -128,6 +135,163 @@ class SQLiteDeckStoreTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void argon2MatchesRfc9106KnownAnswer()
+    {
+        std::array<uint8_t, 32> password, output;
+        std::array<uint8_t, 16> salt;
+        std::array<uint8_t, 8> secret;
+        std::array<uint8_t, 12> associated;
+        std::array<uint64_t, 32 * 1024 / sizeof(uint64_t)> work{};
+        password.fill(1); salt.fill(2); secret.fill(3); associated.fill(4);
+        crypto_argon2(output.data(), 32, work.data(), {CRYPTO_ARGON2_ID, 32, 3, 4},
+            {password.data(), salt.data(), 32, 16}, {secret.data(), associated.data(), 8, 12});
+        QCOMPARE(QByteArray(reinterpret_cast<const char*>(output.data()), 32).toHex(),
+            QByteArray("0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659"));
+    }
+
+    void modernPasswordsAreExactAndNotTruncated()
+    {
+        Deck deck = makeRoundTripDeck();
+        QVERIFY(deck.setSecurity(QString::fromUtf8("Abcdefgh long secret \xc3\xa9"), true));
+        QVERIFY(deck.passwordMatches(QString::fromUtf8("Abcdefgh long secret \xc3\xa9")));
+        QVERIFY(!deck.passwordMatches(QString::fromUtf8("ABCDEFGH long secret \xc3\xa9")));
+        QVERIFY(!deck.passwordMatches(QStringLiteral("Abcdefgh different suffix")));
+        QVERIFY(!deck.passwordMatches(QStringLiteral("Abcdefgh")));
+        QVERIFY(DeckSecurity::isPasswordRecord(deck.securityPassword()));
+    }
+
+    void encryptedDeckProtectsAllDataAndRejectsTampering()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("sealed.cardstack"));
+        const QString password = QStringLiteral("Long mixed CASE secret phrase 123");
+        Deck source = makeRoundTripDeck();
+        source.setDescription(QStringLiteral("Unique secret description 13579"));
+        QVERIFY(source.setSecurity(password, true));
+        QString error;
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(source, path, &error), qPrintable(error));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QByteArray bytes = file.readAll();
+        file.close();
+        QVERIFY(DeckSecurity::isEncryptedContainer(bytes));
+        QVERIFY(!bytes.contains(password.toUtf8()));
+        QVERIFY(!bytes.contains("Unique secret description 13579"));
+        QVERIFY(!bytes.contains("Migration-friendly sample"));
+        SQLiteDeckStore locked;
+        QVERIFY(!locked.open(path, &error));
+        QCOMPARE(locked.securityError(), DeckSecurity::Error::PasswordRequired);
+        QVERIFY(!locked.open(path, &error, QStringLiteral("wrong password")));
+        QCOMPARE(locked.securityError(), DeckSecurity::Error::WrongPassword);
+        QVERIFY2(locked.open(path, &error, password, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(locked.loadDeck(&loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.description(), source.description());
+        QCOMPARE(loaded.cardAt(0).valueAt(1), source.cardAt(0).valueAt(1));
+        QCOMPARE(loaded.appearance(), source.appearance());
+        QCOMPARE(loaded.reportAt(0).dataFont, source.reportAt(0).dataFont);
+        locked.close();
+        bytes[bytes.size() - 1] = static_cast<char>(bytes.back() ^ 1);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(bytes), bytes.size());
+        file.close();
+        QVERIFY(!locked.open(path, &error, password));
+        QCOMPARE(locked.securityError(), DeckSecurity::Error::AuthenticationFailed);
+    }
+
+    void previousPlaintextSecurityMigratesWithoutModifyingTheRead()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("previous.cardstack"));
+        QString error;
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(makeRoundTripDeck(), path, &error), qPrintable(error));
+        const QString connection = QStringLiteral("previous_security");
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+            db.setDatabaseName(path);
+            QVERIFY(db.open());
+            QSqlQuery query(db);
+            QVERIFY(query.exec(QStringLiteral("UPDATE decks SET security_password='OLDPASS', security_encrypted=1")));
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(connection);
+        const QByteArray fingerprint = documentFileFingerprint(path);
+        Deck source;
+        {
+            SQLiteDeckStore reader;
+            QVERIFY2(reader.open(path, &error, QStringLiteral("oldpass"), SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+            QVERIFY2(reader.loadDeck(&source, &error), qPrintable(error));
+        }
+        QCOMPARE(documentFileFingerprint(path), fingerprint);
+        QVERIFY(source.passwordMatches(QStringLiteral("oldpass")));
+        QVERIFY(DeckSecurity::isPasswordRecord(source.securityPassword()));
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(source, path, &error), qPrintable(error));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray bytes = file.readAll();
+        QVERIFY(DeckSecurity::isEncryptedContainer(bytes));
+        QVERIFY(!bytes.contains("OLDPASS"));
+    }
+
+    void rejectsStaleWritersAndKeepsDocumentIdentity()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("concurrent.cardstack"));
+        QString error;
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(makeRoundTripDeck(), path, &error), qPrintable(error));
+        Deck first, stale;
+        {
+            SQLiteDeckStore one, two;
+            QVERIFY2(one.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+            QVERIFY2(two.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+            QVERIFY2(one.loadDeck(&first, &error), qPrintable(error));
+            QVERIFY2(two.loadDeck(&stale, &error), qPrintable(error));
+        }
+        const QString identity = first.documentId();
+        first.setDescription(QStringLiteral("First saved edit"));
+        stale.setDescription(QStringLiteral("Stale edit must not win"));
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(first, path, &error), qPrintable(error));
+        QVERIFY(!SQLitePackageStore::saveDeckPackage(stale, path, &error));
+        QVERIFY(error.contains(QStringLiteral("changed"), Qt::CaseInsensitive));
+        SQLiteDeckStore reader;
+        QVERIFY2(reader.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), qPrintable(error));
+        Deck loaded;
+        QVERIFY2(reader.loadDeck(&loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.description(), QStringLiteral("First saved edit"));
+        QCOMPARE(loaded.documentId(), identity);
+    }
+
+    void refusesFutureSchemasWithoutChangingTheFile()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("future.cardstack"));
+        QString error;
+        QVERIFY2(SQLitePackageStore::saveDeckPackage(makeRoundTripDeck(), path, &error), qPrintable(error));
+        const QString connection = QStringLiteral("future_schema");
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+            db.setDatabaseName(path);
+            QVERIFY(db.open());
+            QSqlQuery query(db);
+            QVERIFY(query.exec(QStringLiteral("PRAGMA user_version=999")));
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(connection);
+        const QByteArray fingerprint = documentFileFingerprint(path);
+        SQLiteDeckStore reader;
+        QVERIFY(!reader.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly));
+        QCOMPARE(documentFileFingerprint(path), fingerprint);
+        QVERIFY(!reader.create(path, &error));
+        QCOMPARE(documentFileFingerprint(path), fingerprint);
+        QVERIFY(!reader.open(directory.filePath(QStringLiteral("missing.cardstack")), &error,
+                             {}, SQLiteDeckStore::OpenMode::ReadOnly));
+        QVERIFY(!QFileInfo::exists(directory.filePath(QStringLiteral("missing.cardstack"))));
+    }
     void roundTripsImportedLegacyAppearanceAndRawDescriptors()
     {
         const QString fixtureDirPath = qEnvironmentVariable("CARDSTACK_WINEVDM_GOLDEN_DIR");
@@ -401,11 +565,11 @@ private slots:
 
         QVERIFY(query.exec(QStringLiteral("SELECT value FROM app_settings WHERE key = 'schema_version'")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toString(), QStringLiteral("2"));
+        QCOMPARE(query.value(0).toString(), QStringLiteral("3"));
 
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 2);
+        QCOMPARE(query.value(0).toInt(), 3);
 
         database.close();
         QSqlDatabase::removeDatabase(connectionName);

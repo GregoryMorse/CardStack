@@ -26,6 +26,7 @@ Deck makeTemplateOnlyDeck(const Deck& sourceDeck)
     templateDeck.setSortKeys(sourceDeck.sortKeys());
     templateDeck.setImportExportProfiles(sourceDeck.importExportProfiles());
     templateDeck.setCardTemplateLayout(sourceDeck.cardTemplateLayout());
+    templateDeck.setAppearance(sourceDeck.appearance());
 
     for (int index = 0; index < sourceDeck.reportCount(); ++index) {
         templateDeck.addReport(sourceDeck.reportAt(index));
@@ -49,10 +50,10 @@ Deck makeReportPackageDeck(const QVector<ReportDefinition>& reports, const QStri
 bool savePackageDeck(const Deck& deck, SQLitePackageType packageType, const QString& filePath, QString* errorMessage)
 {
     SQLiteDeckStore store;
-    if (!store.open(filePath, errorMessage)
-        || !store.saveDeck(deck, errorMessage)
+    if (!store.create(filePath, errorMessage)
         || !store.setAppSetting(QString::fromLatin1(kPackageTypeSetting), sqlitePackageTypeName(packageType), errorMessage)
-        || !store.setAppSetting(QStringLiteral("package_version"), QStringLiteral("1"), errorMessage)) {
+        || !store.setAppSetting(QStringLiteral("package_version"), QStringLiteral("1"), errorMessage)
+        || !store.saveDeck(deck, errorMessage)) {
         return false;
     }
 
@@ -111,7 +112,7 @@ bool SQLitePackageStore::loadTemplatePackage(const QString& filePath, Deck* temp
     }
 
     SQLiteDeckStore store;
-    if (!store.open(filePath, errorMessage)) {
+    if (!store.open(filePath, errorMessage, {}, SQLiteDeckStore::OpenMode::ReadOnly)) {
         return false;
     }
 
@@ -163,7 +164,7 @@ bool SQLitePackageStore::loadReportPackage(const QString& filePath,
     }
 
     SQLiteDeckStore store;
-    if (!store.open(filePath, errorMessage)) {
+    if (!store.open(filePath, errorMessage, {}, SQLiteDeckStore::OpenMode::ReadOnly)) {
         return false;
     }
 
@@ -213,7 +214,7 @@ bool SQLitePackageStore::packageType(const QString& filePath, SQLitePackageType*
     }
 
     SQLiteDeckStore store;
-    if (!store.open(filePath, errorMessage)) {
+    if (!store.open(filePath, errorMessage, {}, SQLiteDeckStore::OpenMode::ReadOnly)) {
         return false;
     }
 
