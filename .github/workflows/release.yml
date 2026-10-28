@@ -135,8 +135,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
-          app="$(find build -type f -executable -name CardStack | head -n 1)"
-          test -n "$app"
+          # CMake's VERSION property makes this entry point a symlink on Unix.
+          app="build/src/app/CardStack"
+          test -x "$app"
           cp "$app" AppDir/usr/bin/CardStack
           cp docs/assets/cardstack-icon-source.png AppDir/usr/share/icons/hicolor/256x256/apps/cardstack.png
           cat > AppDir/usr/share/applications/cardstack.desktop <<'DESKTOP'

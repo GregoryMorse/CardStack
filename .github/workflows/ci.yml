@@ -93,6 +93,10 @@ jobs:
         if: runner.os != 'Windows'
         run: cmake --build build --target CardStack CardStackTests
 
+      - name: Check Linux packaging entry point
+        if: runner.os == 'Linux'
+        run: test -x build/src/app/CardStack
+
       - name: Test Windows
         if: runner.os == 'Windows'
         run: ctest --test-dir build -C Release --output-on-failure
