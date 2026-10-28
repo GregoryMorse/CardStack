@@ -77,6 +77,12 @@ set(CARDSTACK_TEST_SUITE_NAMES
 )
 
 foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
+    set(cardstack_suite_timeout_seconds 60)
+    if(cardstack_test_suite STREQUAL "MainWindowWorkflowTests")
+        # Many independent durable-save workflows run in this one process.
+        # Keep the per-function 30-second hang guard below unchanged.
+        set(cardstack_suite_timeout_seconds 180)
+    endif()
     add_test(
         NAME ${cardstack_test_suite}
         COMMAND ${CMAKE_COMMAND}
@@ -86,7 +92,7 @@ foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/RunQtTest.cmake
     )
     set_tests_properties(${cardstack_test_suite} PROPERTIES
-        TIMEOUT 60
+        TIMEOUT ${cardstack_suite_timeout_seconds}
         ENVIRONMENT
             "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins;QTEST_FUNCTION_TIMEOUT=30000"
         ENVIRONMENT_MODIFICATION

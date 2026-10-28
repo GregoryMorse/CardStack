@@ -104,3 +104,13 @@ jobs:
         run: ctest --test-dir build --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.os }}
+          path: |
+            build/tests/*.txt
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore

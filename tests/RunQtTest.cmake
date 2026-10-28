@@ -3,7 +3,7 @@ if(NOT DEFINED TEST_EXECUTABLE OR NOT DEFINED TEST_SUITE OR NOT DEFINED TEST_LOG
 endif()
 
 execute_process(
-    COMMAND "${TEST_EXECUTABLE}" --test "${TEST_SUITE}" -o "${TEST_LOG},txt"
+    COMMAND "${TEST_EXECUTABLE}" --test "${TEST_SUITE}" -o -,txt -o "${TEST_LOG},txt"
     RESULT_VARIABLE test_result
 )
 
