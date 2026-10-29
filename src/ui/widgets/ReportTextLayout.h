@@ -32,6 +32,8 @@ inline Qt::Alignment alignment(quint8 flags)
 inline QFont font(const ReportFontDefinition& definition, quint8 flags)
 {
     QFont result = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    // A named system style (for example Regular) overrides explicit weight/style.
+    result.setStyleName(QString());
     if (!definition.faceName.isEmpty()) result.setFamily(definition.faceName);
     const qreal height = definition.legacyHeight == 0
         ? DefaultFontPoints * UnitsPerInch / 72.0

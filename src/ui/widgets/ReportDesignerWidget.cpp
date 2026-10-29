@@ -1513,7 +1513,10 @@ ReportFrameDefinition ReportDesignerWidget::defaultFrame(ReportFrameKind kind) c
     frame.kind = kind;
     const int offset = 400 + m_report.frames.size() * 180;
     const int top = m_report.formType == ReportFormType::Report ? std::max(offset, m_report.headerHeight) : offset;
-    frame.bounds = QRect(offset, top, 2200, kind == ReportFrameKind::LineOrBox ? 900 : 420);
+    const int width = std::min(2200, m_report.formWidth);
+    const int height = std::min(kind == ReportFrameKind::LineOrBox ? 900 : 420, m_report.formHeight);
+    frame.bounds = QRect(std::clamp(offset, 0, m_report.formWidth - width),
+                         std::clamp(top, 0, m_report.formHeight - height), width, height);
     frame.band = reportBandForBounds(m_report, frame.bounds);
     frame.order = static_cast<quint16>(m_report.frames.size());
     switch (kind) {

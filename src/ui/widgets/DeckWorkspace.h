@@ -90,6 +90,7 @@ public:
 
     const Deck& deck() const;
     int currentCardIndex() const;
+    QString currentFieldValue() const { return currentValue(); }
     QStringList fieldNames() const;
     ViewMode viewMode() const;
     bool isDirty() const;
@@ -148,7 +149,9 @@ public:
 
     bool find(const SearchRequest& request);
     bool findNext();
+    bool findNext(const SearchRequest& request, bool wrap = false);
     bool hasLastSearchRequest() const { return m_hasLastSearchRequest; }
+    const SearchRequest& lastSearchRequest() const { return m_lastSearchRequest; }
     bool replaceCurrent(const SearchRequest& request, const QString& replacement);
     int replaceAll(const SearchRequest& request, const QString& replacement);
     void sortCards(const QVector<SortLevel>& levels);
@@ -186,6 +189,15 @@ private:
     QString currentValue() const;
     void setCurrentValue(const QString& value);
     bool setValueAt(int row, int fieldIndex, const QString& value, bool refreshModel);
+    struct SearchMatch {
+        int cardIndex = -1;
+        int fieldIndex = -1;
+        int offset = 0;
+        int length = 0;
+    };
+    QVector<QPair<int, int>> matchingSpans(const QString& value, const SearchClause& clause) const;
+    QVector<SearchMatch> searchMatches(const SearchRequest& request) const;
+    bool showSearchMatch(const SearchMatch& match);
     bool recordMatches(const CardRecord& record, const SearchRequest& request) const;
     bool clauseMatches(const CardRecord& record, const SearchClause& clause) const;
     bool valueMatches(QString value, QString pattern, const SearchClause& clause) const;
@@ -201,6 +213,7 @@ private:
     bool m_dirty = false;
     SearchRequest m_lastSearchRequest;
     bool m_hasLastSearchRequest = false;
+    SearchMatch m_lastSearchMatch;
     QVector<UndoSnapshot> m_undoStack;
     QVector<DeletedCard> m_deletedCards;
     QStackedWidget* m_stack = nullptr;

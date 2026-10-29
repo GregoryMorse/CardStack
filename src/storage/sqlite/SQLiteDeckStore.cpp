@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QScopedValueRollback>
+#include <QScopeGuard>
 #include <QTemporaryFile>
 
 #include <QJsonArray>
@@ -163,10 +164,21 @@ QVector<QString> stringVectorFromJson(const QString& value)
     return values;
 }
 
+bool documentWithinLimits(const QString& path, ImportLimits limits, QString* error)
+{
+    if (path == QLatin1String(":memory:") || !QFileInfo::exists(path)) return true;
+    const QFileInfo info(path);
+    ImportBudget budget(limits);
+    if (!info.isFile() || info.size() < 0 || !budget.input(quint64(info.size()))) {
+        setError(error, budget.failed() ? budget.error() : QStringLiteral("The document is not a regular file."));
+        return false;
+    }
+    return true;
+}
 } // namespace
 
-SQLiteDeckStore::SQLiteDeckStore()
-    : m_connectionName(QStringLiteral("cardstack_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)))
+SQLiteDeckStore::SQLiteDeckStore(ImportLimits limits)
+    : m_limits(limits), m_connectionName(QStringLiteral("cardstack_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)))
 {
 }
 
@@ -190,8 +202,9 @@ bool SQLiteDeckStore::create(const QString& filePath, QString* errorMessage)
 {
     close();
     m_filePath = filePath;
+    if (!documentWithinLimits(filePath, m_limits, errorMessage)) return false;
     bool readable = false;
-    m_initialFingerprint = m_fingerprint = documentFileFingerprint(filePath, &readable);
+    m_initialFingerprint = m_fingerprint = documentFileFingerprint(filePath, &readable, m_limits);
     if (!readable) {
         setError(errorMessage, QStringLiteral("Could not read the destination file."));
         return false;
@@ -205,7 +218,7 @@ bool SQLiteDeckStore::create(const QString& filePath, QString* errorMessage)
         const QByteArray header = file.read(8);
         if (!DeckSecurity::isEncryptedContainer(header)) {
             QJsonObject ignored;
-            if (!SQLiteSnapshot::readFile(filePath, &ignored, errorMessage)) return false;
+            if (!SQLiteSnapshot::readFile(filePath, &ignored, errorMessage, m_limits)) return false;
         }
     }
     return initializeMemory(errorMessage);
@@ -226,8 +239,9 @@ bool SQLiteDeckStore::open(const QString& filePath, QString* errorMessage,
     m_filePath = filePath;
     m_openPassword = password;
     m_readOnly = mode == OpenMode::ReadOnly;
+    if (!documentWithinLimits(filePath, m_limits, errorMessage)) return false;
     bool readable = false;
-    m_initialFingerprint = m_fingerprint = documentFileFingerprint(filePath, &readable);
+    m_initialFingerprint = m_fingerprint = documentFileFingerprint(filePath, &readable, m_limits);
     if (!readable) {
         setError(errorMessage, QStringLiteral("Could not read the document."));
         return false;
@@ -244,8 +258,12 @@ bool SQLiteDeckStore::open(const QString& filePath, QString* errorMessage,
             setError(errorMessage, QStringLiteral("The encrypted document is too large."));
             return false;
         }
+        ImportBudget budget(m_limits);
+        QByteArray container;
+        if (!readBoundedFile(file, &container, budget, errorMessage)) return false;
         QByteArray plaintext;
-        if (!DeckSecurity::decrypt(file.readAll(), password, &plaintext, &m_credentials, &m_securityError)) {
+        const auto wipePlaintext = qScopeGuard([&] { DeckSecurity::wipe(&plaintext); });
+        if (!DeckSecurity::decrypt(container, password, &plaintext, &m_credentials, &m_securityError)) {
             setError(errorMessage, m_securityError == DeckSecurity::Error::PasswordRequired
                 ? QStringLiteral("This document requires a password.")
                 : m_securityError == DeckSecurity::Error::WrongPassword
@@ -253,6 +271,7 @@ bool SQLiteDeckStore::open(const QString& filePath, QString* errorMessage,
                     : QStringLiteral("The encrypted document is damaged or has been modified."));
             return false;
         }
+        if (!SQLiteSnapshot::validateJsonBytes(plaintext, errorMessage, m_limits)) return false;
         QJsonParseError parseError;
         const QJsonDocument document = QJsonDocument::fromJson(plaintext, &parseError);
         DeckSecurity::wipe(&plaintext);
@@ -264,10 +283,10 @@ bool SQLiteDeckStore::open(const QString& filePath, QString* errorMessage,
         m_authenticated = true;
     } else {
         file.close();
-        if (!SQLiteSnapshot::readFile(filePath, &snapshot, errorMessage)) return false;
+        if (!SQLiteSnapshot::readFile(filePath, &snapshot, errorMessage, m_limits)) return false;
     }
     if (!initializeMemory(errorMessage)
-        || !SQLiteSnapshot::restore(m_database, snapshot, errorMessage)
+        || !SQLiteSnapshot::restore(m_database, snapshot, errorMessage, m_limits)
         || !ensureSchema(errorMessage)
         || !SQLiteSnapshot::checkForeignKeys(m_database, errorMessage)) return false;
 
@@ -311,13 +330,14 @@ bool SQLiteDeckStore::persist(QString* errorMessage)
         return false;
     }
     bool readable = false;
-    const QByteArray actual = documentFileFingerprint(m_filePath, &readable);
+    if (!documentWithinLimits(m_filePath, m_limits, errorMessage)) return false;
+    const QByteArray actual = documentFileFingerprint(m_filePath, &readable, m_limits);
     if (!readable || actual != m_fingerprint) {
         setError(errorMessage, QStringLiteral("The document changed on disk. Reopen it before saving to avoid overwriting another edit."));
         return false;
     }
     QJsonObject snapshot;
-    if (!SQLiteSnapshot::capture(m_database, &snapshot, errorMessage)) return false;
+    if (!SQLiteSnapshot::capture(m_database, &snapshot, errorMessage, m_limits)) return false;
     QSaveFile output(m_filePath);
     output.setDirectWriteFallback(false);
     if (!output.open(QIODevice::WriteOnly)) {
@@ -337,7 +357,11 @@ bool SQLiteDeckStore::persist(QString* errorMessage)
             return false;
         }
         QByteArray plaintext = QJsonDocument(snapshot).toJson(QJsonDocument::Compact);
+        const auto wipePlaintext = qScopeGuard([&] { DeckSecurity::wipe(&plaintext); });
+        if (!SQLiteSnapshot::validateJsonBytes(plaintext, errorMessage, m_limits)) return false;
         const QByteArray container = DeckSecurity::encrypt(plaintext, record, m_credentials.key);
+        ImportBudget budget(m_limits);
+        if (!budget.input(quint64(container.size()))) { setError(errorMessage, budget.error()); return false; }
         DeckSecurity::wipe(&plaintext);
         if (container.isEmpty() || output.write(container) != container.size()) {
             setError(errorMessage, output.errorString().isEmpty()
@@ -364,7 +388,7 @@ bool SQLiteDeckStore::persist(QString* errorMessage)
                 const bool schemaReady = ensureSchema(errorMessage);
                 m_database = memory;
                 staged = schemaReady
-                    && SQLiteSnapshot::restore(stage, snapshot, errorMessage)
+                    && SQLiteSnapshot::restore(stage, snapshot, errorMessage, m_limits)
                     && SQLiteSnapshot::checkForeignKeys(stage, errorMessage);
             } else {
                 setError(errorMessage, stage.lastError());
@@ -373,6 +397,7 @@ bool SQLiteDeckStore::persist(QString* errorMessage)
         }
         QSqlDatabase::removeDatabase(connectionName);
         if (!staged) return false;
+        if (!documentWithinLimits(stagePath, m_limits, errorMessage)) return false;
         QFile input(stagePath);
         if (!input.open(QIODevice::ReadOnly)) {
             setError(errorMessage, input.errorString());
@@ -390,11 +415,11 @@ bool SQLiteDeckStore::persist(QString* errorMessage)
             }
         }
     }
-    if (documentFileFingerprint(m_filePath) != m_fingerprint || !output.commit()) {
+    if (documentFileFingerprint(m_filePath, nullptr, m_limits) != m_fingerprint || !output.commit()) {
         setError(errorMessage, QStringLiteral("The document could not be replaced safely: %1").arg(output.errorString()));
         return false;
     }
-    m_fingerprint = documentFileFingerprint(m_filePath);
+    m_fingerprint = documentFileFingerprint(m_filePath, nullptr, m_limits);
     return true;
 }
 
@@ -527,6 +552,9 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
         return false;
     }
 
+    // A fresh load establishes the caller's current save baseline. Until then,
+    // an existing caller may keep saving its original in-session snapshot.
+    m_initialFingerprint = m_fingerprint;
     loaded.setStorageOrigin(m_filePath, m_fingerprint);
     *deck = std::move(loaded);
     return true;

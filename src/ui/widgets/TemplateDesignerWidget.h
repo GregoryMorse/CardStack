@@ -28,12 +28,15 @@ public:
         CardTemplateLayout layout,
         QVector<FieldDefinition> fields,
         QWidget* parent = nullptr,
-        DeckAppearance appearance = {});
+        DeckAppearance appearance = {},
+        QString description = {});
 
     const CardTemplateLayout& layoutDefinition() const;
     const QVector<FieldDefinition>& fieldDefinitions() const;
     QStringList fieldNames() const;
     const DeckAppearance& appearance() const { return m_appearance; }
+    const QString& description() const { return m_description; }
+    void setDescription(const QString& description);
     void markSaved();
     bool addDataField(const QString& name, int length, bool phone = false, bool showName = true);
     int selectedFrameIndex() const;
@@ -93,6 +96,7 @@ private:
         int selectedFrameIndex = -1;
         QVector<int> selectedFrameIndices;
         int selectionAnchor = -1;
+        QString description;
     };
 
     void pushUndoState();
@@ -112,6 +116,7 @@ private:
     CardTemplateLayout m_layout;
     QVector<FieldDefinition> m_fields;
     DeckAppearance m_appearance;
+    QString m_description;
     bool m_dirty = false;
     int m_selectedFrameIndex = -1;
     QVector<int> m_selectedFrameIndices;

@@ -253,11 +253,6 @@ Deck deckWithSchema(
     return updated;
 }
 
-struct MatchLocation {
-    int cardIndex = 0;
-    int fieldIndex = 0;
-};
-
 constexpr int MaxUndoSnapshots = 50;
 
 int titleBucketRank(const QString& title)
@@ -359,6 +354,16 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
         refreshCardEditor();
     });
 
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget*, QWidget* focused) {
+        if (focused == nullptr || !isAncestorOf(focused)) return;
+        for (QWidget* widget = focused; widget != nullptr && widget != this; widget = widget->parentWidget()) {
+            const QVariant field = widget->property("fieldIndex");
+            if (field.isValid() && field.toInt() >= 0 && field.toInt() < m_deck.fieldCount()) {
+                m_currentFieldIndex = field.toInt();
+                break;
+            }
+        }
+    });
     m_stack->addWidget(m_cardPage);
     m_stack->addWidget(m_tablePage);
     applyStoredColumnWidths();
@@ -659,6 +664,7 @@ void DeckWorkspace::smartPaste()
     pushUndoSnapshot();
     replaceCards(cards);
     m_currentCardIndex = std::clamp(startRow, 0, m_deck.cardCount() - 1);
+    sortCardsByTitleIfNeeded();
     refreshCardEditor();
     syncModel();
 }
@@ -923,6 +929,7 @@ void DeckWorkspace::applyStoredAppearance()
 
 void DeckWorkspace::commitPendingEdits()
 {
+    m_currentFieldIndex = selectedFieldIndex();
     syncCardEditorToDeck();
     syncModel();
 }
@@ -1739,7 +1746,7 @@ int DeckWorkspace::selectedFieldIndex() const
         focused = focused->parentWidget();
     }
 
-    return 0;
+    return std::clamp(m_currentFieldIndex, 0, std::max(0, m_deck.fieldCount() - 1));
 }
 
 QString DeckWorkspace::currentValue() const
@@ -1788,130 +1795,190 @@ bool DeckWorkspace::setValueAt(int row, int fieldIndex, const QString& value, bo
     return true;
 }
 
+QVector<QPair<int, int>> DeckWorkspace::matchingSpans(const QString& value, const SearchClause& clause) const
+{
+    if (!valueMatches(value, clause.text, clause)) return {};
+    const bool textSearch = clause.type == SearchType::Contains || clause.type == SearchType::BeginsWith;
+    // Comparison and phonetic criteria select the complete matching value.
+    if (!textSearch || clause.soundsLike) return {{0, int(value.size())}};
+    if (clause.text.isEmpty()) return {{0, 0}};
+    if (clause.type == SearchType::BeginsWith) return {{0, int(clause.text.size())}};
+
+    QString pattern = QRegularExpression::escape(clause.text);
+    if (clause.wholeWord) pattern = QStringLiteral("\\b%1\\b").arg(pattern);
+    const auto options = clause.caseSensitive ? QRegularExpression::NoPatternOption
+                                             : QRegularExpression::CaseInsensitiveOption;
+    const QRegularExpression expression(pattern, options);
+    auto iterator = expression.globalMatch(value);
+    QVector<QPair<int, int>> result;
+    while (iterator.hasNext()) {
+        const auto match = iterator.next();
+        result.append({int(match.capturedStart()), int(match.capturedLength())});
+    }
+    return result;
+}
+
+QVector<DeckWorkspace::SearchMatch> DeckWorkspace::searchMatches(const SearchRequest& request) const
+{
+    QVector<SearchMatch> result;
+    for (int cardIndex = 0; cardIndex < m_deck.cardCount(); ++cardIndex) {
+        const CardRecord& record = m_deck.cardAt(cardIndex);
+        if (!recordMatches(record, request)) continue;
+        const SearchClause& clause = request.comparison == SearchComparison::Or
+                && !clauseMatches(record, request.first) ? request.second : request.first;
+        for (int fieldIndex = firstFieldToSearch(clause); fieldIndex <= lastFieldToSearch(clause); ++fieldIndex) {
+            for (const auto& span : matchingSpans(record.valueAt(fieldIndex), clause)) {
+                result.append({cardIndex, fieldIndex, span.first, span.second});
+            }
+        }
+    }
+    return result;
+}
+
+bool DeckWorkspace::showSearchMatch(const SearchMatch& match)
+{
+    if (!moveToMatch(match.cardIndex, match.fieldIndex)) return false;
+    m_lastSearchMatch = match;
+    if (match.fieldIndex >= 0 && match.fieldIndex < m_valueEditors.size()) {
+        QWidget* editor = m_valueEditors.at(match.fieldIndex);
+        if (auto* line = qobject_cast<QLineEdit*>(editor)) {
+            line->setSelection(match.offset, match.length);
+        } else if (auto* notes = qobject_cast<QPlainTextEdit*>(editor)) {
+            QTextCursor cursor = notes->textCursor();
+            cursor.setPosition(match.offset);
+            cursor.setPosition(match.offset + match.length, QTextCursor::KeepAnchor);
+            notes->setTextCursor(cursor);
+        }
+    }
+    return true;
+}
+
 bool DeckWorkspace::find(const SearchRequest& request)
 {
     syncCardEditorToDeck();
     m_lastSearchRequest = request;
     m_hasLastSearchRequest = true;
-
-    const auto matchingField = [this](const CardRecord& record, const SearchClause& clause) {
-        const int firstField = firstFieldToSearch(clause);
-        const int lastField = lastFieldToSearch(clause);
-        for (int fieldIndex = firstField; fieldIndex <= lastField; ++fieldIndex) {
-            if (valueMatches(record.valueAt(fieldIndex), clause.text, clause)) {
-                return fieldIndex;
-            }
-        }
-        return -1;
-    };
-
-    const int step = request.direction == SearchDirection::BackwardFromCurrent ? -1 : 1;
-    int cardIndex = currentSearchStartIndex(request.direction);
-    while (cardIndex >= 0 && cardIndex < m_deck.cardCount()) {
-        const CardRecord& record = m_deck.cardAt(cardIndex);
-        const int firstMatch = matchingField(record, request.first);
-        const int secondMatch = request.comparison == SearchComparison::None
-            ? -1
-            : matchingField(record, request.second);
-        const bool matches = request.comparison == SearchComparison::None
-            ? firstMatch >= 0
-            : request.comparison == SearchComparison::And
-                ? firstMatch >= 0 && secondMatch >= 0
-                : firstMatch >= 0 || secondMatch >= 0;
-        if (matches) {
-            return moveToMatch(cardIndex, firstMatch >= 0 ? firstMatch : secondMatch);
-        }
-        cardIndex += step;
+    const auto matches = searchMatches(request);
+    const int start = currentSearchStartIndex(request.direction);
+    if (request.direction == SearchDirection::BackwardFromCurrent) {
+        for (auto it = matches.crbegin(); it != matches.crend(); ++it)
+            if (it->cardIndex <= start) return showSearchMatch(*it);
+    } else {
+        for (const auto& match : matches)
+            if (match.cardIndex >= start) return showSearchMatch(match);
     }
-
     return false;
 }
 
 bool DeckWorkspace::findNext()
 {
-    if (!m_hasLastSearchRequest) {
-        return false;
-    }
+    return m_hasLastSearchRequest && findNext(m_lastSearchRequest);
+}
 
-    SearchRequest request = m_lastSearchRequest;
-    if (request.direction == SearchDirection::BeginningToEnd) {
-        request.direction = SearchDirection::ForwardFromCurrent;
-    }
+bool DeckWorkspace::findNext(const SearchRequest& request, bool wrap)
+{
+    syncCardEditorToDeck();
+    m_lastSearchRequest = request;
+    if (m_lastSearchRequest.direction == SearchDirection::BeginningToEnd)
+        m_lastSearchRequest.direction = SearchDirection::ForwardFromCurrent;
+    m_hasLastSearchRequest = true;
+    const auto matches = searchMatches(m_lastSearchRequest);
+    if (matches.isEmpty()) return false;
+    const bool backward = m_lastSearchRequest.direction == SearchDirection::BackwardFromCurrent;
+    if (wrap) return showSearchMatch(backward ? matches.last() : matches.first());
 
-    const int step = request.direction == SearchDirection::BackwardFromCurrent ? -1 : 1;
-    const int originalIndex = m_currentCardIndex;
-    m_currentCardIndex = std::clamp(m_currentCardIndex + step, 0, std::max(0, m_deck.cardCount() - 1));
-    const bool found = find(request);
-    if (!found) {
-        setCurrentCardIndex(originalIndex);
+    const bool hasSelection = m_lastSearchMatch.cardIndex == m_currentCardIndex
+        && m_lastSearchMatch.fieldIndex == m_currentFieldIndex;
+    const auto afterCurrent = [&](const SearchMatch& match) {
+        if (match.cardIndex != m_currentCardIndex)
+            return backward ? match.cardIndex < m_currentCardIndex : match.cardIndex > m_currentCardIndex;
+        if (!hasSelection) return false;
+        if (match.fieldIndex != m_lastSearchMatch.fieldIndex)
+            return backward ? match.fieldIndex < m_lastSearchMatch.fieldIndex : match.fieldIndex > m_lastSearchMatch.fieldIndex;
+        return backward ? match.offset + match.length <= m_lastSearchMatch.offset
+                        : match.offset >= m_lastSearchMatch.offset + std::max(1, m_lastSearchMatch.length);
+    };
+    if (backward) {
+        for (auto it = matches.crbegin(); it != matches.crend(); ++it)
+            if (afterCurrent(*it)) return showSearchMatch(*it);
+    } else {
+        for (const auto& match : matches)
+            if (afterCurrent(match)) return showSearchMatch(match);
     }
-    return found;
+    return false;
 }
 
 bool DeckWorkspace::replaceCurrent(const SearchRequest& request, const QString& replacement)
 {
     syncCardEditorToDeck();
-    if (m_currentCardIndex < 0 || m_currentCardIndex >= m_deck.cardCount()) {
-        return false;
+    const auto matches = searchMatches(request);
+    auto found = std::find_if(matches.cbegin(), matches.cend(), [&](const SearchMatch& match) {
+        return match.cardIndex == m_currentCardIndex && match.fieldIndex == m_currentFieldIndex
+            && match.offset == m_lastSearchMatch.offset;
+    });
+    if (found == matches.cend()) {
+        found = std::find_if(matches.cbegin(), matches.cend(), [&](const SearchMatch& match) {
+            return match.cardIndex == m_currentCardIndex && match.fieldIndex == m_currentFieldIndex;
+        });
     }
-
-    CardRecord& record = m_deck.cardAt(m_currentCardIndex);
-    SearchClause clause = request.first;
-    clause.fieldIndex = m_currentFieldIndex;
-    if (!clauseMatches(record, clause)) {
-        if (!find(request)) {
-            return false;
-        }
-        return replaceCurrent(request, replacement);
+    SearchMatch match;
+    if (found != matches.cend()) match = *found;
+    else {
+        if (!find(request)) return false;
+        match = m_lastSearchMatch;
     }
+    const QString previous = m_deck.cardAt(match.cardIndex).valueAt(match.fieldIndex);
+    QString updated = previous;
+    updated.replace(match.offset, match.length, replacement);
+    updated = normalizedFieldValue(match.fieldIndex, updated);
+    if (updated == previous) return true;
 
-    const QString normalizedReplacement = normalizedFieldValue(m_currentFieldIndex, replacement);
-    if (record.valueAt(m_currentFieldIndex) == normalizedReplacement) {
-        return true;
-    }
-
+    // Reacquire the card after copying the implicitly shared deck for Undo.
     pushUndoSnapshot();
-    record.setValueAt(m_currentFieldIndex, normalizedReplacement);
+    m_deck.cardAt(match.cardIndex).setValueAt(match.fieldIndex, updated);
+    m_currentCardIndex = match.cardIndex;
     markDirty();
-    refreshCardEditor();
+    sortCardsByTitleIfNeeded();
     syncModel();
-    return true;
+    refreshCardEditor();
+    match.cardIndex = m_currentCardIndex;
+    match.length = std::min(int(replacement.size()), std::max(0, int(updated.size()) - match.offset));
+    return showSearchMatch(match);
 }
 
 int DeckWorkspace::replaceAll(const SearchRequest& request, const QString& replacement)
 {
     syncCardEditorToDeck();
-    QVector<MatchLocation> matches;
-    bool changesData = false;
-    for (int cardIndex = 0; cardIndex < m_deck.cardCount(); ++cardIndex) {
-        const CardRecord& record = m_deck.cardAt(cardIndex);
-        const int firstField = firstFieldToSearch(request.first);
-        const int lastField = lastFieldToSearch(request.first);
-        for (int fieldIndex = firstField; fieldIndex <= lastField; ++fieldIndex) {
-            SearchRequest fieldRequest = request;
-            if (fieldRequest.first.fieldIndex < 0) {
-                fieldRequest.first.fieldIndex = fieldIndex;
-            }
-            if (recordMatches(record, fieldRequest)) {
-                matches.append({cardIndex, fieldIndex});
-                changesData = changesData || record.valueAt(fieldIndex) != normalizedFieldValue(fieldIndex, replacement);
-            }
+    const auto matches = searchMatches(request);
+    struct FieldEdit { int cardIndex; int fieldIndex; QString value; };
+    QVector<FieldEdit> edits;
+    for (int first = 0; first < matches.size();) {
+        int last = first + 1;
+        while (last < matches.size() && matches.at(last).cardIndex == matches.at(first).cardIndex
+               && matches.at(last).fieldIndex == matches.at(first).fieldIndex) ++last;
+        const auto& location = matches.at(first);
+        const QString previous = m_deck.cardAt(location.cardIndex).valueAt(location.fieldIndex);
+        QString updated = previous;
+        // Offsets refer to the original value, never to already inserted text.
+        for (int index = last - 1; index >= first; --index) {
+            const auto& match = matches.at(index);
+            updated.replace(match.offset, match.length, replacement);
         }
+        updated = normalizedFieldValue(location.fieldIndex, updated);
+        if (updated != previous) edits.append({location.cardIndex, location.fieldIndex, updated});
+        first = last;
     }
-
-    if (changesData) {
+    if (!edits.isEmpty()) {
         pushUndoSnapshot();
-        for (const MatchLocation& match : matches) {
-            m_deck.cardAt(match.cardIndex).setValueAt(
-                match.fieldIndex,
-                normalizedFieldValue(match.fieldIndex, replacement));
-        }
+        for (const auto& edit : edits)
+            m_deck.cardAt(edit.cardIndex).setValueAt(edit.fieldIndex, edit.value);
         markDirty();
+        sortCardsByTitleIfNeeded();
+        m_lastSearchMatch = {};
     }
-
     syncModel();
     refreshCardEditor();
-    return matches.size();
+    return int(matches.size());
 }
 
 void DeckWorkspace::sortCards(const QVector<SortLevel>& levels)
@@ -1971,8 +2038,9 @@ DeckMergeResult DeckWorkspace::mergeFromDeck(const Deck& source, const DeckMerge
     pushUndoSnapshot();
     m_deck = std::move(mergedDeck);
     markDirty();
+    sortCardsByTitleIfNeeded();
     syncModel();
-    setCurrentCardIndex(m_deck.cardCount() - result.cardsMerged);
+    setCurrentCardIndex(m_currentCardIndex);
     showTableView();
     return result;
 }

@@ -8,7 +8,8 @@
 
 #include <QFile>
 #include <QFileInfo>
-#include <QTemporaryFile>
+#include <QScopeGuard>
+#include "DeckSecurity.h"
 
 #include <algorithm>
 #include <utility>
@@ -48,7 +49,7 @@ struct LegacyField {
 
 quint16 readU16(const QByteArray& bytes, int offset)
 {
-    if (offset < 0 || offset + 1 >= bytes.size()) {
+    if (offset < 0 || !containsByteRange(bytes.size(), quint64(offset), 2)) {
         return 0;
     }
 
@@ -156,16 +157,17 @@ int declaredFieldCount(const QByteArray& schemaRecord)
     return count > 0 && count <= MaxLegacyFields ? count : 0;
 }
 
-QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord)
+QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord, ImportBudget& budget)
 {
     const int expectedFieldCount = declaredFieldCount(schemaRecord);
-    const auto parseSequence = [&schemaRecord](int offset, int expectedCount = 0) {
+    const auto parseSequence = [&schemaRecord, &budget](int offset, int expectedCount = 0) {
         QVector<LegacyField> candidate;
         int previousRecordOffset = -1;
         for (int fieldIndex = 0; fieldIndex < MaxLegacyFields; ++fieldIndex) {
             if (expectedCount > 0 && fieldIndex >= expectedCount) {
                 break;
             }
+            if (!budget.checkpoint(FieldDefinitionSize)) return QVector<LegacyField>{};
             LegacyField field;
             const int fieldOffset = offset + fieldIndex * FieldDefinitionSize;
             if (!parseLegacyFieldAt(schemaRecord, fieldOffset, &field)) {
@@ -228,12 +230,13 @@ QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord)
     return bestFields;
 }
 
-const QByteArray* findSchemaRecord(const QVector<QByteArray>& records)
+const QByteArray* findSchemaRecord(const QVector<QByteArray>& records, ImportBudget& budget)
 {
     const QByteArray* best = nullptr;
     int bestFieldCount = 0;
     for (const QByteArray& record : records) {
-        const QVector<LegacyField> fields = findFieldDefinitions(record);
+        if (!budget.checkpoint()) return nullptr;
+        const QVector<LegacyField> fields = findFieldDefinitions(record, budget);
         const int declaredCount = declaredFieldCount(record);
         const int score = fields.size() + (declaredCount > 0 && declaredCount == fields.size() ? MaxLegacyFields : 0);
         if (score > bestFieldCount) {
@@ -334,74 +337,34 @@ bool legacyOwnerReadAccessAllowed(const BtrieveAuditReader::Audit& audit)
     return (audit.ownerFlags & OldFormatOwnerReadAccessFlag) != 0;
 }
 
-bool decryptOldFormatOwnerEncryptedBtrieveFile(
-    const QString& filePath,
-    const BtrieveAuditReader::Audit& audit,
-    QTemporaryFile* decryptedFile,
-    QString* errorMessage)
+bool decryptOldFormatOwnerEncryptedBtrieveBytes(
+    QByteArray* bytes, const BtrieveAuditReader::Audit& audit, ImportBudget& budget, QString* error)
 {
-    if (decryptedFile == nullptr || audit.pageSize <= 0) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Could not prepare temporary legacy Btrieve decrypt buffer.");
-        }
+    if (!bytes || audit.pageSize <= 0 || bytes->size() < audit.pageSize || bytes->size() % audit.pageSize != 0) {
+        if (error) *error = QStringLiteral("Encrypted Btrieve file has an unsupported page layout.");
         return false;
     }
-
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Could not open encrypted legacy Btrieve file: %1").arg(filePath);
-        }
-        return false;
-    }
-
-    QByteArray bytes = file.readAll();
-    if (bytes.size() < audit.pageSize || bytes.size() % audit.pageSize != 0) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Encrypted legacy Btrieve file has an unsupported page layout.");
-        }
-        return false;
-    }
-
     quint16 keys[OldFormatOwnerEncryptionKeyCount] = {};
+    const auto wipeKeys = qScopeGuard([&] {
+        volatile quint16* destination = keys;
+        for (int index = 0; index < OldFormatOwnerEncryptionKeyCount; ++index) destination[index] = 0;
+    });
     bool hasKey = false;
     for (int index = 0; index < OldFormatOwnerEncryptionKeyCount; ++index) {
-        keys[index] = readU16(bytes, OldFormatOwnerEncryptionKeyOffset + index * 2);
+        keys[index] = readU16(*bytes, OldFormatOwnerEncryptionKeyOffset + index * 2);
         hasKey = hasKey || keys[index] != 0;
     }
-
     if (!hasKey) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Encrypted legacy Btrieve file does not contain a usable owner encryption key.");
-        }
+        if (error) *error = QStringLiteral("Encrypted Btrieve file has no usable owner encryption key.");
         return false;
     }
-
-    for (int pageOffset = audit.pageSize; pageOffset < bytes.size(); pageOffset += audit.pageSize) {
+    for (qsizetype page = audit.pageSize; page < bytes->size(); page += audit.pageSize) {
+        if (!budget.checkpoint(quint64(audit.pageSize))) { if (error) *error = budget.error(); return false; }
         for (int offset = 0; offset < audit.pageSize; ++offset) {
             const quint16 key = keys[(offset / OldFormatOwnerEncryptionSectorSize) % OldFormatOwnerEncryptionKeyCount];
-            const char lowKey = static_cast<char>(key & 0xff);
-            const char highKey = static_cast<char>((key >> 8) & 0xff);
-            bytes[pageOffset + offset] = static_cast<char>(
-                bytes.at(pageOffset + offset) ^ ((offset & 1) == 0 ? lowKey : highKey));
+            (*bytes)[page + offset] = char(quint8(bytes->at(page + offset)) ^ quint8(key >> ((offset & 1) * 8)));
         }
     }
-
-    if (!decryptedFile->open()) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Could not create temporary decrypted legacy Btrieve file.");
-        }
-        return false;
-    }
-
-    if (decryptedFile->write(bytes) != bytes.size()) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Could not write temporary decrypted legacy Btrieve file.");
-        }
-        return false;
-    }
-
-    decryptedFile->close();
     return true;
 }
 
@@ -418,9 +381,9 @@ bool isOccupiedOldFormatRecordSlot(const QByteArray& bytes, int offset, int phys
 }
 
 QVector<QByteArray> extractOldFormatFixedRecordsFromAudit(
-    const QString& filePath,
+    const QByteArray& bytes,
     const BtrieveAuditReader::Audit& audit,
-    QString* errorMessage)
+    ImportBudget& budget, QString* errorMessage)
 {
     QVector<QByteArray> records;
     if (audit.pageSize <= 0 || audit.physicalRecordLength <= 0 || audit.fixedRecordLength <= 0) {
@@ -430,15 +393,6 @@ QVector<QByteArray> extractOldFormatFixedRecordsFromAudit(
         return records;
     }
 
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Could not open legacy Btrieve file for raw extraction: %1").arg(filePath);
-        }
-        return records;
-    }
-
-    const QByteArray bytes = file.readAll();
     const int recordsPerPage = (audit.pageSize - 2) / audit.physicalRecordLength;
     const int recordLength = std::min(audit.fixedRecordLength, audit.physicalRecordLength);
     for (const BtrieveAuditReader::Page& page : audit.pages) {
@@ -448,12 +402,17 @@ QVector<QByteArray> extractOldFormatFixedRecordsFromAudit(
 
         const int pageOffset = static_cast<int>(page.offset);
         for (int slot = 0; slot < recordsPerPage; ++slot) {
+            if (!budget.checkpoint(quint64(audit.physicalRecordLength))) { if (errorMessage) *errorMessage = budget.error(); return {}; }
             const int recordOffset = pageOffset + OldFormatDataPageHeaderSize + slot * audit.physicalRecordLength;
             if (recordOffset < 0 || recordOffset + audit.physicalRecordLength > bytes.size()) {
                 break;
             }
             if (!isOccupiedOldFormatRecordSlot(bytes, recordOffset, audit.physicalRecordLength)) {
                 continue;
+            }
+            if (!budget.row() || !budget.decoded(quint64(recordLength)) || !budget.checkpoint(quint64(recordLength))) {
+                if (errorMessage) *errorMessage = budget.error();
+                return {};
             }
             records.append(bytes.mid(recordOffset, recordLength));
         }
@@ -470,7 +429,7 @@ void applyLegacySecurityMetadata(
     const BtrieveAuditReader::Result& audit,
     const QString& password)
 {
-    if (result == nullptr || !audit.ok() || !audit.audit.owned) {
+    if (result == nullptr || result->processingAborted || !audit.ok() || !audit.audit.owned) {
         return;
     }
 
@@ -502,7 +461,7 @@ void applyLegacySecurityMetadata(
     if (!hasPassword && !readAccessAllowed) {
         result->passwordRequired = true;
         result->errorMessage = QStringLiteral("Legacy Btrieve deck requires a password.");
-    } else if (audit.audit.ownerDataEncrypted) {
+    } else if (!passwordMatches && !readAccessAllowed) {
         result->passwordRejected = true;
         result->errorMessage = QStringLiteral(
             "Legacy Btrieve deck appears to use owner-name data encryption. "
@@ -515,95 +474,68 @@ void applyLegacySecurityMetadata(
 
 bool LegacyDeckReader::Result::ok() const
 {
-    return errorMessage.isEmpty();
+    return errorMessage.isEmpty() && !processingAborted;
 }
 
-LegacyDeckReader::Result LegacyDeckReader::readDeck(const QString& filePath, const QString& password) const
+LegacyDeckReader::Result LegacyDeckReader::readDeck(
+    const QString& filePath, const QString& password, ImportBudget* sharedBudget) const
 {
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
     Result result;
-    const BtrieveAuditReader auditReader;
-    const BtrieveAuditReader::Result audit = auditReader.readFile(filePath);
-    if (!audit.ok()) {
-        result.errorMessage = audit.errorMessage;
-        return result;
-    }
-
-    if (audit.ok() && audit.audit.owned &&
-        normalizeLegacyOwnerPassword(password).isEmpty() &&
-        !legacyOwnerReadAccessAllowed(audit.audit)) {
-        result.legacyPasswordProtected = true;
-        result.legacyDataEncrypted = audit.audit.ownerDataEncrypted;
-        result.passwordRequired = true;
-        result.errorMessage = QStringLiteral("Legacy Btrieve deck requires a password.");
-        return result;
-    }
-
-    if (audit.ok() && audit.audit.owned &&
-        !legacyOwnerPasswordMatches(audit.audit, password) &&
-        !legacyOwnerReadAccessAllowed(audit.audit)) {
-        result.legacyPasswordProtected = true;
-        result.legacyDataEncrypted = audit.audit.ownerDataEncrypted;
-        result.passwordRejected = true;
-        result.errorMessage = QStringLiteral("ACCESS DENIED: Wrong Password");
-        return result;
-    }
-
-    QTemporaryFile decryptedFile;
-    QString btrievePath = filePath;
-    if (audit.ok() && audit.audit.ownerDataEncrypted) {
-        QString decryptError;
-        if (!decryptOldFormatOwnerEncryptedBtrieveFile(filePath, audit.audit, &decryptedFile, &decryptError)) {
-            result.errorMessage = decryptError;
-            applyLegacySecurityMetadata(&result, audit, password);
+    const auto aborted = [&]() { result.processingAborted = true; result.errorMessage = budget.error(); result.rawRecords.clear(); return result; };
+    QByteArray source;
+    if (!readBoundedFile(filePath, &source, budget, &result.errorMessage))
+        return budget.failed() ? aborted() : result;
+    // The same immutable image is authenticated, decrypted and parsed. Never write decrypted pages to disk.
+    const auto wipe = qScopeGuard([&] { DeckSecurity::wipe(&source); });
+    const BtrieveAuditReader::Result audit = BtrieveAuditReader(m_limits).readBytes(source, &budget);
+    if (!audit.ok()) { result.errorMessage = audit.errorMessage; return budget.failed() ? aborted() : result; }
+    result.legacyPasswordProtected = audit.audit.owned;
+    result.legacyDataEncrypted = audit.audit.ownerDataEncrypted;
+    if (audit.audit.owned && !legacyOwnerReadAccessAllowed(audit.audit)) {
+        if (normalizeLegacyOwnerPassword(password).isEmpty()) {
+            result.passwordRequired = true;
+            result.errorMessage = QStringLiteral("Legacy Btrieve deck requires a password.");
             return result;
         }
-        btrievePath = decryptedFile.fileName();
-    }
-
-    const BtrieveFileSaverReader reader;
-    const BtrieveFileSaverReader::Result btrieve = reader.readAllRecords(btrievePath);
-    result.btrieveMetadata = btrieve.metadata;
-    result.rawRecords = btrieve.records;
-    if (!btrieve.ok()) {
-        if (audit.ok() && audit.audit.oldFormat && !audit.audit.ownerDataEncrypted) {
-            QString extractionError;
-            const QVector<QByteArray> records = extractOldFormatFixedRecordsFromAudit(filePath, audit.audit, &extractionError);
-            if (!records.isEmpty()) {
-                Result mapped = readRecords(records, QFileInfo(filePath).completeBaseName(), password);
-                mapped.rawRecords = records;
-                mapped.btrieveMetadata.pageSize = audit.audit.pageSize;
-                mapped.btrieveMetadata.fixedRecordLength = audit.audit.fixedRecordLength;
-                mapped.btrieveMetadata.internalFixedRecordLength = audit.audit.physicalRecordLength;
-                mapped.btrieveMetadata.declaredRecordCount = audit.audit.declaredRecordCount;
-                applyLegacySecurityMetadata(&mapped, audit, password);
-                if (mapped.ok()) {
-                    QString warning;
-                    PhoneCallLog::importLegacySidecar(filePath, &mapped.deck, &warning);
-                    if (!warning.isEmpty()) {
-                        mapped.warningMessages.append(warning);
-                    }
-                }
-                return mapped;
-            }
-            result.errorMessage = extractionError.isEmpty() ? btrieve.errorMessage : extractionError;
-        } else {
-            result.errorMessage = btrieve.errorMessage;
+        if (!legacyOwnerPasswordMatches(audit.audit, password)) {
+            result.passwordRejected = true;
+            result.errorMessage = QStringLiteral("ACCESS DENIED: Wrong Password");
+            return result;
         }
-        applyLegacySecurityMetadata(&result, audit, password);
-        return result;
     }
+    if (audit.audit.ownerDataEncrypted &&
+        !decryptOldFormatOwnerEncryptedBtrieveBytes(&source, audit.audit, budget, &result.errorMessage))
+        return budget.failed() ? aborted() : result;
 
-    const QString fallbackName = QFileInfo(filePath).completeBaseName();
-    Result mapped = readRecords(btrieve.records, fallbackName, password);
+    auto btrieve = BtrieveFileSaverReader(m_limits).readMemory(source, int(MaximumNativeRecordBytes), &budget);
+    if (btrieve.processingAborted || budget.failed()) return aborted();
+    if (!btrieve.ok()) {
+        // Fixed-only recovery cannot reconstruct variable fragments. Never return partial native records.
+        btrieve.records.clear();
+        if (audit.audit.oldFormat && !audit.audit.ownerDataEncrypted && !audit.audit.variableRecordsAllowed) {
+            QString recoveryError;
+            btrieve.records = extractOldFormatFixedRecordsFromAudit(source, audit.audit, budget, &recoveryError);
+            if (budget.failed()) return aborted();
+            if (btrieve.records.isEmpty()) {
+                result.errorMessage = recoveryError.isEmpty() ? btrieve.errorMessage : recoveryError;
+                return result;
+            }
+            btrieve.metadata.pageSize = audit.audit.pageSize;
+            btrieve.metadata.fixedRecordLength = audit.audit.fixedRecordLength;
+            btrieve.metadata.internalFixedRecordLength = audit.audit.physicalRecordLength;
+            btrieve.metadata.declaredRecordCount = audit.audit.declaredRecordCount;
+        } else { result.errorMessage = btrieve.errorMessage; return result; }
+    }
+    Result mapped = readRecords(btrieve.records, QFileInfo(filePath).completeBaseName(), password, &budget);
     mapped.btrieveMetadata = btrieve.metadata;
-    mapped.rawRecords = btrieve.records;
     applyLegacySecurityMetadata(&mapped, audit, password);
     if (mapped.ok()) {
         QString warning;
-        PhoneCallLog::importLegacySidecar(filePath, &mapped.deck, &warning);
-        if (!warning.isEmpty()) {
-            mapped.warningMessages.append(warning);
-        }
+        PhoneCallLog::importLegacySidecar(filePath, &mapped.deck, &warning, m_limits, &budget);
+        if (budget.failed()) return aborted();
+        if (!warning.isEmpty()) mapped.warningMessages.append(warning);
     }
     return mapped;
 }
@@ -611,30 +543,42 @@ LegacyDeckReader::Result LegacyDeckReader::readDeck(const QString& filePath, con
 LegacyDeckReader::Result LegacyDeckReader::readRecords(
     const QVector<QByteArray>& records,
     const QString& fallbackDeckName,
-    const QString& password) const
+    const QString& password, ImportBudget* sharedBudget) const
 {
     Q_UNUSED(password);
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
 
     Result result;
+    const auto abort = [&]() { result.processingAborted = true; result.errorMessage = budget.error(); result.rawRecords.clear(); return result; };
+    if (!budget.rowsFit(quint64(records.size()))) return abort();
+    for (const auto& record : records) {
+        if (!budget.cell(quint64(record.size())) || !budget.checkpoint(quint64(record.size())) ||
+            (!sharedBudget && !budget.decoded(quint64(record.size())))) return abort();
+    }
     result.rawRecords = records;
     if (records.isEmpty()) {
         result.errorMessage = QStringLiteral("Legacy Btrieve deck contains no records.");
         return result;
     }
 
-    const QByteArray* schemaRecord = findSchemaRecord(records);
+    const QByteArray* schemaRecord = findSchemaRecord(records, budget);
+    if (budget.failed()) return abort();
     if (schemaRecord == nullptr) {
         result.errorMessage = QStringLiteral("Could not locate Legacy field definitions.");
         return result;
     }
 
-    const QVector<LegacyField> fields = findFieldDefinitions(*schemaRecord);
+    const QVector<LegacyField> fields = findFieldDefinitions(*schemaRecord, budget);
+    if (budget.failed() || !budget.fields(quint64(fields.size()))) return abort();
     if (fields.isEmpty()) {
         result.errorMessage = QStringLiteral("Legacy field definition table is empty.");
         return result;
     }
 
     const auto visualTemplate = LegacyTemplateLayoutFormat::find(records, fields.size());
+    if (!budget.checkpoint()) return abort();
+    if (visualTemplate.has_value() && !budget.frames(quint64(visualTemplate->layout.frames.size()))) return abort();
     const QString deckName = readNullTerminatedOem(*schemaRecord, SchemaDeckNameOffset, SchemaDeckNameLength);
     Deck deck(deckName.isEmpty() ? fallbackDeckName : deckName);
     deck.setLegacyControlRecord(*schemaRecord);
@@ -653,19 +597,24 @@ LegacyDeckReader::Result LegacyDeckReader::readRecords(
     }
 
     const int requiredSize = minimumRecordSize(fields);
+    bool unreadableCard = false;
     for (const QByteArray& record : records) {
-        if (record == *schemaRecord || isControlRecord(record) || record.size() < requiredSize) {
+        if (record == *schemaRecord || isControlRecord(record)) continue;
+        if (record.size() < requiredSize) {
+            unreadableCard = true;
             continue;
         }
 
+        if (!budget.row() || !budget.checkpoint(quint64(record.size()))) return abort();
         CardRecord card;
         for (const LegacyField& field : fields) {
+            if (!budget.value(quint64(field.length) * sizeof(QChar))) return abort();
             card.appendValue(fieldValueFromRecord(record, field));
         }
         deck.addCard(std::move(card));
     }
 
-    if (deck.cardCount() == 0) {
+    if (deck.cardCount() == 0 && unreadableCard) {
         result.errorMessage = QStringLiteral("Legacy field definitions were found, but no card records matched them.");
         return result;
     }

@@ -40,7 +40,7 @@ constexpr int LegacyFrameCoordinateScale = 10;
 
 quint16 readU16(const QByteArray& bytes, int offset)
 {
-    if (offset < 0 || offset + 1 >= bytes.size()) {
+    if (offset < 0 || !containsByteRange(bytes.size(), quint64(offset), 2)) {
         return 0;
     }
 
@@ -76,7 +76,7 @@ bool remainingBytesAreZero(const QByteArray& bytes, int offset)
 
 bool hasMagicAt(const QByteArray& bytes, int offset, const QByteArray& magic)
 {
-    if (offset < 0 || offset + magic.size() > bytes.size()) {
+    if (offset < 0 || !containsByteRange(bytes.size(), quint64(offset), quint64(magic.size()))) {
         return false;
     }
     return bytes.mid(offset, magic.size()) == magic;
@@ -193,14 +193,14 @@ bool LegacyReportReader::Result::ok() const
 
 LegacyReportReader::Result LegacyReportReader::readFile(const QString& filePath) const
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {{}, QStringLiteral("Could not open Legacy report store: %1").arg(filePath)};
-    }
-    return readBytes(file.readAll());
+    ImportBudget budget(m_limits);
+    QByteArray bytes;
+    QString error;
+    if (!readBoundedFile(filePath, &bytes, budget, &error)) return {{}, error};
+    return readBytes(bytes, &budget);
 }
 
-LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes) const
+LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes, ImportBudget* sharedBudget) const
 {
     constexpr int PaperStyleIdOffset = 0x00bf;
     constexpr int MarginBottomOffset = 0x00c1;
@@ -213,6 +213,10 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
     constexpr int HorizontalGutterOffset = 0x03c9;
     constexpr int VerticalGutterOffset = 0x03cb;
     Result result;
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    const auto abort = [&]() { result.reports.clear(); result.errorMessage = budget.error(); return result; };
+    if (!budget.input(quint64(bytes.size())) || !budget.checkpoint(quint64(bytes.size()))) return abort();
     int offset = 0;
     while (offset < bytes.size()) {
         if (remainingBytesAreZero(bytes, offset)) {
@@ -229,7 +233,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
 
         const int headerSize = currentFormat ? CurrentHeaderSize : OldHeaderSize;
         const int coordinateScale = LegacyFrameCoordinateScale;
-        if (offset + headerSize > bytes.size()) {
+        if (!containsByteRange(bytes.size(), quint64(offset), quint64(headerSize))) {
             result.errorMessage = QStringLiteral("Truncated LegacyDeck report header at offset 0x%1.")
                                       .arg(offset, 0, 16);
             return result;
@@ -238,12 +242,13 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         const int entrySize = readU16(bytes, offset + EntrySizeOffset);
         const int frameCount = readU16(bytes, offset + FrameCountOffset);
         const int requiredSize = headerSize + frameCount * FrameRecordSize;
-        if (entrySize < requiredSize || offset + entrySize > bytes.size()) {
+        if (entrySize < requiredSize || !containsByteRange(bytes.size(), quint64(offset), quint64(entrySize))) {
             result.errorMessage = QStringLiteral("Invalid Legacy report entry size at offset 0x%1.")
                                       .arg(offset, 0, 16);
             return result;
         }
 
+        if (!budget.row() || !budget.frames(quint64(frameCount)) || !budget.decoded(quint64(entrySize) * 4)) return abort();
         ReportDefinition report;
         report.legacyOffset = offset;
         report.formatMagic = QString::fromLatin1(bytes.constData() + offset, 7);
@@ -277,6 +282,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         const int frameBase = offset + headerSize;
         report.frames.reserve(frameCount);
         for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+            if (!budget.checkpoint(FrameRecordSize)) return abort();
             report.frames.append(readFrame(bytes, frameBase + frameIndex * FrameRecordSize, coordinateScale));
         }
 

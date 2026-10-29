@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
@@ -58,12 +59,13 @@ QByteArray encodeWindows1252(const QString& text)
     return result;
 }
 
-QStringList parseCsvLine(const QString& line)
+QStringList parseCsvLine(const QString& line, ImportBudget& budget)
 {
     QStringList values;
     QString value;
     bool quoted = false;
     for (int index = 0; index < line.size(); ++index) {
+        if (!budget.checkpoint(1) || !budget.cell(quint64(value.size()) * sizeof(QChar))) return {};
         const QChar ch = line.at(index);
         if (ch == QLatin1Char('"')) {
             if (quoted && index + 1 < line.size() && line.at(index + 1) == QLatin1Char('"')) {
@@ -73,12 +75,14 @@ QStringList parseCsvLine(const QString& line)
                 quoted = !quoted;
             }
         } else if (ch == QLatin1Char(',') && !quoted) {
+            if (!budget.fields(quint64(values.size()) + 1) || !budget.value(quint64(value.size()) * sizeof(QChar))) return {};
             values.append(value);
             value.clear();
         } else {
             value.append(ch);
         }
     }
+    if (!budget.fields(quint64(values.size()) + 1) || !budget.value(quint64(value.size()) * sizeof(QChar))) return {};
     values.append(value);
     return values;
 }
@@ -95,7 +99,7 @@ QString csvValue(QString value)
     return value;
 }
 
-QString legacySidecarPath(const QString& deckFilePath)
+QString legacySidecarPath(const QString& deckFilePath, ImportBudget& budget)
 {
     const QFileInfo deckInfo(deckFilePath);
     const QDir directory = deckInfo.dir();
@@ -104,8 +108,11 @@ QString legacySidecarPath(const QString& deckFilePath)
         return expected;
     }
 
-    const QFileInfoList files = directory.entryInfoList(QDir::Files | QDir::Readable);
-    for (const QFileInfo& file : files) {
+    QDirIterator files(directory.absolutePath(), QDir::Files | QDir::Readable);
+    while (files.hasNext()) {
+        if (!budget.checkpoint(1)) return {};
+        files.next();
+        const QFileInfo file = files.fileInfo();
         if (file.completeBaseName().compare(deckInfo.completeBaseName(), Qt::CaseInsensitive) == 0
             && file.suffix().compare(QStringLiteral("log"), Qt::CaseInsensitive) == 0) {
             return file.absoluteFilePath();
@@ -116,7 +123,7 @@ QString legacySidecarPath(const QString& deckFilePath)
 
 } // namespace
 
-int importLegacyFile(const QString& logPath, Deck* deck, QString* warningMessage)
+int importLegacyFile(const QString& logPath, Deck* deck, QString* warningMessage, ImportLimits limits, ImportBudget* sharedBudget)
 {
     if (deck == nullptr) {
         if (warningMessage != nullptr) {
@@ -125,17 +132,20 @@ int importLegacyFile(const QString& logPath, Deck* deck, QString* warningMessage
         return 0;
     }
 
-    QFile file(logPath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        if (warningMessage != nullptr) {
-            *warningMessage = QStringLiteral("Could not open legacy phone log %1: %2").arg(logPath, file.errorString());
-        }
-        return 0;
-    }
-
-    int imported = 0;
-    const QList<QByteArray> lines = file.readAll().split('\n');
-    for (QByteArray bytes : lines) {
+    ImportBudget local(limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    QByteArray source;
+    if (!readBoundedFile(logPath, &source, budget, warningMessage)) return 0;
+    const auto abort = [&] { if (warningMessage) *warningMessage = budget.error(); return 0; };
+    QVector<PhoneCallLogEntry> staged;
+    qsizetype begin = 0;
+    while (begin < source.size()) {
+        qsizetype end = source.indexOf('\n', begin);
+        if (end < 0) end = source.size();
+        if (!budget.row() || !budget.cell(quint64(end - begin) * sizeof(QChar))
+            || !budget.decoded(quint64(end - begin) * 3)) return abort();
+        QByteArray bytes = source.mid(begin, end - begin);
+        begin = end == source.size() ? end : end + 1;
         if (bytes.endsWith('\r')) {
             bytes.chop(1);
         }
@@ -145,7 +155,8 @@ int importLegacyFile(const QString& logPath, Deck* deck, QString* warningMessage
 
         PhoneCallLogEntry entry;
         entry.rawLegacyBytes = bytes;
-        const QStringList values = parseCsvLine(decodeWindows1252(bytes));
+        const QStringList values = parseCsvLine(decodeWindows1252(bytes), budget);
+        if (budget.failed()) return abort();
         if (values.size() >= 2) {
             QDateTime calledAt = QDateTime::fromString(
                 values.at(0) + QLatin1Char(' ') + values.at(1),
@@ -165,19 +176,22 @@ int importLegacyFile(const QString& logPath, Deck* deck, QString* warningMessage
             }
             entry.cardSummaryValues.append(values.at(index));
         }
-        deck->addPhoneCallLogEntry(std::move(entry));
-        ++imported;
+        staged.append(std::move(entry));
     }
-    return imported;
+    for (auto& entry : staged) deck->addPhoneCallLogEntry(std::move(entry));
+    return int(staged.size());
 }
 
-int importLegacySidecar(const QString& deckFilePath, Deck* deck, QString* warningMessage)
+int importLegacySidecar(const QString& deckFilePath, Deck* deck, QString* warningMessage, ImportLimits limits, ImportBudget* sharedBudget)
 {
-    const QString logPath = legacySidecarPath(deckFilePath);
+    ImportBudget local(limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    const QString logPath = legacySidecarPath(deckFilePath, budget);
+    if (budget.failed()) { if (warningMessage) *warningMessage = budget.error(); return 0; }
     if (logPath.isEmpty()) {
         return 0;
     }
-    return importLegacyFile(logPath, deck, warningMessage);
+    return importLegacyFile(logPath, deck, warningMessage, limits, &budget);
 }
 
 bool writeLegacyFile(const Deck& deck, const QString& filePath, QString* errorMessage)

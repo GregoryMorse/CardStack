@@ -95,7 +95,7 @@ bool isOccupiedOldFormatRecordSlot(const QByteArray& bytes, int offset, int phys
     return false;
 }
 
-int occupiedFixedSlots(const QByteArray& bytes, const BtrieveAuditReader::Audit& audit)
+int occupiedFixedSlots(const QByteArray& bytes, const BtrieveAuditReader::Audit& audit, ImportBudget& budget)
 {
     if (audit.pageSize <= 0 || audit.physicalRecordLength <= 0) {
         return 0;
@@ -110,6 +110,7 @@ int occupiedFixedSlots(const QByteArray& bytes, const BtrieveAuditReader::Audit&
 
         const int pageOffset = static_cast<int>(page.offset);
         for (int slot = 0; slot < recordsPerPage; ++slot) {
+            if (!budget.checkpoint(quint64(audit.physicalRecordLength))) return 0;
             const int recordOffset = pageOffset + OldFormatDataPageHeaderSize + slot * audit.physicalRecordLength;
             if (recordOffset + audit.physicalRecordLength > bytes.size()) {
                 break;
@@ -146,19 +147,32 @@ BtrieveAuditReader::KeySpec readOldFormatKeySpec(const QByteArray& bytes, int in
 
 bool BtrieveAuditReader::Result::ok() const
 {
-    return errorMessage.isEmpty();
+    return errorMessage.isEmpty() && !processingAborted;
 }
 
-BtrieveAuditReader::Result BtrieveAuditReader::readFile(const QString& filePath) const
+BtrieveAuditReader::Result BtrieveAuditReader::readFile(const QString& filePath, ImportBudget* sharedBudget) const
 {
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    QByteArray bytes;
     Result result;
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        result.errorMessage = QStringLiteral("Could not open Btrieve file: %1").arg(filePath);
+    if (!readBoundedFile(filePath, &bytes, budget, &result.errorMessage)) {
+        result.processingAborted = budget.failed();
         return result;
     }
+    return readBytes(bytes, &budget);
+}
 
-    const QByteArray bytes = file.readAll();
+BtrieveAuditReader::Result BtrieveAuditReader::readBytes(const QByteArray& bytes, ImportBudget* sharedBudget) const
+{
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    Result result;
+    if (!budget.input(quint64(bytes.size())) || !budget.checkpoint(quint64(bytes.size()))) {
+        result.processingAborted = true;
+        result.errorMessage = budget.error();
+        return result;
+    }
     if (bytes.size() < FcrMinimumSize) {
         result.errorMessage = QStringLiteral("File is too small to contain a Btrieve FCR.");
         return result;
@@ -182,7 +196,13 @@ BtrieveAuditReader::Result BtrieveAuditReader::readFile(const QString& filePath)
     audit.keyCount = readU16(bytes, 0x14);
     audit.fixedRecordLength = readU16(bytes, 0x16);
     audit.physicalRecordLength = readU16(bytes, 0x18);
-    audit.declaredRecordCount = static_cast<int>(readWordSwappedU32(bytes, 0x1a));
+    const quint32 recordCount = readWordSwappedU32(bytes, 0x1a);
+    if (!budget.rowsFit(recordCount) || !budget.fields(audit.keyCount)) {
+        result.processingAborted = true;
+        result.errorMessage = budget.error();
+        return result;
+    }
+    audit.declaredRecordCount = int(recordCount);
     audit.consistentFlag = readU16(bytes, 0x22);
     audit.variableRecordsAllowed = static_cast<quint8>(bytes.at(0x38)) != 0;
     audit.acsName = readFixedAscii(bytes, 0x3c, 8);
@@ -219,6 +239,11 @@ BtrieveAuditReader::Result BtrieveAuditReader::readFile(const QString& filePath)
             page.type = PageType::Data;
             page.usageCount = static_cast<quint16>(page.usageCount & ~OldFormatDataPageFlag);
         }
+        if (!budget.checkpoint(1) || !budget.decoded(sizeof(Page))) {
+            result.processingAborted = true;
+            result.errorMessage = budget.error();
+            return result;
+        }
         audit.pages.append(page);
     }
 
@@ -231,7 +256,8 @@ BtrieveAuditReader::Result BtrieveAuditReader::readFile(const QString& filePath)
         audit.keySpecs.append(readOldFormatKeySpec(bytes, index));
     }
 
-    audit.occupiedFixedRecordSlots = occupiedFixedSlots(bytes, audit);
+    audit.occupiedFixedRecordSlots = occupiedFixedSlots(bytes, audit, budget);
+    if (budget.failed()) { result.processingAborted = true; result.errorMessage = budget.error(); return result; }
     result.audit = audit;
     return result;
 }

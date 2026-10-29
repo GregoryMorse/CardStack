@@ -2,6 +2,7 @@
 #include "ApplicationAppearance.h"
 #include "DocumentFile.h"
 #include "BtrieveFileSaverReader.h"
+#include "LegacyInterchangeReader.h"
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #endif
@@ -19,6 +20,7 @@
 
 #include "support/VisualTestSupport.h"
 
+int runImportSecurityTests(int argc, char** argv);
 int runFocusedAuditRegressionTests(int argc, char** argv);
 int runMainWindowActionTests(int argc, char** argv);
 int runMainWindowWorkflowTests(int argc, char** argv);
@@ -52,6 +54,7 @@ QVector<TestEntry> testEntries()
         {"MainWindowActionTests", runMainWindowActionTests},
         {"MainWindowWorkflowTests", runMainWindowWorkflowTests},
         {"FocusedAuditRegressionTests", runFocusedAuditRegressionTests},
+        {"ImportSecurityTests", runImportSecurityTests},
         {"DeckMergeTests", runDeckMergeTests},
         {"DelimitedTextTests", runDelimitedTextTests},
         {"PhoneCallLogTests", runPhoneCallLogTests},
@@ -104,6 +107,23 @@ void cleanupTopLevelWidgets()
 int main(int argc, char** argv)
 {
     qputenv("QT_LOGGING_RULES", "qt.qpa.*=false");
+    if (argc == 3 && (QString::fromLocal8Bit(argv[1]) == QLatin1String("--security-interchange")
+                     || QString::fromLocal8Bit(argv[1]) == QLatin1String("--security-native"))) {
+#ifdef Q_OS_WIN
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
+        QCoreApplication core(argc, argv);
+        CardStack::ImportLimits limits;
+        limits.maximumInputBytes = CardStack::ImportMebibyte;
+        limits.maximumDecodedBytes = CardStack::ImportMebibyte;
+        limits.maximumWorkUnits = 2 * CardStack::ImportMebibyte;
+        limits.maximumMilliseconds = 250;
+        const QString path = QString::fromLocal8Bit(argv[2]);
+        const bool ok = QString::fromLocal8Bit(argv[1]) == QLatin1String("--security-interchange")
+            ? CardStack::LegacyInterchangeReader(limits).readFile(path).ok()
+            : CardStack::BtrieveFileSaverReader(limits).readAllRecords(path).ok();
+        return ok ? 0 : 7;
+    }
     if (argc == 3 && (QString::fromLocal8Bit(argv[1]) == QLatin1String("--read-native-btrieve")
                      || QString::fromLocal8Bit(argv[1]) == QLatin1String("--unsafe-zero-page"))) {
 #ifdef Q_OS_WIN

@@ -6,6 +6,7 @@ set(CARDSTACK_TEST_SOURCES
     app/MainWindowActionTests.cpp
     app/MainWindowWorkflowTests.cpp
     app/FocusedAuditRegressionTests.cpp
+    security/ImportSecurityTests.cpp
     core/DeckMergeTests.cpp
     core/DelimitedTextTests.cpp
     core/PhoneCallLogTests.cpp
@@ -52,6 +53,16 @@ target_link_libraries(CardStackTests
         Qt6::Test
 )
 
+if(TARGET btrievefilesaver_gpl)
+    target_link_libraries(CardStackTests PRIVATE btrievefilesaver_gpl)
+    target_compile_definitions(CardStackTests PRIVATE CARDSTACK_TEST_NATIVE_BTRIEVE)
+    add_executable(BtrieveMemoryInputTests "${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code/tests/memory_input_test.c")
+    target_link_libraries(BtrieveMemoryInputTests PRIVATE btrievefilesaver_gpl)
+    add_dependencies(CardStackTests BtrieveMemoryInputTests)
+    add_test(NAME BtrieveMemoryInputTests COMMAND BtrieveMemoryInputTests "${CMAKE_CURRENT_BINARY_DIR}/memory-input-test.btr")
+    set_tests_properties(BtrieveMemoryInputTests PROPERTIES TIMEOUT 10)
+endif()
+
 set_target_properties(CardStackTests PROPERTIES
     WIN32_EXECUTABLE OFF
 )
@@ -60,6 +71,7 @@ set(CARDSTACK_TEST_SUITE_NAMES
     MainWindowActionTests
     MainWindowWorkflowTests
     FocusedAuditRegressionTests
+    ImportSecurityTests
     DeckMergeTests
     DelimitedTextTests
     PhoneCallLogTests

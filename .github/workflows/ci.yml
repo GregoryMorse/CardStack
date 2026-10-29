@@ -39,14 +39,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Verify BtrieveFileSaver PR revision
+      - name: Verify pinned BtrieveFileSaver revision
         shell: bash
         run: |
           submodule_path="third_party/BtrieveFileSaver-Code"
-          submodule_name="third_party/BtrieveFileSaver-Code"
-          remote_url="$(git config -f .gitmodules --get "submodule.${submodule_name}.url")"
-          remote_branch="$(git config -f .gitmodules --get "submodule.${submodule_name}.branch")"
-          expected_revision="$(git ls-remote "$remote_url" "refs/heads/$remote_branch" | cut -f1)"
+          expected_revision="$(git rev-parse "HEAD:$submodule_path")"
           actual_revision="$(git -C "$submodule_path" rev-parse HEAD)"
           test -n "$expected_revision"
           test "$actual_revision" = "$expected_revision"
@@ -117,4 +114,47 @@ jobs:
           path: |
             build/tests/*.txt
             build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  sanitizers:
+    name: Ubuntu Clang ASan and UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+      - name: Configure instrumented build
+        env:
+          CC: clang
+          CXX: clang++
+        run: >
+          cmake -S . -B build-sanitized -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DQt6_DIR="$Qt6_DIR"
+          -DCARDSTACK_ENABLE_SANITIZERS=ON
+          -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
+      - name: Build instrumented tests
+        run: cmake --build build-sanitized --target CardStackTests --parallel 2
+      - name: Run instrumented import and persistence regressions
+        run: ctest --test-dir build-sanitized --output-on-failure -R 'ImportSecurityTests|Legacy.*ReaderTests|Btrieve.*Tests|SQLite.*StoreTests|DelimitedTextTests|PhoneCallLogTests'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      - name: Upload sanitizer diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitizer-logs
+          path: |
+            build-sanitized/tests/*.txt
+            build-sanitized/Testing/Temporary/LastTest.log
           if-no-files-found: ignore

@@ -33,14 +33,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Verify BtrieveFileSaver PR revision
+      - name: Verify pinned BtrieveFileSaver revision
         shell: bash
         run: |
           submodule_path="third_party/BtrieveFileSaver-Code"
-          submodule_name="third_party/BtrieveFileSaver-Code"
-          remote_url="$(git config -f .gitmodules --get "submodule.${submodule_name}.url")"
-          remote_branch="$(git config -f .gitmodules --get "submodule.${submodule_name}.branch")"
-          expected_revision="$(git ls-remote "$remote_url" "refs/heads/$remote_branch" | cut -f1)"
+          expected_revision="$(git rev-parse "HEAD:$submodule_path")"
           actual_revision="$(git -C "$submodule_path" rev-parse HEAD)"
           test -n "$expected_revision"
           test "$actual_revision" = "$expected_revision"
@@ -195,8 +192,12 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          assets=(dist/CardStack-windows-x64.zip dist/CardStack-linux-x64.zip dist/CardStack-macos.zip)
+          for asset in "${assets[@]}"; do
+            test -s "$asset"
+          done
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/* --clobber
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
           else
-            gh release create "$TAG_NAME" dist/* --title "$TAG_NAME" --generate-notes
+            gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --generate-notes --draft
           fi

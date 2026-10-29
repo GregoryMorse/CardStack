@@ -1392,9 +1392,12 @@ private slots:
         replaceAction->trigger();
         QCoreApplication::processEvents();
 
-        QCOMPARE(workspace->deck().cardAt(0).valueAt(1), QStringLiteral("Blue"));
+        QCOMPARE(workspace->deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(workspace->deck().cardAt(0).valueAt(1), QStringLiteral("Warm"));
+        QCOMPARE(workspace->deck().cardAt(1).valueAt(0), QStringLiteral("Beta"));
         QCOMPARE(workspace->deck().cardAt(1).valueAt(1), QStringLiteral("Warm"));
-        QCOMPARE(workspace->deck().cardAt(2).valueAt(1), QStringLiteral("Warm"));
+        QCOMPARE(workspace->deck().cardAt(2).valueAt(0), QStringLiteral("Charlie"));
+        QCOMPARE(workspace->deck().cardAt(2).valueAt(1), QStringLiteral("Blue"));
     }
 
     void designFromScratchCreatesDeckOnlyAfterDesignerClose()

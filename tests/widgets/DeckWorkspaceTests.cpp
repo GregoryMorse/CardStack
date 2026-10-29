@@ -401,12 +401,12 @@ private slots:
         workspace.smartPaste();
 
         QCOMPARE(workspace.deck().cardCount(), 3);
-        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Gamma"));
-        QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("One"));
-        QCOMPARE(workspace.deck().cardAt(1).valueAt(0), QStringLiteral("Delta"));
-        QCOMPARE(workspace.deck().cardAt(1).valueAt(1), QStringLiteral("Two"));
-        QCOMPARE(workspace.deck().cardAt(2).valueAt(0), QStringLiteral("Epsilon"));
-        QCOMPARE(workspace.deck().cardAt(2).valueAt(1), QStringLiteral("Three"));
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Delta"));
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("Two"));
+        QCOMPARE(workspace.deck().cardAt(1).valueAt(0), QStringLiteral("Epsilon"));
+        QCOMPARE(workspace.deck().cardAt(1).valueAt(1), QStringLiteral("Three"));
+        QCOMPARE(workspace.deck().cardAt(2).valueAt(0), QStringLiteral("Gamma"));
+        QCOMPARE(workspace.deck().cardAt(2).valueAt(1), QStringLiteral("One"));
 
         QVERIFY(workspace.undo());
         QCOMPARE(workspace.deck().cardCount(), 1);
@@ -427,10 +427,10 @@ private slots:
         workspace.smartPaste();
 
         QCOMPARE(workspace.deck().cardCount(), 2);
-        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
-        QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("Long fir"));
-        QCOMPARE(workspace.deck().cardAt(1).valueAt(0), QString());
-        QCOMPARE(workspace.deck().cardAt(1).valueAt(1), QStringLiteral("Second n"));
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QString());
+        QCOMPARE(workspace.deck().cardAt(0).valueAt(1), QStringLiteral("Second n"));
+        QCOMPARE(workspace.deck().cardAt(1).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(workspace.deck().cardAt(1).valueAt(1), QStringLiteral("Long fir"));
         QVERIFY(workspace.canUndo());
 
         QVERIFY(workspace.undo());

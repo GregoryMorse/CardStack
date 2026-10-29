@@ -16,6 +16,7 @@
 #include "ReportPreviewDialog.h"
 #include "ReportPrintEngine.h"
 #include "ReportPreviewRenderer.h"
+#include "ReportTextLayout.h"
 #include "ReportStyleCatalog.h"
 #include "UiBuilder.h"
 #include "SQLiteDeckStore.h"
@@ -43,6 +44,7 @@
 #include <QFileInfo>
 #include <QEventLoop>
 #include <QFontDialog>
+#include <QFontInfo>
 #include <QFocusEvent>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -81,6 +83,7 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
+#include <QScopedValueRollback>
 #include <QSize>
 #include <QSizePolicy>
 #include <QSignalBlocker>
@@ -1060,13 +1063,15 @@ void fitNewReportFramesToForm(ReportDefinition* report)
         return;
     }
     const int inset = std::clamp(std::min(report->formWidth, report->formHeight) / 20, 40, 500);
-    const int frameHeight = std::clamp(report->formHeight / 18, 120, 360);
     const int frameWidth = std::max(200, report->formWidth - inset * 2);
     int top = inset;
-    report->frames[0].bounds = QRect(inset, top, frameWidth, frameHeight);
-    if (report->frames.size() > 1) {
+    for (ReportFrameDefinition& frame : report->frames) {
+        const auto& font = frame.kind == ReportFrameKind::Data ? report->dataFont : report->textFont;
+        const int lineHeight = qCeil(QFontMetricsF(ReportTextLayout::font(font, frame.styleFlags)).height());
+        const int preferredHeight = std::max(std::clamp(report->formHeight / 18, 120, 360), lineHeight);
+        const int frameHeight = std::min(preferredHeight, std::max(1, report->formHeight - inset - top));
+        frame.bounds = QRect(inset, top, frameWidth, frameHeight);
         top += frameHeight + std::max(40, frameHeight / 2);
-        report->frames[1].bounds = QRect(inset, top, frameWidth, frameHeight);
     }
 }
 
@@ -1785,7 +1790,14 @@ MainWindow::MainWindow(QWidget* parent, bool openInitialSample, bool restorePrev
     m_mdiArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_mdiArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setCentralWidget(m_mdiArea);
-    connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this]() {
+    connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this](QMdiSubWindow* active) {
+        const auto* workspace = active ? qobject_cast<DeckWorkspace*>(active->widget()) : nullptr;
+        if (QMdiSubWindow* designer = templateDesignerWindowFor(workspace)) {
+            active->hide();
+            designer->show();
+            m_mdiArea->setActiveSubWindow(designer);
+            return;
+        }
         refreshMenuForActiveWindow();
         rebuildDesignerPropertyToolbar();
         updateCommandState();
@@ -2096,6 +2108,16 @@ void MainWindow::updateToolbarCardPosition()
             .arg(workspace->deck().cardCount()));
 }
 
+QMdiSubWindow* MainWindow::templateDesignerWindowFor(const DeckWorkspace* workspace) const
+{
+    if (workspace == nullptr) return nullptr;
+    for (QMdiSubWindow* candidate : m_mdiArea->subWindowList()) {
+        if (qobject_cast<TemplateDesignerWidget*>(candidate->widget())
+            && designerOwner(candidate->widget()) == workspace) return candidate;
+    }
+    return nullptr;
+}
+
 void MainWindow::updateWindowMenuEntries()
 {
     QMenu* windowMenu = nullptr;
@@ -2123,7 +2145,11 @@ void MainWindow::updateWindowMenuEntries()
         }
     }
 
-    const QList<QMdiSubWindow*> windows = m_mdiArea->subWindowList(QMdiArea::CreationOrder);
+    QList<QMdiSubWindow*> windows;
+    for (QMdiSubWindow* candidate : m_mdiArea->subWindowList(QMdiArea::CreationOrder)) {
+        if (!templateDesignerWindowFor(qobject_cast<DeckWorkspace*>(candidate->widget())))
+            windows.append(candidate);
+    }
     if (windows.isEmpty()) {
         return;
     }
@@ -2142,7 +2168,7 @@ void MainWindow::updateWindowMenuEntries()
         action->setCheckable(true);
         action->setChecked(subWindow == activeWindow);
         action->setProperty("cardstackDynamicWindowAction", true);
-        connect(action, &QAction::triggered, this, [this, subWindow]() {
+        connect(action, &QAction::triggered, this, [this, subWindow = QPointer<QMdiSubWindow>(subWindow)]() {
             if (subWindow != nullptr) {
                 subWindow->show();
                 m_mdiArea->setActiveSubWindow(subWindow);
@@ -2150,6 +2176,19 @@ void MainWindow::updateWindowMenuEntries()
             }
         });
     }
+}
+
+void MainWindow::showNewSubWindow(QMdiSubWindow* subWindow)
+{
+    subWindow->show();
+    // The main layout has no usable viewport during constructor-time deck creation.
+    if (!isVisible()) return;
+    const QRect available = m_mdiArea->viewport()->rect();
+    if (available.isEmpty()) return;
+    subWindow->resize(subWindow->size().boundedTo(available.size()));
+    subWindow->move(
+        std::clamp(subWindow->x(), available.left(), std::max(available.left(), available.right() - subWindow->width() + 1)),
+        std::clamp(subWindow->y(), available.top(), std::max(available.top(), available.bottom() - subWindow->height() + 1)));
 }
 
 void MainWindow::configureSubWindowSystemMenu(QMdiSubWindow* subWindow)
@@ -3282,6 +3321,18 @@ void MainWindow::handleFindCommand()
     updateCommandState();
 }
 
+bool MainWindow::findNextWithWrap(DeckWorkspace* workspace, const DeckWorkspace::SearchRequest& request)
+{
+    if (workspace->findNext(request)) return true;
+    const bool backward = request.direction == DeckWorkspace::SearchDirection::BackwardFromCurrent;
+    const QString question = backward
+        ? tr("Do you want to continue searching\nat the end of the deck?")
+        : tr("Do you want to continue searching\nat the beginning of the deck?");
+    if (QMessageBox::question(this, tr("Find"), question, QMessageBox::Yes | QMessageBox::No,
+                             QMessageBox::Yes) != QMessageBox::Yes) return false;
+    return workspace->findNext(request, true);
+}
+
 void MainWindow::handleFindNextCommand()
 {
     DeckWorkspace* workspace = activeDeckWorkspace();
@@ -3290,7 +3341,7 @@ void MainWindow::handleFindNextCommand()
         return;
     }
 
-    if (workspace->findNext()) {
+    if (findNextWithWrap(workspace, workspace->lastSearchRequest())) {
         statusBar()->showMessage(tr("Next match found."), StatusMessageTimeoutMs);
     } else {
         QMessageBox::information(this, tr("CardStack"), tr("No further matching card was found."));
@@ -3311,6 +3362,11 @@ void MainWindow::handleReplaceCommand()
         return;
     }
 
+    workspace->commitPendingEdits();
+    const auto updateCurrentData = [workspace, target = dialog.get()] {
+        setEditText(*target, Control::ReplaceCurrentData, workspace->currentFieldValue());
+    };
+    updateCurrentData();
     dialog->setProperty("replaceCommand", QStringLiteral("replaceCurrent"));
     if (auto* replaceAllButton = uiControl<QAbstractButton>(*dialog, Control::SearchDirectionBeginning)) {
         connect(replaceAllButton, &QAbstractButton::clicked, dialog.get(), [dialog = dialog.get()]() {
@@ -3319,21 +3375,23 @@ void MainWindow::handleReplaceCommand()
         });
     }
     if (auto* findNextButton = uiControl<QAbstractButton>(*dialog, Control::SearchDirectionForward)) {
-        connect(findNextButton, &QAbstractButton::clicked, dialog.get(), [this, workspace, dialog = dialog.get()]() {
+        connect(findNextButton, &QAbstractButton::clicked, dialog.get(), [this, workspace, updateCurrentData, dialog = dialog.get()]() {
             DeckWorkspace::SearchRequest request = searchRequestFromDialog(*dialog);
             request.direction = DeckWorkspace::SearchDirection::ForwardFromCurrent;
-            if (!workspace->find(request)) {
+            if (!findNextWithWrap(workspace, request)) {
                 QMessageBox::information(this, tr("CardStack"), tr("No further matching card was found."));
             }
+            updateCurrentData();
         });
     }
     if (auto* findPreviousButton = uiControl<QAbstractButton>(*dialog, Control::SearchDirectionBackward)) {
-        connect(findPreviousButton, &QAbstractButton::clicked, dialog.get(), [this, workspace, dialog = dialog.get()]() {
+        connect(findPreviousButton, &QAbstractButton::clicked, dialog.get(), [this, workspace, updateCurrentData, dialog = dialog.get()]() {
             DeckWorkspace::SearchRequest request = searchRequestFromDialog(*dialog);
             request.direction = DeckWorkspace::SearchDirection::BackwardFromCurrent;
-            if (!workspace->find(request)) {
+            if (!findNextWithWrap(workspace, request)) {
                 QMessageBox::information(this, tr("CardStack"), tr("No previous matching card was found."));
             }
+            updateCurrentData();
         });
     }
 
@@ -3989,9 +4047,11 @@ void MainWindow::handleReportDesignerCommand(int commandId)
                     fields->clear();
                     fields->addItems(designer->fieldNames());
                     const int currentIndex = fields->findText(frame.fieldPlaceholders.value(0), Qt::MatchFixedString);
-                    if (currentIndex >= 0) {
-                        fields->setCurrentIndex(currentIndex);
-                    }
+                    fields->setCurrentIndex(currentIndex);
+                    // Preserve an expression unless the user explicitly chooses a field.
+                    dialog->setProperty("dataFrameFieldChanged", false);
+                    connect(fields, qOverload<int>(&QComboBox::activated), dialog.get(),
+                        [target = dialog.get()](int) { target->setProperty("dataFrameFieldChanged", true); });
                 }
                 setChecked(*dialog, Control::DataFramePrintEntireContents, frame.printEntireContentsFlag != 0);
                 initializeFrameStyleDialog(*dialog, frame.styleFlags);
@@ -4028,7 +4088,8 @@ void MainWindow::handleReportDesignerCommand(int commandId)
             QString text = frame.text;
             if (frame.kind == ReportFrameKind::Text) {
                 text = editText(*dialog, Control::FrameText);
-            } else if (frame.kind == ReportFrameKind::Data) {
+            } else if (frame.kind == ReportFrameKind::Data
+                       && dialog->property("dataFrameFieldChanged").toBool()) {
                 text = QStringLiteral("[%1]").arg(comboText(*dialog, Control::DataFrameFieldList));
             } else if (frame.kind == ReportFrameKind::SystemText) {
                 text = tokenForSystemBoxDialog(*dialog);
@@ -4045,24 +4106,25 @@ void MainWindow::handleReportDesignerCommand(int commandId)
     case Command::ConfigureTextFont: {
         const bool dataFont = commandId == Command::ConfigureDataFont;
         const ReportFontDefinition current = dataFont ? designer->report().dataFont : designer->report().textFont;
-        QFont initial(current.faceName);
-        if (current.legacyHeight != 0) {
-            initial.setPointSizeF(std::max(1.0, std::abs(current.legacyHeight) / 10.0));
-        }
-        bool accepted = false;
-        const QFont selected = QFontDialog::getFont(
-            &accepted,
-            initial,
-            this,
-            dataFont ? tr("Report Data Font") : tr("Report Text Font"));
-        if (accepted) {
+        QFont initial = ReportTextLayout::font(current, 0);
+        initial.setFamily(QFontInfo(initial).family());
+        initial.setPointSizeF(initial.pixelSize() * 72.0 / ReportTextLayout::UnitsPerInch);
+        QFontDialog fontDialog(initial, this);
+        fontDialog.setWindowTitle(dataFont ? tr("Report Data Font") : tr("Report Text Font"));
+        // Font substitution may normalize an unavailable face/style. Compare
+        // against what the chooser actually offered, not the stored descriptor.
+        const QFont dialogInitial = fontDialog.currentFont();
+        if (fontDialog.exec() == QDialog::Accepted) {
+            const QFont selected = fontDialog.selectedFont();
             ReportFontDefinition font = current;
-            font.faceName = selected.family();
-            font.legacyHeight = -std::max(10, qRound(selected.pointSizeF() * 10.0));
-            font.weight = selected.weight();
-            font.italic = selected.italic();
-            font.underline = selected.underline();
-            font.strikeOut = selected.strikeOut();
+            const bool familyChanged = selected.family() != dialogInitial.family();
+            if (familyChanged) font.faceName = selected.family();
+            if (std::abs(selected.pointSizeF() - dialogInitial.pointSizeF()) > 0.01)
+                font.legacyHeight = -std::max(10, qRound(selected.pointSizeF() * 10.0));
+            if (familyChanged || selected.weight() != dialogInitial.weight()) font.weight = selected.weight();
+            if (familyChanged || selected.italic() != dialogInitial.italic()) font.italic = selected.italic();
+            if (selected.underline() != dialogInitial.underline()) font.underline = selected.underline();
+            if (selected.strikeOut() != dialogInitial.strikeOut()) font.strikeOut = selected.strikeOut();
             designer->setReportFont(dataFont, std::move(font));
         }
         return;
@@ -4373,35 +4435,29 @@ void MainWindow::handleSecurityCommand()
 
 void MainWindow::handleDeckDescriptionCommand()
 {
-    DeckWorkspace* workspace = activeDeckWorkspace();
-    const bool editingTemplate = workspace == nullptr && activeTemplateDesigner() != nullptr;
-    if (editingTemplate) {
-        workspace = designerOwner(activeTemplateDesigner());
-    }
-    if (workspace == nullptr) {
+    TemplateDesignerWidget* designer = activeTemplateDesigner();
+    DeckWorkspace* workspace = designer ? designerOwner(designer) : activeDeckWorkspace();
+    const auto draft = designer ? m_templateDrafts.value(designer) : nullptr;
+    if (workspace == nullptr && !draft) {
         statusBar()->showMessage(tr("No active deck."), StatusMessageTimeoutMs);
         return;
     }
 
     UiBuilder::DialogContext context = dialogContext();
-    context.deckName = deckDescriptionDisplayPath(workspace);
-    context.deckDescription = workspace->deck().description();
-    std::unique_ptr<QDialog> dialog =
-        UiBuilder::createDialog(QStringLiteral("CHANGEDESC"), this, context);
+    context.deckName = workspace ? deckDescriptionDisplayPath(workspace) : draft->name();
+    context.deckDescription = designer ? designer->description() : workspace->deck().description();
+    std::unique_ptr<QDialog> dialog = UiBuilder::createDialog(QStringLiteral("CHANGEDESC"), this, context);
     if (!dialog) {
         statusBar()->showMessage(tr("Deck description dialog is not available."), StatusMessageTimeoutMs);
         return;
     }
-
-    if (dialog->exec() != QDialog::Accepted) {
-        return;
-    }
-
+    if (dialog->exec() != QDialog::Accepted) return;
     const auto* description = uiControl<QLineEdit>(*dialog, Control::DeckDescriptionText);
-    workspace->setDeckDescription(description == nullptr ? QString() : description->text());
-    statusBar()->showMessage(
-        editingTemplate ? tr("Template description changed.") : tr("Deck description changed."),
-        StatusMessageTimeoutMs);
+    const QString text = description ? description->text() : QString();
+    if (designer) designer->setDescription(text);
+    else workspace->setDeckDescription(text);
+    statusBar()->showMessage(designer ? tr("Template description changed.") : tr("Deck description changed."),
+                             StatusMessageTimeoutMs);
 }
 
 bool MainWindow::verifyNewSecurityPassword(const QString& password)
@@ -5334,11 +5390,11 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         setEditText(*defineDialog, Control::DefineFormRows,
                     selectedType == ReportFormType::Report
                         ? QString::number((report->headerHeight > 0 ? report->headerHeight : DefaultReportBandHeightMils) / 1000.0, 'f', 2)
-                        : QString::number(std::max(1, selectedPreset.rows)));
+                        : QString::number(std::max(1, selectedPreset.columns)));
         setEditText(*defineDialog, Control::DefineFormColumns,
                     selectedType == ReportFormType::Report
                         ? QString::number((report->footerHeight > 0 ? report->footerHeight : DefaultReportBandHeightMils) / 1000.0, 'f', 2)
-                        : QString::number(std::max(1, selectedPreset.columns)));
+                        : QString::number(std::max(1, selectedPreset.rows)));
         if (auto* paperSize = uiControl<QComboBox>(*defineDialog, Control::DefineFormPageSize)) {
             paperSize->clear();
             for (const ReportFormPreset& paper : reportFormPresets(ReportFormType::Report)) {
@@ -5707,8 +5763,10 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         }
         preset.formWidth = geometry.formWidth;
         preset.formHeight = geometry.formHeight;
-        preset.rows = geometry.rows;
-        preset.columns = geometry.columns;
+        // Stored reports count across in rows and down in columns.
+        // The dialog and geometry helper use conventional row/column axes.
+        preset.rows = geometry.columns;
+        preset.columns = geometry.rows;
         preset.marginLeft = formMeasureValue(*defineDialog, Control::DefineFormMarginLeft, 0);
         preset.marginTop = formMeasureValue(*defineDialog, Control::DefineFormMarginTop, 0);
         preset.marginRight = formMeasureValue(*defineDialog, Control::DefineFormMarginRight, 0);
@@ -6519,6 +6577,7 @@ bool MainWindow::exportTemplatePackageFromDesigner(TemplateDesignerWidget* desig
     }
 
     Deck templateDeck = owner != nullptr ? owner->deck() : *draft;
+    templateDeck.setDescription(designer->description());
     templateDeck.setFields(designer->fieldDefinitions());
     templateDeck.setCardTemplateLayout(designer->layoutDefinition());
     templateDeck.setAppearance(designer->appearance());
@@ -6613,19 +6672,18 @@ bool MainWindow::confirmCloseDeckWindow(QMdiSubWindow* subWindow)
 
 bool MainWindow::closeAllSubWindowsWithPrompts()
 {
-    QList<QPointer<QMdiSubWindow>> windows;
-    for (QMdiSubWindow* window : m_mdiArea->subWindowList(QMdiArea::CreationOrder)) windows.append(window);
-    for (const QPointer<QMdiSubWindow>& window : windows) {
-        if (window == nullptr) continue;
-        QPointer<QMdiSubWindow> guard(window);
+    if (m_closingAllWindows) return false;
+    QScopedValueRollback<bool> closingGuard(m_closingAllWindows, true);
+    // Closing a draft may create a deck. That new window needs its own save
+    // decision before Close All or application exit can succeed.
+    while (!m_mdiArea->subWindowList(QMdiArea::CreationOrder).isEmpty()) {
+        QPointer<QMdiSubWindow> window = m_mdiArea->subWindowList(QMdiArea::CreationOrder).first();
         m_mdiArea->setActiveSubWindow(window);
-        window->close();
+        if (!window->close()) return false;
         QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        if (guard != nullptr && m_mdiArea->subWindowList().contains(guard.data())) {
-            return false;
-        }
+        if (window != nullptr && m_mdiArea->subWindowList().contains(window.data())) return false;
     }
     return true;
 }
@@ -7139,7 +7197,7 @@ DeckWorkspace* MainWindow::openDeckWindow(const Deck& deck, const QString& fileP
     updateDeckWindowTitle(subWindow, workspace);
     subWindow->resize(860, 420);
     configureSubWindowSystemMenu(subWindow);
-    subWindow->show();
+    showNewSubWindow(subWindow);
     connect(workspace, &DeckWorkspace::dirtyChanged, subWindow, [this, subWindow, workspace](bool) {
         updateDeckWindowTitle(subWindow, workspace);
         updateWindowMenuEntries();
@@ -7194,7 +7252,7 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
     subWindow->setWindowTitle(report.name.trimmed().isEmpty() ? tr("Untitled Report") : report.name);
     subWindow->resize(ReportDesignerWindowWidthPx, ReportDesignerWindowHeightPx);
     configureSubWindowSystemMenu(subWindow);
-    subWindow->show();
+    showNewSubWindow(subWindow);
 
     connect(designer, &ReportDesignerWidget::dirtyChanged, subWindow, [this, subWindow, designer](bool dirty) {
         const QString name = designer->report().name.trimmed().isEmpty()
@@ -7252,6 +7310,12 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
         return;
     }
 
+    if (QMdiSubWindow* existing = templateDesignerWindowFor(workspace)) {
+        existing->show();
+        m_mdiArea->setActiveSubWindow(existing);
+        return;
+    }
+
     QPointer<QMdiSubWindow> ownerSubWindow;
     for (QMdiSubWindow* candidate : m_mdiArea->subWindowList()) {
         if (candidate->widget() == workspace) {
@@ -7261,7 +7325,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
     }
 
     auto* designer = new TemplateDesignerWidget(
-        workspace->deck().cardTemplateLayout(), workspace->deck().fields(), nullptr, workspace->deck().appearance());
+workspace->deck().cardTemplateLayout(), workspace->deck().fields(), nullptr, workspace->deck().appearance(), workspace->deck().description());
     trackDesignerOwner(designer, workspace);
     designer->setProperty("ownerDeckWorkspace", QVariant::fromValue<QObject*>(workspace));
     designer->setProperty("ownerDeckSubWindow", QVariant::fromValue<QObject*>(ownerSubWindow.data()));
@@ -7278,7 +7342,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
     if (ownerSubWindow != nullptr) {
         ownerSubWindow->hide();
     }
-    subWindow->show();
+    showNewSubWindow(subWindow);
 
     connect(designer, &TemplateDesignerWidget::dirtyChanged, subWindow, [this, subWindow, deckName](bool dirty) {
         subWindow->setWindowTitle(dirty
@@ -7315,6 +7379,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
             designer->markDirty();
             return;
         }
+        owner->setDeckDescription(designer->description());
         owner->setCardTemplateLayout(layout);
         owner->applyAppearance(designer->appearance());
         const QString filePath = owner->property("cardstackFilePath").toString();
@@ -7359,7 +7424,7 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
 {
     auto draftDeck = std::make_shared<Deck>(std::move(deck));
     auto* designer = new TemplateDesignerWidget(
-        draftDeck->cardTemplateLayout(), draftDeck->fields(), nullptr, draftDeck->appearance());
+draftDeck->cardTemplateLayout(), draftDeck->fields(), nullptr, draftDeck->appearance(), draftDeck->description());
     designer->setProperty("draftTemplateDesigner", true);
     m_templateDrafts.insert(designer, draftDeck);
 
@@ -7372,7 +7437,7 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
     subWindow->setWindowTitle(tr("%1 Template Design").arg(deckName));
     subWindow->resize(TemplateDesignerWindowWidthPx, TemplateDesignerWindowHeightPx);
     configureSubWindowSystemMenu(subWindow);
-    subWindow->show();
+    showNewSubWindow(subWindow);
 
     connect(designer, &TemplateDesignerWidget::dirtyChanged, subWindow, [this, subWindow, deckName](bool dirty) {
         subWindow->setWindowTitle(dirty
@@ -7390,6 +7455,7 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
         updateCommandState();
     });
     connect(designer, &TemplateDesignerWidget::saveRequested, this, [this, designer, draftDeck](const CardTemplateLayout& layout) {
+        draftDeck->setDescription(designer->description());
         draftDeck->setFields(designer->fieldDefinitions());
         draftDeck->setCardTemplateLayout(layout);
         draftDeck->setAppearance(designer->appearance());

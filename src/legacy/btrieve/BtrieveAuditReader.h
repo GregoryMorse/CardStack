@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../../core/ImportBudget.h"
+
 #include <QByteArray>
 #include <QString>
 #include <QVector>
@@ -8,6 +10,7 @@ namespace CardStack {
 
 class BtrieveAuditReader {
 public:
+    explicit BtrieveAuditReader(ImportLimits limits = {}) : m_limits(limits) {}
     enum class PageType {
         FileControlRecord,
         Data,
@@ -63,11 +66,15 @@ public:
     struct Result {
         Audit audit;
         QString errorMessage;
+        bool processingAborted = false;
 
         bool ok() const;
     };
 
-    Result readFile(const QString& filePath) const;
+    Result readFile(const QString& filePath, ImportBudget* sharedBudget = nullptr) const;
+    Result readBytes(const QByteArray& bytes, ImportBudget* sharedBudget = nullptr) const;
+private:
+    ImportLimits m_limits;
 };
 
 } // namespace CardStack

@@ -48,6 +48,27 @@ void installVisualTestFonts()
             continue;
         }
 
+        // A regular-only application font hides installed bold/italic faces
+        // on the offscreen backend. Load its companion faces for real chooser
+        // and renderer coverage instead of silently testing Regular only.
+        const QDir fontDirectory = QFileInfo(candidate).dir();
+        QStringList companionFaces;
+        const QString baseName = QFileInfo(candidate).fileName();
+        if (baseName == QLatin1String("segoeui.ttf"))
+            companionFaces = {QStringLiteral("segoeuib.ttf"), QStringLiteral("segoeuii.ttf"), QStringLiteral("segoeuiz.ttf")};
+        else if (baseName == QLatin1String("arial.ttf"))
+            companionFaces = {QStringLiteral("arialbd.ttf"), QStringLiteral("ariali.ttf"), QStringLiteral("arialbi.ttf")};
+        else if (baseName == QLatin1String("DejaVuSans.ttf"))
+            companionFaces = {QStringLiteral("DejaVuSans-Bold.ttf"), QStringLiteral("DejaVuSans-Oblique.ttf"), QStringLiteral("DejaVuSans-BoldOblique.ttf")};
+        else if (baseName == QLatin1String("LiberationSans-Regular.ttf"))
+            companionFaces = {QStringLiteral("LiberationSans-Bold.ttf"), QStringLiteral("LiberationSans-Italic.ttf"), QStringLiteral("LiberationSans-BoldItalic.ttf")};
+        else if (baseName == QLatin1String("Arial.ttf"))
+            companionFaces = {QStringLiteral("Arial Bold.ttf"), QStringLiteral("Arial Italic.ttf"), QStringLiteral("Arial Bold Italic.ttf")};
+        for (const QString& face : companionFaces) {
+            const QString path = fontDirectory.filePath(face);
+            if (QFileInfo::exists(path)) QFontDatabase::addApplicationFont(path);
+        }
+
         const QStringList families = QFontDatabase::applicationFontFamilies(fontId);
         if (families.isEmpty()) {
             continue;

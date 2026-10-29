@@ -55,87 +55,97 @@ QString statusToMessage(unsigned short status)
 
 bool BtrieveFileSaverReader::Result::ok() const
 {
-    return status == NO_ERROR || status == END_OF_FILE;
+    return !processingAborted && (status == NO_ERROR || status == END_OF_FILE);
+}
+
+namespace {
+int nativeProgress(void* context, uint64_t units)
+{
+    return static_cast<ImportBudget*>(context)->checkpoint(units) ? 1 : 0;
+}
 }
 
 BtrieveFileSaverReader::Result BtrieveFileSaverReader::readAllRecords(
-    const QString& filePath,
-    qsizetype maxRecordBytes) const
+    const QString& filePath, qsizetype maxRecordBytes, ImportBudget* sharedBudget) const
 {
-    Result result;
-
-    const QFileInfo fileInfo(filePath);
-    if (!fileInfo.exists() || !fileInfo.isFile()) {
-        result.status = IO_ERROR;
-        result.errorMessage = QStringLiteral("File does not exist: %1").arg(filePath);
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    QByteArray bytes;
+    QString error;
+    if (!readBoundedFile(filePath, &bytes, budget, &error)) {
+        Result result;
+        result.status = budget.failed() ? PROCESSING_LIMIT : IO_ERROR;
+        result.processingAborted = budget.failed();
+        result.errorMessage = error;
         return result;
     }
+    return readMemory(bytes, maxRecordBytes, &budget);
+}
 
-    const QByteArray nativePath = QFile::encodeName(fileInfo.absoluteFilePath());
-    std::vector<char> mutablePath(nativePath.begin(), nativePath.end());
-    mutablePath.push_back('\0');
+BtrieveFileSaverReader::Result BtrieveFileSaverReader::readMemory(
+    const QByteArray& bytes, qsizetype maxRecordBytes, ImportBudget* sharedBudget) const
+{
+    ImportBudget local(m_limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    Result result;
+    const auto aborted = [&]() {
+        result.status = PROCESSING_LIMIT;
+        result.processingAborted = true;
+        result.errorMessage = budget.failed() ? budget.error() : QStringLiteral("Btrieve processing exceeded a configured limit.");
+        result.records.clear();
+        return result;
+    };
+    if (!budget.input(quint64(bytes.size()))) return aborted();
 
     static QMutex nativeReaderMutex;
-    const QMutexLocker lock(&nativeReaderMutex);
-    CLIENT_STRUCT client;
-    std::memset(&client, 0, sizeof(client));
-
-    result.status = BF_OPEN(&client, mutablePath.data());
+    while (!nativeReaderMutex.tryLock(50))
+        if (!budget.checkpoint()) return aborted();
+    const auto unlock = qScopeGuard([&] { nativeReaderMutex.unlock(); });
+    CLIENT_STRUCT client{};
+    const BF_READ_OPTIONS options{budget.limits().maximumInputBytes, nativeProgress, &budget};
+    result.status = BF_OPEN_MEMORY(&client, bytes.constData(), uint64_t(bytes.size()), &options);
     if (result.status != NO_ERROR) {
+        if (budget.failed() || result.status == PROCESSING_LIMIT) return aborted();
         result.errorMessage = statusToMessage(result.status);
         return result;
     }
+    const auto close = qScopeGuard([&] { BF_CLOSE(&client); });
+    if (!budget.rowsFit(client.numRecs)) return aborted();
 
     result.metadata.version = client.fVersion;
     result.metadata.pageSize = client.fPageSize;
     result.metadata.fixedRecordLength = client.FixRecLen;
     result.metadata.internalFixedRecordLength = client.IFixedRecLen;
-    result.metadata.declaredRecordCount = static_cast<int>(client.numRecs);
-    result.metadata.dataPageCount = static_cast<int>(client.numDATPages);
+    result.metadata.declaredRecordCount = int(client.numRecs);
+    result.metadata.dataPageCount = int(client.numDATPages);
     result.metadata.variableRecordsAllowed = client.VarRecsAllowed != 0;
 
-    const auto closeClient = qScopeGuard([&client] {
-        BF_CLOSE(&client);
-    });
-
-    maxRecordBytes = std::max<qsizetype>(maxRecordBytes, 1);
-    std::vector<char> buffer(static_cast<size_t>(maxRecordBytes));
-    const qsizetype declaredRecordLimit = std::max<qsizetype>(0, result.metadata.declaredRecordCount);
-    const qsizetype physicalRecordLength = std::max<qsizetype>(1, result.metadata.internalFixedRecordLength);
-    const qsizetype fileDerivedLimit = std::max<qsizetype>(1, fileInfo.size() / physicalRecordLength + 1);
-    const qsizetype traversalLimit = declaredRecordLimit > 0 ? declaredRecordLimit : fileDerivedLimit;
-
+    maxRecordBytes = std::clamp<qsizetype>(maxRecordBytes, 1, qsizetype(MaximumNativeRecordBytes));
+    std::vector<char> buffer(size_t(maxRecordBytes), '\0');
+    const qsizetype physicalLength = std::max<qsizetype>(1, client.IFixedRecLen);
+    const qsizetype traversalLimit = client.numRecs > 0
+        ? qsizetype(client.numRecs) : std::max<qsizetype>(1, bytes.size() / physicalLength + 1);
     while (result.records.size() < traversalLimit) {
-        unsigned long recordLength = static_cast<unsigned long>(buffer.size());
-        result.status = BF_GET_REC(&client, buffer.data(), &recordLength);
-        if (result.status == END_OF_FILE) {
-            result.errorMessage.clear();
-            break;
-        }
-
-        if (result.status != NO_ERROR) {
+        if (!budget.checkpoint()) return aborted();
+        unsigned long length = static_cast<unsigned long>(buffer.size());
+        result.status = BF_GET_REC(&client, buffer.data(), &length);
+        if (result.status == END_OF_FILE) break;
+        if (budget.failed() || result.status == PROCESSING_LIMIT) return aborted();
+        if (result.status != NO_ERROR || length > buffer.size()) {
+            if (length > buffer.size()) result.status = DATA_BUFFER_TO_SHORT;
             result.errorMessage = statusToMessage(result.status);
-            break;
+            return result;
         }
-        if (recordLength > buffer.size()) {
-            result.status = DATA_BUFFER_TO_SHORT;
-            result.errorMessage = statusToMessage(result.status);
-            break;
-        }
-
-        result.records.append(QByteArray(buffer.data(), static_cast<qsizetype>(recordLength)));
+        if (!budget.row() || !budget.decoded(length) || !budget.checkpoint(length)) return aborted();
+        result.records.append(QByteArray(buffer.data(), qsizetype(length)));
     }
-
-    if (result.status == NO_ERROR && result.records.size() == traversalLimit) {
-        if (declaredRecordLimit > 0) {
-            result.status = END_OF_FILE;
-            result.errorMessage.clear();
-        } else {
+    if (result.status == NO_ERROR) {
+        if (client.numRecs > 0) result.status = END_OF_FILE;
+        else {
             result.status = IO_ERROR;
-            result.errorMessage = QStringLiteral("Btrieve record traversal did not terminate within the physical file bound.");
+            result.errorMessage = QStringLiteral("Btrieve traversal did not terminate within the physical file bound.");
         }
     }
-
     return result;
 }
 

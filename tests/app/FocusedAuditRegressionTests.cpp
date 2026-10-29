@@ -573,6 +573,8 @@ QJsonObject nativeHeader(const QDir& output)
 }
 } // namespace
 
+#include "../support/RefreshAuditProbe.h"
+
 class FocusedAuditRegressionTests : public QObject {
     Q_OBJECT
     QString m_originalOrganization, m_originalApplication;
@@ -611,6 +613,19 @@ private slots:
         QCoreApplication::setApplicationName(m_originalApplication);
         QSettings::setDefaultFormat(m_originalFormat);
     }
+    void refreshReplacementSpansAndUndo() { verify([](const QDir&) { Tests::RefreshAudit::replacements(); return outcome(false, {}); }); }
+    void refreshSearchBoundariesAndOccurrences() { verify([](const QDir&) { Tests::RefreshAudit::searchBoundaries(); return outcome(false, {}); }); }
+    void refreshReplacementThroughGui() { verify([](const QDir&) { Tests::RefreshAudit::replaceThroughGui(); return outcome(false, {}); }); }
+    void refreshFindNavigationThroughGui() { verify([](const QDir&) { Tests::RefreshAudit::findNavigationThroughGui(); return outcome(false, {}); }); }
+    void refreshBulkMutationsMaintainIndex() { verify([](const QDir&) { Tests::RefreshAudit::bulkOrdering(); return outcome(false, {}); }); }
+    void refreshReusedStoreSaveReloadSave() { verify([](const QDir& d) { Tests::RefreshAudit::reusedStore(d); return outcome(false, {}); }); }
+    void refreshCustomGridMatchesPrintAndPersistence() { verify([](const QDir& d) { Tests::RefreshAudit::grids(d); return outcome(false, {}); }); }
+    void refreshDataAttributesPreserveExpressions() { verify([](const QDir&) { Tests::RefreshAudit::attributes(); return outcome(false, {}); }); }
+    void refreshFontDialogsPreserveDescriptors() { verify([](const QDir&) { Tests::RefreshAudit::fonts(); return outcome(false, {}); }); }
+    void refreshTemplateOwnerIsExclusive() { verify([](const QDir&) { Tests::RefreshAudit::templateOwnership(); return outcome(false, {}); }); }
+    void refreshBulkCloseIncludesNewDraftDeck() { verify([](const QDir&) { Tests::RefreshAudit::closeDrafts(); return outcome(false, {}); }); }
+    void refreshDraftDescriptionPersistsAndUndoes() { verify([](const QDir& d) { Tests::RefreshAudit::draftDescription(d); return outcome(false, {}); }); }
+    void refreshEmptySchemaImportsAreEditable() { verify([](const QDir& d) { Tests::RefreshAudit::emptySchemas(d); return outcome(false, {}); }); }
     void contentUndoCannotRemoveEncryption() { verify([](const QDir& d) { return securityUndo(d); }); }
     void savingAfterUndoKeepsCurrentStorageOrigin() { verify([](const QDir& d) { return saveUndo(d); }); }
     void failedReusedStoreSavePreservesOriginalBytes() { verify([](const QDir& d) { return interruptedStore(d); }); }

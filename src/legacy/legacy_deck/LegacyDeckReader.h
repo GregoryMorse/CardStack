@@ -12,6 +12,7 @@ namespace CardStack {
 
 class LegacyDeckReader {
 public:
+    explicit LegacyDeckReader(ImportLimits limits = {}) : m_limits(limits) {}
     struct Result {
         Deck deck;
         BtrieveFileSaverReader::Metadata btrieveMetadata;
@@ -24,15 +25,18 @@ public:
         bool legacyPasswordVerificationUnavailable = false;
         bool passwordRequired = false;
         bool passwordRejected = false;
+        bool processingAborted = false;
 
         bool ok() const;
     };
 
-    Result readDeck(const QString& filePath, const QString& password = {}) const;
+    Result readDeck(const QString& filePath, const QString& password = {}, ImportBudget* sharedBudget = nullptr) const;
     Result readRecords(
         const QVector<QByteArray>& records,
         const QString& fallbackDeckName = {},
-        const QString& password = {}) const;
+        const QString& password = {}, ImportBudget* sharedBudget = nullptr) const;
+private:
+    ImportLimits m_limits;
 };
 
 } // namespace CardStack

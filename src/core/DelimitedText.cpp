@@ -1,6 +1,7 @@
 #include "DelimitedText.h"
 
 #include <QFile>
+#include <QBuffer>
 #include <QFileInfo>
 #include <QTextStream>
 
@@ -26,84 +27,40 @@ QString escapedCell(QString value, QChar delimiter)
     return mustQuote ? QStringLiteral("\"%1\"").arg(value) : value;
 }
 
-QStringList parseLine(const QString& line, QChar delimiter)
-{
-    QStringList cells;
-    QString cell;
-    bool quoted = false;
-
-    for (int index = 0; index < line.size(); ++index) {
-        const QChar ch = line.at(index);
-        if (quoted) {
-            if (ch == QLatin1Char('"')) {
-                if (index + 1 < line.size() && line.at(index + 1) == QLatin1Char('"')) {
-                    cell.append(QLatin1Char('"'));
-                    ++index;
-                } else {
-                    quoted = false;
-                }
-            } else {
-                cell.append(ch);
-            }
-            continue;
-        }
-
-        if (ch == QLatin1Char('"')) {
-            quoted = true;
-        } else if (ch == delimiter) {
-            cells.append(cell);
-            cell.clear();
-        } else {
-            cell.append(ch);
-        }
-    }
-
-    cells.append(cell);
-    return cells;
-}
-
-QVector<QStringList> parseRows(const QString& text, QChar delimiter)
+QVector<QStringList> parseRows(const QString& text, QChar delimiter, ImportBudget& budget)
 {
     QVector<QStringList> rows;
     QStringList cells;
     QString cell;
     bool quoted = false;
-
-    for (int index = 0; index < text.size(); ++index) {
+    const auto appendCell = [&]() {
+        if (!budget.fields(quint64(cells.size()) + 1) || !budget.value(quint64(cell.size()) * sizeof(QChar))) return false;
+        cells.append(cell);
+        cell.clear();
+        return true;
+    };
+    const auto appendRow = [&]() {
+        if (!appendCell() || !budget.row()) return false;
+        rows.append(cells);
+        cells.clear();
+        return true;
+    };
+    for (qsizetype index = 0; index < text.size(); ++index) {
+        if (!budget.checkpoint(1) || !budget.cell(quint64(cell.size()) * sizeof(QChar))) return {};
         const QChar ch = text.at(index);
         if (quoted) {
             if (ch == QLatin1Char('"')) {
                 if (index + 1 < text.size() && text.at(index + 1) == QLatin1Char('"')) {
-                    cell.append(QLatin1Char('"'));
+                    cell.append(ch);
                     ++index;
-                } else {
-                    quoted = false;
-                }
-            } else {
-                cell.append(ch);
-            }
-            continue;
-        }
-
-        if (ch == QLatin1Char('"')) {
-            quoted = true;
-        } else if (ch == delimiter) {
-            cells.append(cell);
-            cell.clear();
-        } else if (ch == QLatin1Char('\n')) {
-            cells.append(cell);
-            rows.append(cells);
-            cells.clear();
-            cell.clear();
-        } else if (ch != QLatin1Char('\r')) {
-            cell.append(ch);
-        }
+                } else quoted = false;
+            } else cell.append(ch);
+        } else if (ch == QLatin1Char('"')) quoted = true;
+        else if (ch == delimiter) { if (!appendCell()) return {}; }
+        else if (ch == QLatin1Char('\n')) { if (!appendRow()) return {}; }
+        else if (ch != QLatin1Char('\r')) cell.append(ch);
     }
-
-    if (!cell.isEmpty() || !cells.isEmpty()) {
-        cells.append(cell);
-        rows.append(cells);
-    }
+    if ((!cell.isEmpty() || !cells.isEmpty()) && !appendRow()) return {};
     return rows;
 }
 
@@ -180,14 +137,19 @@ QString writeDeck(const Deck& deck, const ImportExportProfile& profile)
     return output;
 }
 
-bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* deck, QString* errorMessage)
+bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* deck, QString* errorMessage, ImportLimits limits, ImportBudget* sharedBudget)
 {
     if (deck == nullptr) {
         setError(errorMessage, QStringLiteral("Deck output is not available."));
         return false;
     }
 
-    QVector<QStringList> rows = parseRows(text, profile.delimiter);
+    ImportBudget local(limits);
+    ImportBudget& budget = sharedBudget ? *sharedBudget : local;
+    const auto abort = [&] { setError(errorMessage, budget.error()); return false; };
+    if (!budget.input(quint64(text.size()) * sizeof(QChar))) return abort();
+    QVector<QStringList> rows = parseRows(text, profile.delimiter, budget);
+    if (budget.failed()) return abort();
     while (!rows.isEmpty() && rows.last().isEmpty()) {
         rows.removeLast();
     }
@@ -214,6 +176,7 @@ bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* dec
         return false;
     }
 
+    if (!budget.fields(quint64(headers.size()))) return abort();
     Deck imported;
     imported.setName(QStringLiteral("Imported Text Deck"));
     imported.setDescription(QStringLiteral("Imported from a delimited text file."));
@@ -222,12 +185,15 @@ bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* dec
     for (int column = 0; column < headers.size(); ++column) {
         const QString fallbackName = QStringLiteral("Field %1").arg(column + 1);
         const QString name = headers.at(column).trimmed().isEmpty() ? fallbackName : headers.at(column).trimmed();
+        if (!budget.checkpoint(quint64(rows.size()))) return abort();
         imported.addField(FieldDefinition(name, fieldTypeForName(name), maxLengthForColumn(rows, column)));
     }
 
     for (const QStringList& row : rows) {
+        if (!budget.row()) return abort();
         CardRecord card;
         for (int column = 0; column < imported.fieldCount(); ++column) {
+            if (!budget.value(quint64(row.value(column).size()) * sizeof(QChar)) || !budget.checkpoint(1)) return abort();
             QString value = row.value(column);
             const int maxLength = imported.fieldAt(column).maxLength();
             if (maxLength > 0 && value.size() > maxLength) {
@@ -255,22 +221,18 @@ bool writeDeckFile(const Deck& deck, const ImportExportProfile& profile, const Q
     return true;
 }
 
-bool readDeckFile(const QString& filePath, const ImportExportProfile& profile, Deck* deck, QString* errorMessage)
+bool readDeckFile(const QString& filePath, const ImportExportProfile& profile, Deck* deck, QString* errorMessage, ImportLimits limits)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        setError(errorMessage, file.errorString());
-        return false;
-    }
-
-    QTextStream stream(&file);
-    if (!readDeck(stream.readAll(), profile, deck, errorMessage)) {
-        return false;
-    }
-
-    if (deck != nullptr) {
-        deck->setName(QFileInfo(filePath).completeBaseName());
-    }
+    ImportBudget budget(limits);
+    QByteArray bytes;
+    if (!readBoundedFile(filePath, &bytes, budget, errorMessage)) return false;
+    // Retain QTextStream's BOM and Unicode decoding without an unbounded file read.
+    QBuffer buffer(&bytes);
+    buffer.open(QIODevice::ReadOnly);
+    QTextStream stream(&buffer);
+    const QString text = stream.readAll();
+    if (!readDeck(text, profile, deck, errorMessage, limits, &budget)) return false;
+    if (deck) deck->setName(QFileInfo(filePath).completeBaseName());
     return true;
 }
 

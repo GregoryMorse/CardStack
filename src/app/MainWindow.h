@@ -60,6 +60,7 @@ private:
     void handleNewDeckCommand();
     void handleFindCommand();
     void handleFindNextCommand();
+    bool findNextWithWrap(DeckWorkspace* workspace, const DeckWorkspace::SearchRequest& request);
     void handleReplaceCommand();
     void handleSortCommand();
     void handleRedefineCommand();
@@ -93,7 +94,9 @@ private:
     void resizeIndexBarButtons();
     void updateIndexBarVisibility();
     void updateWindowMenuEntries();
+    QMdiSubWindow* templateDesignerWindowFor(const DeckWorkspace* workspace) const;
     void configureSubWindowSystemMenu(QMdiSubWindow* subWindow);
+    void showNewSubWindow(QMdiSubWindow* subWindow);
     void tileSubWindowsVertical();
     void tileSubWindowsHorizontal();
     void arrangeMinimizedSubWindows();
@@ -162,6 +165,7 @@ private:
     bool m_phoneGetOutsideLine = false;
     bool m_phoneLogCalls = false;
     bool m_enterWorksLikeTab = false;
+    bool m_closingAllWindows = false;
     int m_currentMenuId = 0;
     QHash<const QWidget*, QPointer<DeckWorkspace>> m_designerOwners;
     QHash<DeckWorkspace*, std::shared_ptr<QLockFile>> m_documentLocks;

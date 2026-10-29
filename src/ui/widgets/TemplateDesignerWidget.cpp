@@ -661,11 +661,13 @@ TemplateDesignerWidget::TemplateDesignerWidget(
     CardTemplateLayout layout,
     QVector<FieldDefinition> fields,
     QWidget* parent,
-    DeckAppearance appearance)
+    DeckAppearance appearance,
+    QString description)
     : QWidget(parent)
     , m_layout(std::move(layout))
     , m_fields(std::move(fields))
     , m_appearance(std::move(appearance))
+    , m_description(std::move(description))
 {
     for (CardTemplateFrame& frame : m_layout.frames) {
         const bool fieldFrame = frame.kind == CardTemplateFrameKind::DataBox
@@ -1472,6 +1474,14 @@ void TemplateDesignerWidget::selectFrames(const QVector<int>& frameIndices)
     emit selectedFieldChanged();
 }
 
+void TemplateDesignerWidget::setDescription(const QString& description)
+{
+    if (description == m_description) return;
+    pushUndoState();
+    m_description = description;
+    markDirty();
+}
+
 void TemplateDesignerWidget::markDirty()
 {
     emit propertiesChanged();
@@ -1493,7 +1503,7 @@ void TemplateDesignerWidget::pushUndoState()
     if (m_undoStack.size() >= MaximumUndoStates) {
         m_undoStack.removeFirst();
     }
-    m_undoStack.append({m_layout, m_fields, m_appearance, m_selectedFrameIndex, m_selectedFrameIndices, m_canvas ? m_canvas->selectionAnchor() : -1});
+    m_undoStack.append({m_layout, m_fields, m_appearance, m_selectedFrameIndex, m_selectedFrameIndices, m_canvas ? m_canvas->selectionAnchor() : -1, m_description});
 }
 
 void TemplateDesignerWidget::undo()
@@ -1506,6 +1516,7 @@ void TemplateDesignerWidget::undo()
     m_layout = state.layout;
     m_fields = state.fields;
     m_appearance = state.appearance;
+    m_description = state.description;
     refreshFieldChoices();
     if (m_canvas != nullptr) {
         m_canvas->setAppearance(m_appearance);

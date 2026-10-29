@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Deck.h"
+#include "ImportBudget.h"
 #include "ImportExportProfile.h"
 
 #include <QString>
@@ -11,9 +12,9 @@ ImportExportProfile csvProfile(ImportExportProfileType type);
 ImportExportProfile tsvProfile(ImportExportProfileType type);
 
 QString writeDeck(const Deck& deck, const ImportExportProfile& profile);
-bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* deck, QString* errorMessage = nullptr);
+bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* deck, QString* errorMessage = nullptr, ImportLimits limits = {}, ImportBudget* sharedBudget = nullptr);
 
 bool writeDeckFile(const Deck& deck, const ImportExportProfile& profile, const QString& filePath, QString* errorMessage = nullptr);
-bool readDeckFile(const QString& filePath, const ImportExportProfile& profile, Deck* deck, QString* errorMessage = nullptr);
+bool readDeckFile(const QString& filePath, const ImportExportProfile& profile, Deck* deck, QString* errorMessage = nullptr, ImportLimits limits = {});
 
 } // namespace CardStack::DelimitedText

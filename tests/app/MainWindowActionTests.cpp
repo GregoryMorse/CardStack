@@ -1445,7 +1445,14 @@ private slots:
         mergeAction->trigger();
 
         QTRY_COMPARE(workspace->deck().cardCount(), initialCardCount + 1);
-        QCOMPARE(workspace->deck().cardAt(initialCardCount).valueAt(0), QStringLiteral("Merged Project"));
+        QStringList titles;
+        for (const CardRecord& card : workspace->deck().cards()) titles.append(card.valueAt(0));
+        QCOMPARE(titles.count(QStringLiteral("Merged Project")), 1);
+        QStringList sortedTitles = titles;
+        std::stable_sort(sortedTitles.begin(), sortedTitles.end(), [](const QString& left, const QString& right) {
+            return QString::localeAwareCompare(left, right) < 0;
+        });
+        QCOMPARE(titles, sortedTitles);
         QVERIFY(workspace->isDirty());
     }
 
@@ -1953,8 +1960,8 @@ private slots:
         QCOMPARE(report.pageHeight, 4000);
         QCOMPARE(report.marginLeft, 500);
         QCOMPARE(report.horizontalGutter, 250);
-        QCOMPARE(report.rows, 2);
-        QCOMPARE(report.columns, 3);
+        QCOMPARE(report.rows, 3); // Across.
+        QCOMPARE(report.columns, 2); // Down.
     }
 
     void reportDesignerSaveAsExportsPackageThroughDialog()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Deck.h"
+#include "ImportBudget.h"
 
 #include <QString>
 
@@ -8,6 +9,7 @@ namespace CardStack {
 
 class LegacyInterchangeReader {
 public:
+    explicit LegacyInterchangeReader(ImportLimits limits = {}) : m_limits(limits) {}
     enum class Format {
         DBase,
         MicrosoftCardfile,
@@ -25,6 +27,7 @@ public:
         bool legacyPasswordVerificationUnavailable = false;
         bool passwordRequired = false;
         bool passwordRejected = false;
+        bool processingAborted = false;
 
         bool ok() const;
     };
@@ -34,6 +37,8 @@ public:
     Result readMicrosoftCardfile(const QString& filePath) const;
     Result readTakeNoteFile(const QString& filePath, const QString& password = {}) const;
     Result readWordPerfectMergeFile(const QString& filePath) const;
+private:
+    ImportLimits m_limits;
 };
 
 bool isLegacyInterchangePath(const QString& filePath);

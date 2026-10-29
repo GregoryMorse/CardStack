@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ReportDefinition.h"
+#include "ImportBudget.h"
 
 #include <QByteArray>
 #include <QString>
@@ -10,6 +11,7 @@ namespace CardStack {
 
 class LegacyReportReader {
 public:
+    explicit LegacyReportReader(ImportLimits limits = {}) : m_limits(limits) {}
     struct Result {
         QVector<ReportDefinition> reports;
         QString errorMessage;
@@ -18,7 +20,9 @@ public:
     };
 
     Result readFile(const QString& filePath) const;
-    Result readBytes(const QByteArray& bytes) const;
+    Result readBytes(const QByteArray& bytes, ImportBudget* sharedBudget = nullptr) const;
+private:
+    ImportLimits m_limits;
 };
 
 } // namespace CardStack

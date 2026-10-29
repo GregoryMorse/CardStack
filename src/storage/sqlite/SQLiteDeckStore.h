@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Deck.h"
+#include "ImportBudget.h"
 
 #include <QSqlDatabase>
 #include <QString>
@@ -9,7 +10,7 @@ namespace CardStack {
 
 class SQLiteDeckStore {
 public:
-    SQLiteDeckStore();
+    explicit SQLiteDeckStore(ImportLimits limits = {});
     ~SQLiteDeckStore();
 
     enum class OpenMode { ReadWrite, ReadOnly };
@@ -42,6 +43,7 @@ private:
     bool loadPhoneCallLog(Deck* deck, QString* errorMessage);
     bool exec(const QString& sql, QString* errorMessage);
 
+    ImportLimits m_limits;
     QString m_connectionName;
     QSqlDatabase m_database;
     QString m_filePath;

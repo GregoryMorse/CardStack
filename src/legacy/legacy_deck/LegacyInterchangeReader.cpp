@@ -24,7 +24,8 @@ constexpr int DBaseMemoBlockSize = 512;
 constexpr char DBaseFieldDescriptorTerminator = '\x0d';
 
 constexpr int CardfileCountOffset = 3;
-constexpr int CardfileIndexOffset = 11;
+constexpr int CardfileDirectoryOffset = CardfileCountOffset + sizeof(quint16);
+constexpr int CardfileIndexOffset = CardfileDirectoryOffset + 6;
 constexpr int CardfileIndexEntrySize = 52;
 constexpr int CardfileTitleOffsetInEntry = 5;
 constexpr int CardfileTitleLength = 40;
@@ -45,17 +46,17 @@ struct DBaseField {
     int length = 0;
 };
 
-quint16 readU16(const QByteArray& bytes, int offset)
+quint16 readU16(const QByteArray& bytes, quint64 offset)
 {
-    if (offset < 0 || offset + 1 >= bytes.size()) {
+    if (!containsByteRange(bytes.size(), offset, sizeof(quint16))) {
         return 0;
     }
     return qFromLittleEndian<quint16>(reinterpret_cast<const uchar*>(bytes.constData() + offset));
 }
 
-quint32 readU32(const QByteArray& bytes, int offset)
+quint32 readU32(const QByteArray& bytes, quint64 offset)
 {
-    if (offset < 0 || offset + 3 >= bytes.size()) {
+    if (!containsByteRange(bytes.size(), offset, sizeof(quint32))) {
         return 0;
     }
     return qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(bytes.constData() + offset));
@@ -90,27 +91,18 @@ QString decodeWindows1252(const QByteArray& bytes, bool stopAtNul = false)
     return value;
 }
 
-QString decodeFixedString(const QByteArray& bytes, int offset, int length)
+QString decodeFixedString(const QByteArray& bytes, qsizetype offset, int length)
 {
     if (offset < 0 || length <= 0 || offset >= bytes.size()) {
         return {};
     }
-    const int available = std::min(length, static_cast<int>(bytes.size()) - offset);
+    const qsizetype available = std::min<qsizetype>(length, bytes.size() - offset);
     return decodeWindows1252(bytes.mid(offset, available), true).trimmed();
 }
 
-bool readAllBytes(const QString& filePath, QByteArray* bytes, QString* errorMessage)
+bool readAllBytes(const QString& path, QByteArray* bytes, QString* error, ImportBudget& budget)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QStringLiteral("Could not open legacy interchange file: %1").arg(filePath);
-        }
-        return false;
-    }
-
-    *bytes = file.readAll();
-    return true;
+    return readBoundedFile(path, bytes, budget, error);
 }
 
 QString memoPathForDBasePath(const QString& filePath)
@@ -125,39 +117,41 @@ QString memoPathForDBasePath(const QString& filePath)
     return QFileInfo::exists(lowerCandidate) ? lowerCandidate : QString();
 }
 
-QString readDBaseMemoValue(const QString& dbfPath, const QString& blockNumberText)
+bool readDBaseMemoValue(const QString& dbfPath, const QString& token, QByteArray* cache, bool* loaded,
+                        QString* value, QString* error, ImportBudget& budget)
 {
-    bool ok = false;
-    const int blockNumber = blockNumberText.trimmed().toInt(&ok);
-    if (!ok || blockNumber <= 0) {
-        return {};
+    *value = {};
+    if (token.trimmed().isEmpty()) return true;
+    bool valid = false;
+    const quint64 block = token.trimmed().toULongLong(&valid);
+    if (!valid) { *error = QStringLiteral("A dBase memo block number is invalid."); return false; }
+    if (block == 0) return true;
+    if (!*loaded) {
+        const QString path = memoPathForDBasePath(dbfPath);
+        if (path.isEmpty()) { *error = QStringLiteral("The dBase memo sidecar is missing."); return false; }
+        if (!readAllBytes(path, cache, error, budget)) return false;
+        *loaded = true;
     }
-
-    const QString memoPath = memoPathForDBasePath(dbfPath);
-    if (memoPath.isEmpty()) {
-        return blockNumberText.trimmed();
+    // Check division before multiplication; block numbers are unsigned disk values.
+    if (block > quint64(cache->size()) / DBaseMemoBlockSize) {
+        *error = QStringLiteral("A dBase memo block is outside its sidecar.");
+        return false;
     }
-
-    QByteArray memoBytes;
-    QString ignoredError;
-    if (!readAllBytes(memoPath, &memoBytes, &ignoredError)) {
-        return blockNumberText.trimmed();
+    const quint64 offset = block * DBaseMemoBlockSize;
+    if (!containsByteRange(cache->size(), offset, 1)) {
+        *error = QStringLiteral("A dBase memo block is outside its sidecar.");
+        return false;
     }
-
-    const int offset = blockNumber * DBaseMemoBlockSize;
-    if (offset < 0 || offset >= memoBytes.size()) {
-        return {};
-    }
-
-    int end = offset;
-    while (end < memoBytes.size()) {
-        const char ch = memoBytes.at(end);
-        if (ch == '\0' || ch == '\x1a') {
-            break;
+    qsizetype end = qsizetype(offset);
+    while (end < cache->size() && cache->at(end) != '\0' && cache->at(end) != '\x1a') {
+        if (!budget.checkpoint(1) || !budget.cell(quint64(end - qsizetype(offset) + 1) * sizeof(QChar))) {
+            *error = budget.error();
+            return false;
         }
         ++end;
     }
-    return decodeWindows1252(memoBytes.mid(offset, end - offset), false).trimmed();
+    *value = decodeWindows1252(cache->mid(qsizetype(offset), end - qsizetype(offset))).trimmed();
+    return true;
 }
 
 QVector<DBaseField> readDBaseFields(const QByteArray& bytes, int headerLength)
@@ -173,9 +167,7 @@ QVector<DBaseField> readDBaseFields(const QByteArray& bytes, int headerLength)
         const int length = offset + DBaseFieldLengthOffset < bytes.size()
             ? static_cast<quint8>(bytes.at(offset + DBaseFieldLengthOffset))
             : 0;
-        if (name.isEmpty() || length <= 0) {
-            continue;
-        }
+        if (name.isEmpty() || length <= 0 || (type == 'M' && length != 10)) return {};
 
         fields.append({
             name,
@@ -190,22 +182,6 @@ QString deckNameForPath(const QString& filePath, const QString& suffix)
 {
     const QString baseName = QFileInfo(filePath).completeBaseName();
     return baseName.isEmpty() ? suffix : baseName;
-}
-
-QVector<QByteArray> splitWordPerfectSegments(const QByteArray& payload)
-{
-    QVector<QByteArray> segments;
-    int segmentStart = 0;
-    for (int index = 0; index < payload.size(); ++index) {
-        if (payload.at(index) == WordPerfectFieldSeparator) {
-            segments.append(payload.mid(segmentStart, index - segmentStart));
-            segmentStart = index + 1;
-        }
-    }
-    if (segmentStart <= payload.size()) {
-        segments.append(payload.mid(segmentStart));
-    }
-    return segments;
 }
 
 bool isWordPerfectDescriptor(const QByteArray& segment, char descriptorType = '\0')
@@ -292,12 +268,14 @@ QVector<TakeNoteField> takeNoteSoftwareLibraryFields()
 LegacyInterchangeReader::Result readTakeNoteSoftwareLibraryFallback(
     const QString& filePath,
     const QVector<QByteArray>& records,
-    const QString& originalError)
+    const QString& originalError, ImportBudget& budget)
 {
     LegacyInterchangeReader::Result result;
     result.format = LegacyInterchangeReader::Format::TakeNote;
 
     const QVector<TakeNoteField> fields = takeNoteSoftwareLibraryFields();
+    const auto abort = [&]() { result.processingAborted = true; result.errorMessage = budget.error(); return result; };
+    if (!budget.fields(quint64(fields.size()))) return abort();
     Deck deck(QStringLiteral("Software Library"));
     deck.setDescription(QStringLiteral("Imported from a legacy TakeNote-compatible deck file."));
     for (const TakeNoteField& field : fields) {
@@ -305,10 +283,12 @@ LegacyInterchangeReader::Result readTakeNoteSoftwareLibraryFallback(
     }
 
     for (const QByteArray& record : records) {
+        if (!budget.row() || !budget.checkpoint(quint64(record.size()))) return abort();
         int offset = 5;
         QVector<QString> values;
         values.reserve(fields.size());
         for (const TakeNoteField& field : fields) {
+            if (!budget.value(quint64(field.length) * sizeof(QChar))) return abort();
             values.append(decodeWindows1252(record.mid(offset, field.length), true).trimmed());
             offset += field.length;
         }
@@ -343,7 +323,7 @@ LegacyInterchangeReader::Result readTakeNoteSoftwareLibraryFallback(
 
 bool LegacyInterchangeReader::Result::ok() const
 {
-    return errorMessage.isEmpty();
+    return !processingAborted && errorMessage.isEmpty();
 }
 
 bool isLegacyInterchangePath(const QString& filePath)
@@ -378,115 +358,115 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readFile(const QString&
 
 LegacyInterchangeReader::Result LegacyInterchangeReader::readDBaseFile(const QString& filePath) const
 {
+    ImportBudget budget(m_limits);
     Result result;
     result.format = Format::DBase;
-
-    QByteArray bytes;
-    if (!readAllBytes(filePath, &bytes, &result.errorMessage)) {
+    const auto aborted = [&] { result.processingAborted = true; result.errorMessage = budget.error(); return result; };
+    QByteArray bytes, memo;
+    if (!readAllBytes(filePath, &bytes, &result.errorMessage, budget)) {
+        result.processingAborted = budget.failed();
         return result;
     }
     if (bytes.size() < DBaseHeaderSize) {
-        result.errorMessage = QStringLiteral("Legacy dBase file is too small to contain a header.");
+        result.errorMessage = QStringLiteral("The dBase file is too small to contain a header.");
         return result;
     }
-
-    const quint32 recordCount = readU32(bytes, 4);
-    const int headerLength = readU16(bytes, 8);
-    const int recordLength = readU16(bytes, 10);
-    if (headerLength < DBaseHeaderSize || recordLength <= DBaseRecordDeletedFlagSize || headerLength > bytes.size()) {
-        result.errorMessage = QStringLiteral("Legacy dBase file has an unsupported header layout.");
+    const quint64 count = readU32(bytes, 4);
+    const quint64 header = readU16(bytes, 8), recordLength = readU16(bytes, 10);
+    if (header < DBaseHeaderSize || header > quint64(bytes.size()) || recordLength <= DBaseRecordDeletedFlagSize
+        || count > (quint64(bytes.size()) - header) / recordLength) {
+        result.errorMessage = QStringLiteral("The dBase record span is invalid or truncated.");
         return result;
     }
-
-    const QVector<DBaseField> fields = readDBaseFields(bytes, headerLength);
-    if (fields.isEmpty()) {
-        result.errorMessage = QStringLiteral("Legacy dBase file does not contain field descriptors.");
+    if (!budget.rowsFit(count)) return aborted();
+    const auto fields = readDBaseFields(bytes, int(header));
+    if (fields.isEmpty() || !budget.fields(quint64(fields.size()))) {
+        result.errorMessage = budget.failed() ? budget.error() : QStringLiteral("The dBase field table is invalid.");
+        result.processingAborted = budget.failed();
         return result;
     }
-
-    Deck deck(deckNameForPath(filePath, QStringLiteral("Legacy dBase Import")));
-    deck.setDescription(QStringLiteral("Imported from a legacy dBase interchange file."));
-    for (const DBaseField& field : fields) {
-        deck.addField(FieldDefinition(field.name, field.type, field.length));
+    quint64 storedWidth = DBaseRecordDeletedFlagSize;
+    for (const auto& field : fields) storedWidth += field.type == FieldType::Notes ? 10 : field.length;
+    if (storedWidth > recordLength) {
+        result.errorMessage = QStringLiteral("The dBase fields extend beyond their record.");
+        return result;
     }
-
-    for (quint32 recordIndex = 0; recordIndex < recordCount; ++recordIndex) {
-        const int recordOffset = headerLength + static_cast<int>(recordIndex) * recordLength;
-        if (recordOffset < 0 || recordOffset + recordLength > bytes.size()) {
-            break;
-        }
-        if (bytes.at(recordOffset) == '*') {
-            continue;
-        }
-
+    Deck deck(deckNameForPath(filePath, QStringLiteral("dBase Import")));
+    deck.setDescription(QStringLiteral("Imported from a dBase interchange file."));
+    for (const auto& field : fields) deck.addField(FieldDefinition(field.name, field.type, field.length));
+    bool memoLoaded = false;
+    for (quint64 row = 0; row < count; ++row) {
+        if (!budget.checkpoint(recordLength)) return aborted();
+        const quint64 offset = header + row * recordLength; // The complete span was validated above.
+        if (bytes.at(qsizetype(offset)) == '*') continue;
+        if (!budget.row()) return aborted();
         CardRecord card;
-        int fieldOffset = recordOffset + DBaseRecordDeletedFlagSize;
-        for (const DBaseField& field : fields) {
-            const int storedLength = field.type == FieldType::Notes ? 10 : field.length;
-            const QString rawValue = decodeWindows1252(bytes.mid(fieldOffset, storedLength), true).trimmed();
-            card.appendValue(field.type == FieldType::Notes ? readDBaseMemoValue(filePath, rawValue) : rawValue);
-            fieldOffset += storedLength;
+        quint64 fieldOffset = offset + DBaseRecordDeletedFlagSize;
+        for (const auto& field : fields) {
+            const quint64 length = field.type == FieldType::Notes ? 10 : quint64(field.length);
+            const QString raw = decodeWindows1252(bytes.mid(qsizetype(fieldOffset), qsizetype(length)), true).trimmed();
+            QString value = raw;
+            if (field.type == FieldType::Notes
+                && !readDBaseMemoValue(filePath, raw, &memo, &memoLoaded, &value, &result.errorMessage, budget)) {
+                result.processingAborted = budget.failed();
+                return result;
+            }
+            if (!budget.value(quint64(value.size()) * sizeof(QChar))) return aborted();
+            card.appendValue(value);
+            fieldOffset += length;
         }
         deck.addCard(std::move(card));
     }
-
-    if (deck.cardCount() == 0) {
-        result.errorMessage = QStringLiteral("Legacy dBase file contained field descriptors but no readable records.");
-        return result;
-    }
-
     result.deck = std::move(deck);
     return result;
 }
 
 LegacyInterchangeReader::Result LegacyInterchangeReader::readMicrosoftCardfile(const QString& filePath) const
 {
+    ImportBudget budget(m_limits);
     Result result;
     result.format = Format::MicrosoftCardfile;
-
+    const auto aborted = [&] { result.processingAborted = true; result.errorMessage = budget.error(); return result; };
     QByteArray bytes;
-    if (!readAllBytes(filePath, &bytes, &result.errorMessage)) {
+    if (!readAllBytes(filePath, &bytes, &result.errorMessage, budget)) {
+        result.processingAborted = budget.failed();
         return result;
     }
-    if (!bytes.startsWith("MGC") || bytes.size() < CardfileIndexOffset) {
-        result.errorMessage = QStringLiteral("Legacy Microsoft Cardfile data does not start with an MGC index.");
+    if (!bytes.startsWith("MGC") || !containsByteRange(bytes.size(), 0, CardfileIndexOffset)) {
+        result.errorMessage = QStringLiteral("The Cardfile MGC header is invalid or truncated.");
         return result;
     }
-
-    const int cardCount = readU16(bytes, CardfileCountOffset);
-    if (cardCount <= 0 || CardfileIndexOffset + cardCount * CardfileIndexEntrySize > bytes.size()) {
-        result.errorMessage = QStringLiteral("Legacy Microsoft Cardfile index has an unsupported layout.");
+    const quint64 count = readU16(bytes, CardfileCountOffset);
+    const quint64 indexBytes = count * CardfileIndexEntrySize;
+    if (!containsByteRange(bytes.size(), CardfileDirectoryOffset, indexBytes)) {
+        result.errorMessage = QStringLiteral("The Cardfile index is truncated.");
         return result;
     }
-
-    Deck deck(deckNameForPath(filePath, QStringLiteral("Legacy Cardfile Import")));
-    deck.setDescription(QStringLiteral("Imported from a legacy Microsoft Cardfile interchange file."));
+    if (!budget.rowsFit(count) || !budget.fields(2)) return aborted();
+    const quint64 indexEnd = CardfileDirectoryOffset + indexBytes;
+    Deck deck(deckNameForPath(filePath, QStringLiteral("Cardfile Import")));
+    deck.setDescription(QStringLiteral("Imported from a Microsoft Cardfile interchange file."));
     deck.addField(FieldDefinition(QStringLiteral("Title"), FieldType::Text, CardfileTitleLength));
     deck.addField(FieldDefinition(QStringLiteral("Text"), FieldType::Notes, 8192));
-
-    for (int cardIndex = 0; cardIndex < cardCount; ++cardIndex) {
-        const int entryOffset = CardfileIndexOffset + cardIndex * CardfileIndexEntrySize;
-        const int textOffset = static_cast<int>(readU32(bytes, entryOffset));
-        const QString title = decodeFixedString(bytes, entryOffset + CardfileTitleOffsetInEntry, CardfileTitleLength);
-        if (textOffset < 0 || textOffset + CardfileTextOffset > bytes.size()) {
-            continue;
+    for (quint64 row = 0; row < count; ++row) {
+        const quint64 entry = CardfileIndexOffset + row * CardfileIndexEntrySize;
+        const quint64 textOffset = readU32(bytes, entry);
+        if (textOffset < indexEnd || !containsByteRange(bytes.size(), textOffset, CardfileTextOffset)) {
+            result.errorMessage = QStringLiteral("A Cardfile text offset is outside the file.");
+            return result;
         }
-
-        const int textLength = readU16(bytes, textOffset + CardfileTextLengthOffset);
-        const QString text = decodeWindows1252(
-            bytes.mid(
-                textOffset + CardfileTextOffset,
-                std::min(textLength, static_cast<int>(bytes.size()) - textOffset - CardfileTextOffset)),
-            true).trimmed();
-
+        const quint64 length = readU16(bytes, textOffset + CardfileTextLengthOffset);
+        const quint64 payload = textOffset + CardfileTextOffset;
+        if (!containsByteRange(bytes.size(), payload, length)) {
+            result.errorMessage = QStringLiteral("A Cardfile text payload is truncated.");
+            return result;
+        }
+        if (!budget.row() || !budget.checkpoint(length + CardfileTitleLength)
+            || !budget.value(CardfileTitleLength * sizeof(QChar)) || !budget.value(length * sizeof(QChar))) return aborted();
+        const QString title = decodeFixedString(bytes, qsizetype(entry + CardfileTitleOffsetInEntry), CardfileTitleLength);
+        const QString text = decodeWindows1252(bytes.mid(qsizetype(payload), qsizetype(length)), true).trimmed();
         deck.addCard(CardRecord({title, text}));
     }
-
-    if (deck.cardCount() == 0) {
-        result.errorMessage = QStringLiteral("Legacy Microsoft Cardfile index contained no readable cards.");
-        return result;
-    }
-
     result.deck = std::move(deck);
     return result;
 }
@@ -496,8 +476,10 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readTakeNoteFile(const 
     Result result;
     result.format = Format::TakeNote;
 
-    const LegacyDeckReader reader;
-    const LegacyDeckReader::Result deckResult = reader.readDeck(filePath, password);
+    ImportBudget budget(m_limits);
+    const LegacyDeckReader reader(m_limits);
+    const LegacyDeckReader::Result deckResult = reader.readDeck(filePath, password, &budget);
+    if (deckResult.processingAborted || budget.failed()) { result.processingAborted = true; result.errorMessage = budget.error(); return result; }
     result.legacyPasswordProtected = deckResult.legacyPasswordProtected;
     result.legacyDataEncrypted = deckResult.legacyDataEncrypted;
     result.legacyPasswordVerified = deckResult.legacyPasswordVerified;
@@ -509,7 +491,7 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readTakeNoteFile(const 
         return result;
     }
     if (!deckResult.ok()) {
-        Result fallback = readTakeNoteSoftwareLibraryFallback(filePath, deckResult.rawRecords, deckResult.errorMessage);
+        Result fallback = readTakeNoteSoftwareLibraryFallback(filePath, deckResult.rawRecords, deckResult.errorMessage, budget);
         fallback.legacyPasswordProtected = deckResult.legacyPasswordProtected;
         fallback.legacyDataEncrypted = deckResult.legacyDataEncrypted;
         fallback.legacyPasswordVerificationUnavailable = deckResult.legacyPasswordVerificationUnavailable;
@@ -527,57 +509,63 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readTakeNoteFile(const 
 
 LegacyInterchangeReader::Result LegacyInterchangeReader::readWordPerfectMergeFile(const QString& filePath) const
 {
+    ImportBudget budget(m_limits);
     Result result;
     result.format = Format::WordPerfectMerge;
-
+    const auto aborted = [&] { result.processingAborted = true; result.errorMessage = budget.error(); return result; };
     QByteArray bytes;
-    if (!readAllBytes(filePath, &bytes, &result.errorMessage)) {
+    if (!readAllBytes(filePath, &bytes, &result.errorMessage, budget)) {
+        result.processingAborted = budget.failed();
         return result;
     }
     if (!bytes.startsWith(QByteArray::fromRawData("\xffWPC", 4))) {
-        result.errorMessage = QStringLiteral("Legacy WordPerfect merge data does not start with a WPC header.");
+        result.errorMessage = QStringLiteral("The WordPerfect WPC merge header is invalid.");
         return result;
     }
-
-    const int dataStart = wordPerfectDataStart(bytes);
-    if (dataStart < 0 || dataStart >= bytes.size()) {
-        result.errorMessage = QStringLiteral("Legacy WordPerfect merge data does not contain field separators.");
+    const int start = wordPerfectDataStart(bytes);
+    if (start < 0 || start >= bytes.size()) {
+        result.errorMessage = QStringLiteral("The WordPerfect merge data has no field separators.");
         return result;
     }
-
     QVector<QVector<QString>> rows;
     QVector<QString> row;
-    const QVector<QByteArray> segments = splitWordPerfectSegments(bytes.mid(dataStart));
-    for (int segmentIndex = 0; segmentIndex < segments.size(); ++segmentIndex) {
-        const QByteArray& segment = segments.at(segmentIndex);
-        if (segment.isEmpty() && segmentIndex == segments.size() - 1) {
-            continue;
-        }
-        if (isWordPerfectDescriptor(segment, '1')) {
-            continue;
-        }
+    for (qsizetype from = start; from <= bytes.size();) {
+        const qsizetype separator = bytes.indexOf(WordPerfectFieldSeparator, from);
+        const qsizetype end = separator < 0 ? bytes.size() : separator;
+        const qsizetype length = end - from;
+        if (!budget.checkpoint(quint64(length) + 1) || !budget.cell(quint64(length) * sizeof(QChar))) return aborted();
+        if (length == 0 && separator < 0) break;
+        const QByteArray segment = bytes.mid(from, length);
         if (isWordPerfectDescriptor(segment, '4')) {
             if (!row.isEmpty()) {
-                rows.append(row);
+                if (!budget.row()) return aborted();
+                rows.append(std::move(row));
                 row.clear();
             }
-            continue;
+        } else if (!isWordPerfectDescriptor(segment, '1')) {
+            if (!budget.fields(quint64(row.size()) + 1) || !budget.value(quint64(length) * sizeof(QChar))) return aborted();
+            row.append(decodeWindows1252(segment));
         }
-
-        row.append(decodeWindows1252(segment, false));
+        if (separator < 0) break;
+        from = separator + 1;
     }
     if (!row.isEmpty()) {
-        rows.append(row);
+        if (!budget.row()) return aborted();
+        rows.append(std::move(row));
     }
-    if (rows.isEmpty()) {
-        result.errorMessage = QStringLiteral("Legacy WordPerfect merge data contained no records.");
-        return result;
-    }
-
-    Deck deck(deckNameForPath(filePath, QStringLiteral("Legacy WordPerfect Import")));
-    deck.setDescription(QStringLiteral("Imported from a legacy WordPerfect merge interchange file."));
+    if (rows.isEmpty()) { result.errorMessage = QStringLiteral("The WordPerfect merge file contains no records."); return result; }
+    Deck deck(deckNameForPath(filePath, QStringLiteral("WordPerfect Import")));
+    deck.setDescription(QStringLiteral("Imported from a WordPerfect merge interchange file."));
     addGenericFieldsForRows(&deck, rows);
-    addRowsToDeck(&deck, rows);
+    for (const auto& values : rows) {
+        CardRecord card;
+        for (int field = 0; field < deck.fieldCount(); ++field) {
+            const QString value = values.value(field);
+            if (!budget.checkpoint(1) || !budget.value(quint64(value.size()) * sizeof(QChar))) return aborted();
+            card.appendValue(value);
+        }
+        deck.addCard(std::move(card));
+    }
     result.deck = std::move(deck);
     return result;
 }
