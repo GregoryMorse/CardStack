@@ -18,6 +18,7 @@
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGroupBox>
+#include <QImage>
 #include <QAbstractButton>
 #include <QAbstractSpinBox>
 #include <QButtonGroup>
@@ -1029,13 +1030,43 @@ protected:
 private:
     static void drawArrow(QPainter* painter, const QRect& rect, bool up)
     {
-        const int centerX = rect.center().x();
-        const int centerY = rect.center().y();
-        painter->setBrush(painter->pen().color());
-        const QPolygon triangle = up
-            ? QPolygon{QPoint(centerX - 2, centerY + 1), QPoint(centerX, centerY - 2), QPoint(centerX + 2, centerY + 1)}
-            : QPolygon{QPoint(centerX - 2, centerY - 1), QPoint(centerX, centerY + 2), QPoint(centerX + 2, centerY - 1)};
-        painter->drawPolygon(triangle);
+        constexpr int ArrowWidth = 6;
+        constexpr int ArrowHeight = 4;
+        constexpr int ButtonInset = 1;
+        const qreal scale = painter->device()->devicePixelRatioF();
+        const int left = qRound(rect.x() * scale);
+        const int top = qRound(rect.y() * scale);
+        const int width = qRound((rect.x() + rect.width()) * scale) - left;
+        const int height = qRound((rect.y() + rect.height()) * scale) - top;
+        const int inset = qCeil(ButtonInset * scale);
+        const auto fittedExtent = [scale, inset](int preferred, int available) {
+            int extent = std::min(qRound(preferred * scale), available - 2 * inset);
+            // Matching parity centers the ink on the physical pixel grid.
+            if ((available - extent) % 2 != 0) --extent;
+            return extent;
+        };
+        const int arrowWidth = fittedExtent(ArrowWidth, width);
+        const int arrowHeight = fittedExtent(ArrowHeight, height);
+        if (arrowWidth <= 0 || arrowHeight <= 0) return;
+        const int arrowLeft = left + (width - arrowWidth) / 2;
+        const int arrowTop = top + (height - arrowHeight) / 2;
+        const QColor color = painter->pen().color();
+        QImage glyph(arrowWidth, arrowHeight, QImage::Format_ARGB32_Premultiplied);
+        glyph.fill(Qt::transparent);
+        {
+            QPainter glyphPainter(&glyph);
+            for (int row = 0; row < arrowHeight; ++row) {
+                const int triangleRow = up ? row : arrowHeight - 1 - row;
+                int rowWidth = arrowHeight == 1 ? arrowWidth
+                    : 1 + (arrowWidth - 1) * triangleRow / (arrowHeight - 1);
+                if ((arrowWidth - rowWidth) % 2 != 0) ++rowWidth;
+                const int rowLeft = (arrowWidth - rowWidth) / 2;
+                glyphPainter.fillRect(rowLeft, row, rowWidth, 1, color);
+            }
+        }
+        // Paint one physical-pixel glyph, avoiding fractional-DPI row seams.
+        glyph.setDevicePixelRatio(scale);
+        painter->drawImage(QPointF(arrowLeft / scale, arrowTop / scale), glyph);
     }
 };
 

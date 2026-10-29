@@ -159,24 +159,71 @@ inline void microScroll()
     QVERIFY(original.width() > 0 && original.height() > 0);
     QCOMPARE(spin->sizeHint(), QSize(10, 14));
     QCOMPARE(spin->minimumSizeHint(), QSize(8, 12));
-    const QImage normal = render(*spin);
-    const qreal scale = normal.devicePixelRatio();
-    const auto pixelAt = [&](QPoint point) { return normal.pixelColor(qRound(point.x() * scale), qRound(point.y() * scale)); };
-    const auto filledBase = [&](const QRect& half, bool up) {
-        const int y = half.center().y() + (up ? 1 : -1);
-        const QColor ink = pixelAt(QPoint(half.center().x(), y));
-        const QColor background = pixelAt(QPoint(half.right() - 1, half.center().y()));
-        if (qAbs(ink.red() - background.red()) + qAbs(ink.green() - background.green())
-            + qAbs(ink.blue() - background.blue()) < 60) return 0;
-        int count = 0;
-        for (int x = half.center().x() - 2; x <= half.center().x() + 2; ++x) {
-            const QColor actual = pixelAt(QPoint(x, y));
-            if (qAbs(actual.red() - ink.red()) < 20 && qAbs(actual.green() - ink.green()) < 20
-                && qAbs(actual.blue() - ink.blue()) < 20) ++count;
+    const qreal scale = spin->devicePixelRatioF();
+    const auto verifyCenteredArrows = [&] {
+        constexpr int MinimumInkContrast = 60;
+        const QImage image = render(*spin);
+        const int split = spin->height() / 2;
+        const int inset = qCeil(scale);
+        const QColor background = image.pixelColor(inset, inset);
+        for (bool up : {true, false}) {
+            const int top = up ? 0 : qRound(split * scale);
+            const int bottom = up ? qRound(split * scale) : image.height();
+            const QRect interior(inset, top + inset, image.width() - 2 * inset,
+                                 bottom - top - 2 * inset);
+            const QColor foreground = image.pixelColor(image.width() / 2, (top + bottom) / 2);
+            const int contrast = qAbs(foreground.red() - background.red())
+                + qAbs(foreground.green() - background.green()) + qAbs(foreground.blue() - background.blue());
+            QVERIFY(contrast >= MinimumInkContrast);
+            QRect ink;
+            QVector<int> rowCounts;
+            for (int y = interior.top(); y <= interior.bottom(); ++y) {
+                int count = 0;
+                for (int x = interior.left(); x <= interior.right(); ++x) {
+                    const QColor color = image.pixelColor(x, y);
+                    // Exclude the frame/separator, including partially covered DPI edge pixels.
+                    if (color != foreground) continue;
+                    ink = ink.united(QRect(x, y, 1, 1));
+                    ++count;
+                }
+                if (count != 0) rowCounts.append(count);
+            }
+            const QString detail = QStringLiteral("%1 arrow: widget %2x%3, DPR %4, ink %5,%6 %7x%8")
+                .arg(up ? QStringLiteral("up") : QStringLiteral("down"))
+                .arg(spin->width()).arg(spin->height()).arg(scale)
+                .arg(ink.x()).arg(ink.y()).arg(ink.width()).arg(ink.height());
+            QVERIFY2(!ink.isEmpty(), qPrintable(detail));
+            // Fractional-DPI raster rounding permits at most half a physical pixel.
+            QVERIFY2(qAbs(ink.left() + ink.right() + 1 - spin->width() * scale) <= 1.0, qPrintable(detail));
+            const qreal buttonCenterTwice = (up ? split : split + spin->height()) * scale;
+            QVERIFY2(qAbs(ink.top() + ink.bottom() + 1 - buttonCenterTwice) <= 1.0, qPrintable(detail));
+            QVERIFY2(ink.width() >= qFloor(4 * scale), qPrintable(detail));
+            QVERIFY2(ink.height() >= qFloor(2 * scale), qPrintable(detail));
+            QVERIFY2(ink.width() <= qRound(6 * scale), qPrintable(detail));
+            QVERIFY2(ink.height() <= qRound(4 * scale), qPrintable(detail));
+            QCOMPARE(rowCounts.size(), ink.height());
+            for (int row = 1; row < rowCounts.size(); ++row) {
+                QVERIFY2(up ? rowCounts[row] >= rowCounts[row - 1]
+                            : rowCounts[row] <= rowCounts[row - 1], qPrintable(detail));
+            }
         }
-        return count;
     };
-    const int split = spin->height() / 2;
+    verifyCenteredArrows();
+    const QImage normal = render(*spin);
+    const QFont originalFont = spin->font();
+    QFont enlargedFont = originalFont;
+    enlargedFont.setPixelSize(40);
+    spin->setFont(enlargedFont);
+    QCOMPARE(spin->geometry(), original);
+    QCOMPARE(render(*spin), normal);
+    spin->setFont(originalFont);
+    // Synthetic paint surfaces only; restore the production geometry before capture.
+    for (const QSize& size : {QSize(8, 12), QSize(10, 14), QSize(11, 25), QSize(14, 32)}) {
+        spin->resize(size);
+        verifyCenteredArrows();
+    }
+    spin->setGeometry(original);
+    QCOMPARE(spin->geometry(), original);
     capture(*spin, QStringLiteral("micro_scroll_control"));
     const auto saveArrow = [&](const QString& state) {
         const QString output = qEnvironmentVariable("CARDSTACK_UI_POLISH_GALLERY_DIR");
@@ -192,18 +239,19 @@ inline void microScroll()
     QMouseEvent move(QEvent::MouseMove, local, global, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(spin, &move);
     QCOMPARE(spin->geometry(), original);
+    verifyCenteredArrows();
     saveArrow(QStringLiteral("arrows_hover"));
     QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(spin, &press);
     QCOMPARE(spin->geometry(), original);
+    verifyCenteredArrows();
     saveArrow(QStringLiteral("arrows_pressed"));
     QMouseEvent release(QEvent::MouseButtonRelease, local, global, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(spin, &release);
     spin->setEnabled(false);
     QCOMPARE(spin->geometry(), original);
+    verifyCenteredArrows();
     saveArrow(QStringLiteral("arrows_disabled"));
     qInfo() << "Micro-scroll geometry:" << original << "DPR:" << scale;
-    QVERIFY(filledBase(QRect(0, 0, spin->width(), split), true) >= 4);
-    QVERIFY(filledBase(QRect(0, split, spin->width(), spin->height() - split), false) >= 4);
 }
 } // namespace CardStack::Tests::UiPolishProbe

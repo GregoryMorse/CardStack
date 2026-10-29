@@ -80,8 +80,11 @@ set(CARDSTACK_TEST_SUITE_NAMES
 
 foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
     set(cardstack_suite_timeout_seconds 60)
-    if(cardstack_test_suite STREQUAL "MainWindowWorkflowTests")
-        # Many independent durable-save workflows run in this one process.
+    if(cardstack_test_suite STREQUAL "MainWindowWorkflowTests"
+       OR cardstack_test_suite STREQUAL "SQLiteDeckStoreTests"
+       OR cardstack_test_suite STREQUAL "SQLitePackageStoreTests")
+        # These suites aggregate many independent durable saves and migrations.
+        # Hosted Windows disk latency must not exhaust the total suite budget.
         # Keep the per-function 30-second hang guard below unchanged.
         set(cardstack_suite_timeout_seconds 180)
     endif()
