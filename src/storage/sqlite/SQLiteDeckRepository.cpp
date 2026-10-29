@@ -1,4 +1,5 @@
 #include "SQLiteDeckRepository.h"
+#include "SQLiteModelBudget.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -97,8 +98,8 @@ QString nonNull(QString value)
 
 } // namespace
 
-SQLiteDeckRepository::SQLiteDeckRepository(QSqlDatabase database)
-    : m_database(std::move(database))
+SQLiteDeckRepository::SQLiteDeckRepository(QSqlDatabase database, ImportBudget* budget)
+    : m_database(std::move(database)), m_budget(budget)
 {
 }
 
@@ -157,6 +158,7 @@ bool SQLiteDeckRepository::loadDeckShell(Deck* deck, QString* errorMessage)
     }
 
     if (query.next()) {
+        if (!budgetModelRow(query, m_budget, errorMessage)) return false;
         deck->setName(query.value(0).toString());
         deck->setDescription(query.value(1).toString());
         const QString securityPassword = query.value(2).toString();
@@ -192,7 +194,7 @@ bool SQLiteDeckRepository::saveDefaultTemplate(const Deck& deck, QString* errorM
     return true;
 }
 
-bool SQLiteDeckRepository::loadDefaultTemplateId(int* templateId, QString* errorMessage)
+bool SQLiteDeckRepository::loadDefaultTemplateId(qint64* templateId, QString* errorMessage)
 {
     if (templateId == nullptr) {
         setError(errorMessage, QStringLiteral("Template id output is null."));
@@ -205,11 +207,11 @@ bool SQLiteDeckRepository::loadDefaultTemplateId(int* templateId, QString* error
         return false;
     }
 
-    *templateId = query.next() ? query.value(0).toInt() : 0;
+    *templateId = query.next() ? query.value(0).toLongLong() : 0;
     return true;
 }
 
-bool SQLiteDeckRepository::saveFields(const Deck& deck, int templateId, QString* errorMessage)
+bool SQLiteDeckRepository::saveFields(const Deck& deck, qint64 templateId, QString* errorMessage)
 {
     QSqlQuery fieldQuery(m_database);
     fieldQuery.prepare(QStringLiteral(
@@ -260,7 +262,7 @@ bool SQLiteDeckRepository::saveFields(const Deck& deck, int templateId, QString*
     return true;
 }
 
-bool SQLiteDeckRepository::loadFields(int templateId, Deck* deck, QString* errorMessage)
+bool SQLiteDeckRepository::loadFields(qint64 templateId, Deck* deck, QString* errorMessage)
 {
     if (deck == nullptr) {
         setError(errorMessage, QStringLiteral("Deck output is null."));
@@ -277,6 +279,10 @@ bool SQLiteDeckRepository::loadFields(int templateId, Deck* deck, QString* error
     }
 
     while (query.next()) {
+        if (!budgetModelRow(query, m_budget, errorMessage)) return false;
+        if (m_budget && !m_budget->fields(quint64(deck->fieldCount()) + 1)) {
+            setError(errorMessage, m_budget->error()); return false;
+        }
         deck->addField(FieldDefinition(
             query.value(0).toString(),
             fieldTypeFromString(query.value(1).toString()),
@@ -324,15 +330,18 @@ bool SQLiteDeckRepository::loadSortKeys(Deck* deck, QString* errorMessage)
 
     QSqlQuery query(m_database);
     if (!query.exec(QStringLiteral(
-            "SELECT field_id, direction FROM deck_sort_keys WHERE deck_id = 1 ORDER BY ordinal"))) {
+            "SELECT template_fields.ordinal, deck_sort_keys.direction FROM deck_sort_keys "
+            "JOIN template_fields ON template_fields.id = deck_sort_keys.field_id "
+            "WHERE deck_sort_keys.deck_id = 1 ORDER BY deck_sort_keys.ordinal"))) {
         setError(errorMessage, query.lastError());
         return false;
     }
 
     QVector<DeckSortKey> sortKeys;
     while (query.next()) {
+        if (!budgetModelRow(query, m_budget, errorMessage)) return false;
         DeckSortKey key;
-        key.fieldIndex = query.value(0).toInt() - 1;
+        key.fieldIndex = query.value(0).toInt();
         key.descending = query.value(1).toString() == QStringLiteral("descending");
         if (key.fieldIndex >= 0 && key.fieldIndex < deck->fieldCount()) {
             sortKeys.append(key);
@@ -405,6 +414,7 @@ bool SQLiteDeckRepository::loadAppearance(Deck* deck, QString* errorMessage)
 
     DeckAppearance appearance;
     while (query.next()) {
+        if (!budgetModelRow(query, m_budget, errorMessage)) return false;
         const QString scope = query.value(0).toString();
         const int target = query.value(1).toInt();
         if (scope == QStringLiteral("template-font")) {
@@ -471,6 +481,7 @@ bool SQLiteDeckRepository::loadImportExportProfiles(Deck* deck, QString* errorMe
 
     QVector<ImportExportProfile> profiles;
     while (query.next()) {
+        if (!budgetModelRow(query, m_budget, errorMessage)) return false;
         ImportExportProfile profile;
         profile.name = query.value(0).toString();
         profile.type = profileTypeFromString(query.value(1).toString());
@@ -521,13 +532,20 @@ bool SQLiteDeckRepository::saveCards(const Deck& deck, QString* errorMessage)
     return true;
 }
 
-bool SQLiteDeckRepository::loadCards(int templateId, Deck* deck, QString* errorMessage)
+bool SQLiteDeckRepository::loadCards(qint64 templateId, Deck* deck, QString* errorMessage)
 {
     if (deck == nullptr) {
         setError(errorMessage, QStringLiteral("Deck output is null."));
         return false;
     }
 
+    QSqlQuery countQuery(m_database);
+    if (!countQuery.exec(QStringLiteral("SELECT COUNT(*) FROM cards WHERE deck_id = 1")) || !countQuery.next()) {
+        setError(errorMessage, countQuery.lastError()); return false;
+    }
+    if (m_budget && !m_budget->matrixFits(countQuery.value(0).toULongLong(), quint64(deck->fieldCount()))) {
+        setError(errorMessage, m_budget->error()); return false;
+    }
     QSqlQuery cardQuery(m_database);
     if (!cardQuery.exec(QStringLiteral("SELECT id FROM cards WHERE deck_id = 1 ORDER BY ordinal"))) {
         setError(errorMessage, cardQuery.lastError());
@@ -543,7 +561,9 @@ bool SQLiteDeckRepository::loadCards(int templateId, Deck* deck, QString* errorM
         "ORDER BY template_fields.ordinal"));
 
     while (cardQuery.next()) {
-        const int cardId = cardQuery.value(0).toInt();
+        if (!budgetModelRow(cardQuery, m_budget, errorMessage)) return false;
+        const qint64 cardId = cardQuery.value(0).toLongLong();
+        if (m_budget && !m_budget->row()) { setError(errorMessage, m_budget->error()); return false; }
         CardRecord card;
 
         valueQuery.bindValue(0, cardId);
@@ -554,7 +574,11 @@ bool SQLiteDeckRepository::loadCards(int templateId, Deck* deck, QString* errorM
         }
 
         while (valueQuery.next()) {
-            card.appendValue(valueQuery.value(0).toString());
+            const QString value = valueQuery.value(0).toString();
+            if (m_budget && (!m_budget->value(quint64(value.size()) * sizeof(QChar)) || !m_budget->checkpoint(1))) {
+                setError(errorMessage, m_budget->error()); return false;
+            }
+            card.appendValue(value);
         }
 
         deck->addCard(std::move(card));

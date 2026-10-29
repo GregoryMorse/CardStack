@@ -91,6 +91,18 @@ public:
     {
         return checkpoint() && (count <= m_limits.maximumRows || reject(Failure::Rows));
     }
+    // Preflight the dense matrix represented by potentially sparse SQL rows.
+    bool matrixFits(quint64 rows, quint64 columns)
+    {
+        if (!rowsFit(rows) || !fields(columns)) return false;
+        const quint64 available = m_limits.maximumValues - std::min(m_values, m_limits.maximumValues);
+        if (columns != 0 && rows > available / columns) return reject(Failure::Values);
+        const quint64 cells = rows * columns;
+        const quint64 bytes = m_limits.maximumDecodedBytes - std::min(m_decoded, m_limits.maximumDecodedBytes);
+        if (cells > bytes / ImportValueOverheadBytes) return reject(Failure::Decoded);
+        const quint64 remaining = bytes - cells * ImportValueOverheadBytes;
+        return rows <= remaining / ImportRowOverheadBytes || reject(Failure::Decoded);
+    }
     bool frames(quint64 count)
     {
         if (!checkpoint() || !take(m_frames, count, m_limits.maximumFrames, Failure::Frames)) return false;

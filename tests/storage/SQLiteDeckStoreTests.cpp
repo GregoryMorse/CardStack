@@ -1,5 +1,6 @@
 #include <QFileInfo>
 #include "SQLiteDeckStore.h"
+#include <QSqlError>
 
 #include "DeckTemplate.h"
 #include "DeckSecurity.h"
@@ -134,7 +135,134 @@ Deck makeRoundTripDeck()
 class SQLiteDeckStoreTests : public QObject {
     Q_OBJECT
 
+private:
+    static bool mutate(const QString& path, const QStringList& statements, QString* error)
+    {
+        const QString name = QUuid::createUuid().toString();
+        bool ok = true;
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), name);
+            db.setDatabaseName(path);
+            ok = db.open();
+            QSqlQuery query(db);
+            if (ok) ok = db.transaction();
+            for (const auto& statement : statements) {
+                if (!ok) break;
+                ok = query.exec(statement);
+                if (!ok && error) *error = query.lastError().text();
+            }
+            if (ok) ok = db.commit();
+            else db.rollback();
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(name);
+        return ok;
+    }
+
 private slots:
+    void sparseCardsCannotBypassModelBudgets()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("sparse.cardstack"));
+        Deck source(QStringLiteral("Sparse"));
+        for (int i = 0; i < 200; ++i) source.addField(FieldDefinition(QString::number(i), FieldType::Text, 255));
+        QString error;
+        { SQLiteDeckStore store; QVERIFY2(store.create(path, &error), qPrintable(error)); QVERIFY2(store.saveDeck(source, &error), qPrintable(error)); }
+        QVERIFY2(mutate(path, {QStringLiteral(
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<3000) "
+            "INSERT INTO cards(id,deck_id,ordinal) SELECT x,1,x-1 FROM n")}, &error), qPrintable(error));
+        QFile file(path); QVERIFY(file.open(QIODevice::ReadOnly)); const auto original = file.readAll(); file.close();
+        for (int mode = 0; mode < 3; ++mode) {
+            ImportLimits limits;
+            std::atomic_bool cancelled{false};
+            if (mode == 0) limits.maximumValues = 20000;
+            if (mode == 1) limits.maximumDecodedBytes = 8 * ImportMebibyte;
+            if (mode == 2) limits.cancellation = &cancelled;
+            SQLiteDeckStore store(limits);
+            QVERIFY2(store.open(path, &error), qPrintable(error));
+            if (mode == 2) cancelled.store(true);
+            Deck output(QStringLiteral("Keep"));
+            QVERIFY(!store.loadDeck(&output, &error));
+            QVERIFY(!error.isEmpty());
+            QCOMPARE(output.name(), QStringLiteral("Keep"));
+            QCOMPARE(output.cardCount(), 0);
+        }
+        QVERIFY(file.open(QIODevice::ReadOnly)); QCOMPARE(file.readAll(), original);
+    }
+
+    void wideSqlIdentitiesPreserveAllAssociations_data()
+    {
+        QTest::addColumn<qint64>("offset");
+        QTest::newRow("int-max") << qint64(2147483646);
+        QTest::newRow("above-int-max") << qint64(2147483647);
+        QTest::newRow("forty-bit") << (qint64(1) << 40);
+    }
+    void wideSqlIdentitiesPreserveAllAssociations()
+    {
+        QFETCH(qint64, offset);
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("wide.cardstack"));
+        QString error;
+        const Deck source = makeRoundTripDeck();
+        { SQLiteDeckStore store; QVERIFY2(store.create(path, &error), qPrintable(error)); QVERIFY2(store.saveDeck(source, &error), qPrintable(error)); }
+        QStringList changes;
+        for (const auto& pair : {
+                 qMakePair("cards", "id"), qMakePair("card_values", "card_id"),
+                 qMakePair("templates", "id"), qMakePair("template_fields", "template_id"), qMakePair("template_frames", "template_id"),
+                 qMakePair("template_fields", "id"), qMakePair("card_values", "field_id"), qMakePair("deck_sort_keys", "field_id"),
+                 qMakePair("reports", "id"), qMakePair("report_frames", "report_id")}) {
+            changes.append(QStringLiteral("UPDATE %1 SET %2=%2+%3").arg(QLatin1String(pair.first), QLatin1String(pair.second)).arg(offset));
+        }
+        QVERIFY2(mutate(path, changes, &error), qPrintable(error));
+        Deck loaded;
+        { SQLiteDeckStore store; QVERIFY2(store.open(path, &error), qPrintable(error)); QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error)); }
+        QCOMPARE(loaded.fieldCount(), source.fieldCount());
+        QCOMPARE(loaded.cardCount(), source.cardCount());
+        QCOMPARE(loaded.reportCount(), source.reportCount());
+        QCOMPARE(loaded.sortKeys(), source.sortKeys());
+        QCOMPARE(loaded.cardTemplateLayout().frames.size(), source.cardTemplateLayout().frames.size());
+        for (int i = 0; i < source.cardCount(); ++i)
+            for (int field = 0; field < source.fieldCount(); ++field) QCOMPARE(loaded.cardAt(i).valueAt(field), source.cardAt(i).valueAt(field));
+        for (int i = 0; i < source.reportCount(); ++i) QCOMPARE(loaded.reportAt(i).frames, source.reportAt(i).frames);
+        const QString saved = dir.filePath(QStringLiteral("roundtrip.cardstack"));
+        { SQLiteDeckStore store; QVERIFY2(store.create(saved, &error), qPrintable(error)); QVERIFY2(store.saveDeck(loaded, &error), qPrintable(error)); }
+        { SQLiteDeckStore store; QVERIFY2(store.open(saved, &error), qPrintable(error)); QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error)); }
+        for (int i = 0; i < source.cardCount(); ++i)
+            for (int field = 0; field < source.fieldCount(); ++field) QCOMPARE(loaded.cardAt(i).valueAt(field), source.cardAt(i).valueAt(field));
+    }
+
+    void invalidReportMetadataFailsWithoutPublishingOrOverwriting()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("reports.cardstack"));
+        const Deck source = makeRoundTripDeck();
+        QString error;
+        for (const auto& mutation : {
+                 QStringLiteral("UPDATE reports SET rows=2147483647,columns=2147483647"),
+                 QStringLiteral("UPDATE reports SET data_font_details_json='{\"height\":-2147483648}'"),
+                 QStringLiteral("UPDATE reports SET text_font_details_json='{\"height\":1e99}'"),
+                 QStringLiteral("UPDATE reports SET form_width=4294967296"),
+                 QStringLiteral("UPDATE report_frames SET left_pos=2147483647,width=2147483647")}) {
+            { SQLiteDeckStore store; QVERIFY2(store.create(path, &error), qPrintable(error)); QVERIFY2(store.saveDeck(source, &error), qPrintable(error)); }
+            QVERIFY2(mutate(path, {mutation}, &error), qPrintable(error));
+            Deck output(QStringLiteral("Keep"));
+            SQLiteDeckStore store;
+            QVERIFY2(store.open(path, &error), qPrintable(error));
+            QVERIFY(!store.loadDeck(&output, &error));
+            QCOMPARE(output.name(), QStringLiteral("Keep"));
+            QVERIFY(!error.isEmpty());
+        }
+        { SQLiteDeckStore store; QVERIFY2(store.create(path, &error), qPrintable(error)); QVERIFY2(store.saveDeck(source, &error), qPrintable(error)); }
+        QFile file(path); QVERIFY(file.open(QIODevice::ReadOnly)); const auto original = file.readAll(); file.close();
+        Deck bad(QStringLiteral("Invalid report"));
+        auto report = source.reportAt(0);
+        report.dataFont.legacyHeight = (std::numeric_limits<int>::min)();
+        bad.addReport(report);
+        SQLiteDeckStore store; QVERIFY2(store.open(path, &error), qPrintable(error));
+        QVERIFY(!store.saveDeck(bad, &error));
+        QVERIFY(file.open(QIODevice::ReadOnly)); QCOMPARE(file.readAll(), original);
+    }
+
 
     void argon2MatchesRfc9106KnownAnswer()
     {

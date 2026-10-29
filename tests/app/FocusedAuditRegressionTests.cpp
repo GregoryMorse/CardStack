@@ -50,6 +50,7 @@
 #include <QLockFile>
 #include <QPixmap>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include <QCheckBox>
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
@@ -613,6 +614,142 @@ private slots:
         QCoreApplication::setApplicationName(m_originalApplication);
         QSettings::setDefaultFormat(m_originalFormat);
     }
+    void committedTableClipboardUndoRestoresPreviousValue()
+    {
+        Tests::RefreshAudit::HiddenWindows hidden;
+        for (int operation : {UiIds::Command::EditCut, UiIds::Command::EditPaste}) {
+            MainWindow window(nullptr, true, false);
+            Tests::RefreshAudit::show(window); QApplication::setActiveWindow(&window);
+            auto* workspace = Tests::RefreshAudit::workspace(window);
+            workspace->showTableView();
+            auto* table = workspace->findChild<QTableView*>(QStringLiteral("deckTableView"));
+            QVERIFY(table);
+            const QModelIndex index = table->model()->index(0, 1);
+            const QString original = QStringLiteral("Alpha Beta Gamma");
+            QVERIFY(table->model()->setData(index, original));
+            table->setCurrentIndex(index); table->edit(index); events();
+            auto* edit = table->findChild<QLineEdit*>();
+            QVERIFY(edit); edit->setFocus(); edit->setSelection(6, 4); events();
+            QApplication::clipboard()->setText(QStringLiteral("Z"));
+            command(window, operation)->trigger(); events();
+            const QString expected = operation == UiIds::Command::EditCut ? QStringLiteral("Alpha  Gamma") : QStringLiteral("Alpha Z Gamma");
+            QCOMPARE(edit->text(), expected);
+            QTest::keyClick(edit, Qt::Key_Tab); events();
+            QCOMPARE(workspace->deck().cardAt(workspace->currentCardIndex()).valueAt(1), expected);
+            command(window, UiIds::Command::EditUndo)->trigger(); events();
+            QCOMPARE(workspace->deck().cardAt(workspace->currentCardIndex()).valueAt(1), original);
+            workspace->clearDirty();
+        }
+    }
+
+    void destroyingWindowWithPendingTableEditDoesNotCallDeadShell()
+    {
+        Tests::RefreshAudit::HiddenWindows hidden;
+        auto* window = new MainWindow(nullptr, true, false);
+        Tests::RefreshAudit::show(*window);
+        QApplication::setActiveWindow(window);
+        auto* workspace = Tests::RefreshAudit::workspace(*window);
+        workspace->showTableView();
+        auto* table = workspace->findChild<QTableView*>(QStringLiteral("deckTableView"));
+        QVERIFY(table);
+        table->setCurrentIndex(table->model()->index(0, 0));
+        table->edit(table->currentIndex()); events();
+        auto* edit = table->findChild<QLineEdit*>();
+        QVERIFY(edit); edit->setFocus(); events();
+        edit->setText(QStringLiteral("Uncommitted shutdown edit"));
+        QPointer<MainWindow> guard(window);
+        delete window;
+        QVERIFY(guard.isNull());
+        events();
+    }
+
+    void deckClipboardMenuMatchesNativeSelection_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::addColumn<int>("operation");
+        QTest::addColumn<bool>("selection");
+        for (int mode = 0; mode < 3; ++mode)
+            for (int operation = 0; operation < 3; ++operation)
+                for (bool selection : {false, true})
+                    QTest::newRow(qPrintable(QStringLiteral("%1-%2-%3").arg(mode).arg(operation).arg(selection)))
+                        << mode << operation << selection;
+    }
+    void deckClipboardMenuMatchesNativeSelection()
+    {
+        QFETCH(int, mode); QFETCH(int, operation); QFETCH(bool, selection);
+        Tests::RefreshAudit::HiddenWindows hidden;
+        const QString previousStyle = qApp->styleSheet();
+        initializeApplicationAppearance(*qApp);
+        const auto restoreStyle = qScopeGuard([&] { qApp->setStyleSheet(previousStyle); });
+        MainWindow window(nullptr, true, false);
+        Tests::RefreshAudit::show(window);
+        QApplication::setActiveWindow(&window);
+        auto* workspace = Tests::RefreshAudit::workspace(window);
+        QWidget* editor = nullptr;
+        if (mode == 0) {
+            command(window, UiIds::Command::ViewTable)->trigger();
+            auto* table = workspace->findChild<QTableView*>(QStringLiteral("deckTableView"));
+            QVERIFY(table);
+            table->setCurrentIndex(table->model()->index(0, 0));
+            table->edit(table->currentIndex());
+            events();
+            editor = table->findChild<QLineEdit*>();
+        } else {
+            workspace->showCardView();
+            editor = mode == 1 ? static_cast<QWidget*>(workspace->findChild<QLineEdit*>(QStringLiteral("fieldValue_0")))
+                              : static_cast<QWidget*>(workspace->findChild<QPlainTextEdit*>(QStringLiteral("fieldValue_5")));
+        }
+        QVERIFY(editor);
+        editor->setFocus(); events();
+        QTRY_COMPARE(QApplication::focusWidget(), editor);
+        const QString original = QStringLiteral("Alpha Beta Gamma");
+        const int start = 6;
+        const int length = selection ? 4 : 0;
+        auto* line = qobject_cast<QLineEdit*>(editor);
+        auto* notes = qobject_cast<QPlainTextEdit*>(editor);
+        if (line) { line->setText(original); line->setSelection(start, length); }
+        else {
+            notes->setPlainText(original);
+            auto cursor = notes->textCursor(); cursor.setPosition(start);
+            cursor.setPosition(start + length, QTextCursor::KeepAnchor); notes->setTextCursor(cursor);
+        }
+        if (mode == 0) {
+            auto* table = workspace->findChild<QTableView*>(QStringLiteral("deckTableView"));
+            QVERIFY(table->visualRect(table->currentIndex()).contains(editor->geometry()));
+        }
+        QApplication::clipboard()->setText(operation == 2 ? QStringLiteral("Z") : QStringLiteral("Keep clipboard"));
+        if (selection && operation == 2) Tests::RefreshAudit::capture(window, QStringLiteral("round2_%1_selection").arg(mode));
+        const int id = operation == 0 ? UiIds::Command::EditCopy : operation == 1 ? UiIds::Command::EditCut : UiIds::Command::EditPaste;
+        auto* action = command(window, id);
+        if (mode == 0 && selection) {
+            QMenu* popup = nullptr;
+            for (auto* menu : window.menuBar()->findChildren<QMenu*>())
+                if (menu->actions().contains(action)) { popup = menu; break; }
+            QVERIFY(popup);
+            popup->setAttribute(Qt::WA_DontShowOnScreen);
+            QSignalSpy triggered(action, &QAction::triggered);
+            popup->popup(window.mapToGlobal(QPoint(80, 70))); events();
+            popup->setActiveAction(action);
+            QTest::keyClick(popup, Qt::Key_Return); events();
+            QCOMPARE(triggered.count(), 1);
+        } else action->trigger();
+        events();
+        const QString expected = operation == 2 ? original.left(start) + QStringLiteral("Z") + original.mid(start + length)
+            : operation == 1 && selection ? original.left(start) + original.mid(start + length) : original;
+        QCOMPARE(line ? line->text() : notes->toPlainText(), expected);
+        if (operation != 2) QCOMPARE(QApplication::clipboard()->text(), selection ? QStringLiteral("Beta") : QStringLiteral("Keep clipboard"));
+        if (selection && operation == 2) Tests::RefreshAudit::capture(window, QStringLiteral("round2_%1_pasted").arg(mode));
+        if (operation == 2 || (operation == 1 && selection)) {
+            command(window, UiIds::Command::EditUndo)->trigger(); events();
+            QCOMPARE(line ? line->text() : notes->toPlainText(), original);
+        }
+        // Commit through the real focus route, not by changing the model directly.
+        if (mode == 0) QTest::keyClick(editor, Qt::Key_Tab);
+        else workspace->setFocus();
+        events();
+        workspace->clearDirty();
+    }
+
     void refreshReplacementSpansAndUndo() { verify([](const QDir&) { Tests::RefreshAudit::replacements(); return outcome(false, {}); }); }
     void refreshSearchBoundariesAndOccurrences() { verify([](const QDir&) { Tests::RefreshAudit::searchBoundaries(); return outcome(false, {}); }); }
     void refreshReplacementThroughGui() { verify([](const QDir&) { Tests::RefreshAudit::replaceThroughGui(); return outcome(false, {}); }); }

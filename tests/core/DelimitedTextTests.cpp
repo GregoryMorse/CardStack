@@ -1,6 +1,8 @@
 ﻿#include "DelimitedText.h"
 
 #include <QtTest/QtTest>
+#include <QTemporaryDir>
+#include <QFile>
 
 using namespace CardStack;
 
@@ -23,6 +25,36 @@ class DelimitedTextTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void mappingsReorderSelectAndRejectInvalidColumns()
+    {
+        const Deck source = makeDelimitedDeck();
+        auto profile = DelimitedText::csvProfile(ImportExportProfileType::Export);
+        profile.fieldMappings = {1, 0};
+        const QString text = DelimitedText::writeDeck(source, profile);
+        QVERIFY(text.startsWith(QStringLiteral("Notes,Name\nPlain,Alpha\n")));
+        profile.fieldMappings = {1};
+        QVERIFY(DelimitedText::writeDeck(source, profile).startsWith(QStringLiteral("Notes\nPlain\n")));
+        profile.type = ImportExportProfileType::Import;
+        Deck imported;
+        QString error;
+        QVERIFY2(DelimitedText::readDeck(QStringLiteral("Name,Notes\nAlpha,Plain\n"), profile, &imported, &error), qPrintable(error));
+        QCOMPARE(imported.fieldCount(), 1);
+        QCOMPARE(imported.fieldAt(0).name(), QStringLiteral("Notes"));
+        QCOMPARE(imported.cardAt(0).valueAt(0), QStringLiteral("Plain"));
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("keep.csv"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write("keep"), qint64(4)); file.close();
+        for (int invalid : {-1, 2, (std::numeric_limits<int>::max)()}) {
+            profile.fieldMappings = {invalid};
+            QVERIFY(DelimitedText::writeDeck(source, profile).isNull());
+            QVERIFY(!DelimitedText::writeDeckFile(source, profile, path, &error));
+            QVERIFY(!DelimitedText::readDeck(QStringLiteral("Name,Notes\nAlpha,Plain\n"), profile, &imported, &error));
+            QCOMPARE(imported.cardAt(0).valueAt(0), QStringLiteral("Plain"));
+            QVERIFY(file.open(QIODevice::ReadOnly)); QCOMPARE(file.readAll(), QByteArray("keep")); file.close();
+        }
+    }
+
     void writesCsvWithHeaderAndEscaping()
     {
         const QString text = DelimitedText::writeDeck(

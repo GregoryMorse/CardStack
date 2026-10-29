@@ -21,6 +21,8 @@ struct ImportExportProfile {
     DelimitedTextFormat format = DelimitedTextFormat::Csv;
     QChar delimiter = QLatin1Char(',');
     bool hasHeader = true;
+    // Destination column order -> source field/column index; empty means identity.
+    // Out-of-range indexes are rejected rather than silently exporting wrong data.
     QVector<int> fieldMappings;
 };
 

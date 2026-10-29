@@ -29,9 +29,12 @@
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableView>
+#include <QStyledItemDelegate>
+#include <QStyleOptionViewItem>
 #include <QTextCursor>
 #include <QVBoxLayout>
 
@@ -41,6 +44,72 @@
 namespace CardStack {
 
 namespace {
+
+bool hasLiveTextUndo(const QWidget* workspace, const QTableView* table)
+{
+    QWidget* focused = QApplication::focusWidget();
+    if (!focused || !workspace->isAncestorOf(focused)) return false;
+    if (auto* edit = qobject_cast<QLineEdit*>(focused)) {
+        // A freshly opened next-cell editor may have initialization history.
+        // Once the previous edit is committed, Undo belongs to the deck snapshot.
+        const bool pendingTableEdit = !table->isAncestorOf(edit)
+            || edit->text() != table->currentIndex().data(Qt::EditRole).toString();
+        return pendingTableEdit && edit->isUndoAvailable();
+    }
+    if (auto* edit = qobject_cast<QPlainTextEdit*>(focused)) return edit->document()->isUndoAvailable();
+    return false;
+}
+
+enum class TextClipboardCommand { Copy, Cut, Paste };
+
+bool dispatchTextClipboard(QWidget* workspace, TextClipboardCommand command)
+{
+    QWidget* focused = QApplication::focusWidget();
+    if (!focused || !workspace->isAncestorOf(focused)) return false;
+    const auto dispatch = [command](auto* edit) {
+        if (!edit) return false;
+        switch (command) {
+        case TextClipboardCommand::Copy: edit->copy(); break;
+        case TextClipboardCommand::Cut: edit->cut(); break;
+        case TextClipboardCommand::Paste: edit->paste(); break;
+        }
+        return true;
+    };
+    return dispatch(qobject_cast<QLineEdit*>(focused))
+        || dispatch(qobject_cast<QPlainTextEdit*>(focused));
+}
+
+class DeckCellEditor : public QLineEdit {
+public:
+    using QLineEdit::QLineEdit;
+protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        // Style-sheet polishing may disable QWidget's automatic background fill.
+        { QPainter painter(this); painter.fillRect(rect(), palette().brush(QPalette::Base)); }
+        QLineEdit::paintEvent(event);
+    }
+};
+
+class DeckCellDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        // Keep editing inside the cell instead of expanding over its neighbors.
+        auto* edit = new DeckCellEditor(parent);
+        edit->setFrame(false);
+        edit->setAutoFillBackground(true);
+        edit->setBackgroundRole(QPalette::Base);
+        QStyleOptionViewItem item(option);
+        initStyleOption(&item, index);
+        edit->setFont(item.font);
+        QPalette palette = item.palette;
+        if (item.backgroundBrush.style() != Qt::NoBrush) palette.setBrush(QPalette::Base, item.backgroundBrush);
+        edit->setPalette(palette);
+        return edit;
+    }
+};
 
 class StyledTemplateFrame : public QFrame {
 public:
@@ -311,6 +380,7 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
         return setValueAt(row, fieldIndex, value, false);
     });
     m_tableView->setModel(m_tableModel);
+    m_tableView->setItemDelegate(new DeckCellDelegate(m_tableView));
     m_tableView->setAlternatingRowColors(false);
     m_tableView->setSelectionBehavior(QAbstractItemView::SelectItems);
     m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -590,17 +660,20 @@ void DeckWorkspace::duplicateCurrentCard()
 
 void DeckWorkspace::copy()
 {
+    if (dispatchTextClipboard(this, TextClipboardCommand::Copy)) return;
     QApplication::clipboard()->setText(currentValue());
 }
 
 void DeckWorkspace::cut()
 {
+    if (dispatchTextClipboard(this, TextClipboardCommand::Cut)) return;
     copy();
     clearCurrentValue();
 }
 
 void DeckWorkspace::paste()
 {
+    if (dispatchTextClipboard(this, TextClipboardCommand::Paste)) return;
     setCurrentValue(QApplication::clipboard()->text());
 }
 
@@ -676,7 +749,7 @@ void DeckWorkspace::clearCurrentValue()
 
 bool DeckWorkspace::canUndo() const
 {
-    return !m_undoStack.isEmpty();
+    return hasLiveTextUndo(this, m_tableView) || !m_undoStack.isEmpty();
 }
 
 bool DeckWorkspace::canUndelete() const
@@ -686,6 +759,12 @@ bool DeckWorkspace::canUndelete() const
 
 bool DeckWorkspace::undo()
 {
+    if (hasLiveTextUndo(this, m_tableView)) {
+        QWidget* focused = QApplication::focusWidget();
+        if (auto* edit = qobject_cast<QLineEdit*>(focused)) edit->undo();
+        else if (auto* edit = qobject_cast<QPlainTextEdit*>(focused)) edit->undo();
+        return true;
+    }
     if (m_undoStack.isEmpty()) {
         return false;
     }
@@ -1540,6 +1619,7 @@ bool DeckWorkspace::ensureEditableCard()
 
 void DeckWorkspace::syncCardEditorToDeck()
 {
+    if (m_restoringSnapshot) return;
     if (m_currentCardIndex < 0 || m_currentCardIndex >= m_deck.cardCount()) {
         return;
     }
@@ -1642,6 +1722,7 @@ void DeckWorkspace::pushUndoSnapshot()
 
 void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
 {
+    QScopedValueRollback<bool> restoring(m_restoringSnapshot, true);
     const QString passwordRecord = m_deck.securityPassword();
     const bool encrypted = m_deck.hasEncryptedSecurity();
     const auto key = m_deck.securityKey();
@@ -1767,6 +1848,7 @@ void DeckWorkspace::setCurrentValue(const QString& value)
 
 bool DeckWorkspace::setValueAt(int row, int fieldIndex, const QString& value, bool refreshModel)
 {
+    if (m_restoringSnapshot) return false;
     if (row < 0 || row >= m_deck.cardCount() || fieldIndex < 0 || fieldIndex >= m_deck.fieldCount()) {
         return false;
     }

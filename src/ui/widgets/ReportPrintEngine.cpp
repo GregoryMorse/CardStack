@@ -106,6 +106,7 @@ QRectF contentTarget(const ReportDefinition& report, const QRectF& target)
 
 QSizeF ReportPrintEngine::pageSizeMils(const ReportDefinition& report)
 {
+    if (!validateReportDefinition(report)) return QSizeF(1, 1);
     QSizeF size(report.pageWidth > 0 ? report.pageWidth : std::max(1, report.formWidth),
                 report.pageHeight > 0 ? report.pageHeight : std::max(1, report.formHeight));
     if (report.orientation != 0 && size.width() < size.height()) size.transpose();
@@ -128,7 +129,7 @@ QPageLayout ReportPrintEngine::pageLayout(const ReportDefinition& report)
 QVector<ReportPrintPage> ReportPrintEngine::paginate(const ReportDefinition& report, int recordCount)
 {
     QVector<ReportPrintPage> pages;
-    if (recordCount <= 0) {
+    if (recordCount <= 0 || !validateReportDefinition(report)) {
         return pages;
     }
 
@@ -166,7 +167,7 @@ QVector<ReportPrintPage> ReportPrintEngine::paginate(const ReportDefinition& rep
 
     const int rows = safeRows(report);
     const int columns = safeColumns(report);
-    const int cellsPerPage = std::max(1, rows * columns);
+    const qint64 cellsPerPage = std::max<qint64>(1, qint64(rows) * columns);
     const qreal logicalWidth = std::max<qreal>(
         1.0,
         pageSizeMils(report).width() - report.marginLeft - report.marginRight);
@@ -216,6 +217,7 @@ QVector<ReportPrintPage> ReportPrintEngine::paginate(
     const ReportDefinition& report,
     const QVector<ReportPreviewData>& records)
 {
+    if (!validateReportDefinition(report)) return {};
     if (report.formType != ReportFormType::Report) {
         return paginate(report, records.size());
     }
@@ -253,7 +255,7 @@ void ReportPrintEngine::renderPage(
     const ReportPrintPage& page,
     const QRectF& target)
 {
-    if (painter == nullptr || target.isEmpty()) {
+    if (painter == nullptr || target.isEmpty() || !validateReportDefinition(report)) {
         return;
     }
 

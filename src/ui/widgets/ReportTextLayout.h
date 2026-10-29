@@ -31,13 +31,14 @@ inline Qt::Alignment alignment(quint8 flags)
 }
 inline QFont font(const ReportFontDefinition& definition, quint8 flags)
 {
+    if (!validateReportFont(definition)) return font(ReportFontDefinition{}, flags);
     QFont result = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     // A named system style (for example Regular) overrides explicit weight/style.
     result.setStyleName(QString());
     if (!definition.faceName.isEmpty()) result.setFamily(definition.faceName);
     const qreal height = definition.legacyHeight == 0
         ? DefaultFontPoints * UnitsPerInch / 72.0
-        : std::abs(definition.legacyHeight) * UnitsPerInch / StoredFontUnitsPerInch;
+        : std::abs(qreal(definition.legacyHeight)) * UnitsPerInch / StoredFontUnitsPerInch;
     result.setPixelSize(std::max(1, qRound(height)));
     result.setWeight((flags & ReportStyleFlagBold) != 0 ? QFont::Bold
         : static_cast<QFont::Weight>(definition.weight == 0 ? int(QFont::Normal) : std::clamp(definition.weight, 100, 900)));

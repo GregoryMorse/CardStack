@@ -4,6 +4,7 @@
 #include <QPrinter>
 #include <QPrinterInfo>
 #include <QFile>
+#include <limits>
 
 #include <QAbstractButton>
 #include <QDir>
@@ -254,6 +255,36 @@ class ReportPreviewRendererTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void invalidGridFontAndGeometryAreRejectedAtRenderBoundary()
+    {
+        const auto original = makeReport();
+        for (int kind = 0; kind < 4; ++kind) {
+            auto report = original;
+            if (kind == 0) { report.formType = ReportFormType::Label; report.rows = report.columns = (std::numeric_limits<int>::max)(); }
+            if (kind == 1) report.dataFont.legacyHeight = (std::numeric_limits<int>::min)();
+            if (kind == 2) report.textFont.width = (std::numeric_limits<int>::max)();
+            if (kind == 3) report.formWidth = (std::numeric_limits<int>::max)();
+            QString error;
+            QVERIFY(!validateReportDefinition(report, &error)); QVERIFY(!error.isEmpty());
+            QVERIFY(ReportPrintEngine::paginate(report, 2).isEmpty());
+            QVERIFY(ReportPrintEngine::paginate(report, QVector<ReportPreviewData>(2)).isEmpty());
+            QImage image(400, 400, QImage::Format_ARGB32); image.fill(Qt::magenta);
+            const QImage before = image;
+            QPainter painter(&image);
+            ReportPreviewRenderer::render(&painter, report, image.rect());
+            painter.end();
+            QCOMPARE(image, before);
+        }
+        ReportFontDefinition font;
+        font.legacyHeight = (std::numeric_limits<int>::min)();
+        QCOMPARE(ReportTextLayout::font(font, 0).pixelSize(), ReportTextLayout::font(ReportFontDefinition{}, 0).pixelSize());
+        auto supported = original;
+        supported.formType = ReportFormType::Label; supported.rows = supported.columns = MaximumReportGridCount;
+        QVERIFY(validateReportDefinition(supported));
+        QCOMPARE(ReportPrintEngine::paginate(supported, 2).size(), 1);
+        QCOMPARE(ReportPrintEngine::paginate(supported, 2).first().cells.size(), 2);
+    }
+
 
     void fillPatternsHaveCorrectDensityDirectionAndWeight()
     {

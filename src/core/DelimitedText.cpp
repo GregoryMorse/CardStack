@@ -1,6 +1,7 @@
 #include "DelimitedText.h"
 
 #include <QFile>
+#include <QSaveFile>
 #include <QBuffer>
 #include <QFileInfo>
 #include <QTextStream>
@@ -64,6 +65,18 @@ QVector<QStringList> parseRows(const QString& text, QChar delimiter, ImportBudge
     return rows;
 }
 
+QVector<int> mappedColumns(const ImportExportProfile& profile, int count)
+{
+    if (!profile.fieldMappings.isEmpty()) {
+        for (int index : profile.fieldMappings) if (index < 0 || index >= count) return {};
+        return profile.fieldMappings;
+    }
+    QVector<int> columns;
+    columns.reserve(count);
+    for (int index = 0; index < count; ++index) columns.append(index);
+    return columns;
+}
+
 FieldType fieldTypeForName(const QString& name)
 {
     return name.compare(QStringLiteral("Notes"), Qt::CaseInsensitive) == 0 ? FieldType::Notes : FieldType::Text;
@@ -105,7 +118,9 @@ ImportExportProfile tsvProfile(ImportExportProfileType type)
 
 QString writeDeck(const Deck& deck, const ImportExportProfile& profile)
 {
-    QString output;
+    const auto columns = mappedColumns(profile, deck.fieldCount());
+    if (columns.isEmpty() && !profile.fieldMappings.isEmpty()) return {};
+    QString output = QStringLiteral("");
     QTextStream stream(&output);
 
     auto writeRow = [&](const QStringList& cells) {
@@ -120,7 +135,7 @@ QString writeDeck(const Deck& deck, const ImportExportProfile& profile)
 
     if (profile.hasHeader) {
         QStringList headers;
-        for (int fieldIndex = 0; fieldIndex < deck.fieldCount(); ++fieldIndex) {
+        for (int fieldIndex : columns) {
             headers.append(deck.fieldAt(fieldIndex).name());
         }
         writeRow(headers);
@@ -128,7 +143,7 @@ QString writeDeck(const Deck& deck, const ImportExportProfile& profile)
 
     for (const CardRecord& card : deck.cards()) {
         QStringList cells;
-        for (int fieldIndex = 0; fieldIndex < deck.fieldCount(); ++fieldIndex) {
+        for (int fieldIndex : columns) {
             cells.append(card.valueAt(fieldIndex));
         }
         writeRow(cells);
@@ -176,13 +191,18 @@ bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* dec
         return false;
     }
 
-    if (!budget.fields(quint64(headers.size()))) return abort();
+    const auto columns = mappedColumns(profile, headers.size());
+    if (columns.isEmpty()) {
+        setError(errorMessage, QCoreApplication::translate("DelimitedText", "The field mapping contains an invalid source column."));
+        return false;
+    }
+    if (!budget.fields(quint64(columns.size()))) return abort();
     Deck imported;
     imported.setName(QStringLiteral("Imported Text Deck"));
     imported.setDescription(QStringLiteral("Imported from a delimited text file."));
     imported.setImportExportProfiles({profile});
 
-    for (int column = 0; column < headers.size(); ++column) {
+    for (int column : columns) {
         const QString fallbackName = QStringLiteral("Field %1").arg(column + 1);
         const QString name = headers.at(column).trimmed().isEmpty() ? fallbackName : headers.at(column).trimmed();
         if (!budget.checkpoint(quint64(rows.size()))) return abort();
@@ -193,8 +213,9 @@ bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* dec
         if (!budget.row()) return abort();
         CardRecord card;
         for (int column = 0; column < imported.fieldCount(); ++column) {
-            if (!budget.value(quint64(row.value(column).size()) * sizeof(QChar)) || !budget.checkpoint(1)) return abort();
-            QString value = row.value(column);
+            const int sourceColumn = columns.at(column);
+            if (!budget.value(quint64(row.value(sourceColumn).size()) * sizeof(QChar)) || !budget.checkpoint(1)) return abort();
+            QString value = row.value(sourceColumn);
             const int maxLength = imported.fieldAt(column).maxLength();
             if (maxLength > 0 && value.size() > maxLength) {
                 value.truncate(maxLength);
@@ -210,14 +231,23 @@ bool readDeck(const QString& text, const ImportExportProfile& profile, Deck* dec
 
 bool writeDeckFile(const Deck& deck, const ImportExportProfile& profile, const QString& filePath, QString* errorMessage)
 {
-    QFile file(filePath);
+    const QString output = writeDeck(deck, profile);
+    if (output.isNull()) {
+        setError(errorMessage, QCoreApplication::translate("DelimitedText", "The field mapping contains an invalid source column."));
+        return false;
+    }
+    QSaveFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         setError(errorMessage, file.errorString());
         return false;
     }
 
     QTextStream stream(&file);
-    stream << writeDeck(deck, profile);
+    stream << output;
+    stream.flush();
+    if (stream.status() != QTextStream::Ok || !file.commit()) {
+        setError(errorMessage, file.errorString()); return false;
+    }
     return true;
 }
 

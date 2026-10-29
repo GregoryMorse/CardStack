@@ -35,12 +35,12 @@ private:
     bool hasRows(const QString& tableName, bool* hasRows, QString* errorMessage);
     bool execIfTableExists(const QString& tableName, const QString& sql, QString* errorMessage);
     bool migrateEarlySchema(QString* errorMessage);
-    bool saveCardTemplateLayout(const Deck& deck, int templateId, QString* errorMessage);
-    bool loadCardTemplateLayout(Deck* deck, int templateId, QString* errorMessage);
+    bool saveCardTemplateLayout(const Deck& deck, qint64 templateId, QString* errorMessage);
+    bool loadCardTemplateLayout(Deck* deck, qint64 templateId, ImportBudget& budget, QString* errorMessage);
     bool saveReports(const Deck& deck, QString* errorMessage);
-    bool loadReports(Deck* deck, QString* errorMessage);
+    bool loadReports(Deck* deck, ImportBudget& budget, QString* errorMessage);
     bool savePhoneCallLog(const Deck& deck, QString* errorMessage);
-    bool loadPhoneCallLog(Deck* deck, QString* errorMessage);
+    bool loadPhoneCallLog(Deck* deck, ImportBudget& budget, QString* errorMessage);
     bool exec(const QString& sql, QString* errorMessage);
 
     ImportLimits m_limits;

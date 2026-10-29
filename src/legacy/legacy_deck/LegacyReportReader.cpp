@@ -286,6 +286,10 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
             report.frames.append(readFrame(bytes, frameBase + frameIndex * FrameRecordSize, coordinateScale));
         }
 
+        if (!validateReportDefinition(report, &result.errorMessage)) {
+            result.reports.clear();
+            return result;
+        }
         classifyReportBands(&report);
         result.reports.append(report);
         offset += entrySize;

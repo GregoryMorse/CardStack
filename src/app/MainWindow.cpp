@@ -2039,6 +2039,10 @@ void MainWindow::rebuildMenus(int menuId)
         }
     }
     m_currentMenuId = menuId;
+    for (QAction* action : menuBar()->actions()) {
+        if (QMenu* menu = action->menu())
+            connect(menu, &QMenu::aboutToShow, this, &MainWindow::updateCommandState);
+    }
     updateWindowMenuEntries();
 }
 
@@ -7198,7 +7202,7 @@ DeckWorkspace* MainWindow::openDeckWindow(const Deck& deck, const QString& fileP
     subWindow->resize(860, 420);
     configureSubWindowSystemMenu(subWindow);
     showNewSubWindow(subWindow);
-    connect(workspace, &DeckWorkspace::dirtyChanged, subWindow, [this, subWindow, workspace](bool) {
+    connect(workspace, &DeckWorkspace::dirtyChanged, this, [this, subWindow, workspace](bool) {
         updateDeckWindowTitle(subWindow, workspace);
         updateWindowMenuEntries();
     });
@@ -7254,7 +7258,7 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
     configureSubWindowSystemMenu(subWindow);
     showNewSubWindow(subWindow);
 
-    connect(designer, &ReportDesignerWidget::dirtyChanged, subWindow, [this, subWindow, designer](bool dirty) {
+    connect(designer, &ReportDesignerWidget::dirtyChanged, this, [this, subWindow, designer](bool dirty) {
         const QString name = designer->report().name.trimmed().isEmpty()
             ? QObject::tr("Untitled Report")
             : designer->report().name;
@@ -7344,7 +7348,7 @@ workspace->deck().cardTemplateLayout(), workspace->deck().fields(), nullptr, wor
     }
     showNewSubWindow(subWindow);
 
-    connect(designer, &TemplateDesignerWidget::dirtyChanged, subWindow, [this, subWindow, deckName](bool dirty) {
+    connect(designer, &TemplateDesignerWidget::dirtyChanged, this, [this, subWindow, deckName](bool dirty) {
         subWindow->setWindowTitle(dirty
             ? QObject::tr("%1 Template Design *").arg(deckName)
             : QObject::tr("%1 Template Design").arg(deckName));
@@ -7439,7 +7443,7 @@ draftDeck->cardTemplateLayout(), draftDeck->fields(), nullptr, draftDeck->appear
     configureSubWindowSystemMenu(subWindow);
     showNewSubWindow(subWindow);
 
-    connect(designer, &TemplateDesignerWidget::dirtyChanged, subWindow, [this, subWindow, deckName](bool dirty) {
+    connect(designer, &TemplateDesignerWidget::dirtyChanged, this, [this, subWindow, deckName](bool dirty) {
         subWindow->setWindowTitle(dirty
             ? QObject::tr("%1 Template Design *").arg(deckName)
             : QObject::tr("%1 Template Design").arg(deckName));

@@ -2,6 +2,7 @@
 
 #include "SQLiteDeckRepository.h"
 #include "SQLiteSnapshot.h"
+#include "SQLiteModelBudget.h"
 #include "ReportFontCodec.h"
 #include "DocumentFile.h"
 
@@ -444,6 +445,9 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
         setError(errorMessage, QStringLiteral("Unlock the document before saving encrypted data."));
         return false;
     }
+    for (const auto& report : deck.reports()) {
+        if (!validateReportDefinition(report, errorMessage)) return false;
+    }
     QScopedValueRollback<bool> persistenceGuard(m_deferPersistence, true);
     if (!m_database.transaction()) {
         setError(errorMessage, m_database.lastError());
@@ -499,8 +503,10 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
         return false;
     }
 
+    ImportBudget budget(m_limits);
+    if (!budget.checkpoint()) { setError(errorMessage, budget.error()); return false; }
     Deck loaded;
-    SQLiteDeckRepository repository(m_database);
+    SQLiteDeckRepository repository(m_database, &budget);
     if (!repository.loadDeckShell(&loaded, errorMessage)) {
         return false;
     }
@@ -529,7 +535,7 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
     }
     m_securityError = DeckSecurity::Error::None;
 
-    int templateId = 0;
+    qint64 templateId = 0;
     if (!repository.loadDefaultTemplateId(&templateId, errorMessage)) {
         return false;
     }
@@ -539,16 +545,16 @@ bool SQLiteDeckStore::loadDeck(Deck* deck, QString* errorMessage)
     }
 
     if (!repository.loadFields(templateId, &loaded, errorMessage)
-        || !loadCardTemplateLayout(&loaded, templateId, errorMessage)
+        || !loadCardTemplateLayout(&loaded, templateId, budget, errorMessage)
         || !repository.loadSortKeys(&loaded, errorMessage)
         || !repository.loadAppearance(&loaded, errorMessage)
         || !repository.loadImportExportProfiles(&loaded, errorMessage)
         || !repository.loadCards(templateId, &loaded, errorMessage)
-        || !loadPhoneCallLog(&loaded, errorMessage)) {
+        || !loadPhoneCallLog(&loaded, budget, errorMessage)) {
         return false;
     }
 
-    if (!loadReports(&loaded, errorMessage)) {
+    if (!loadReports(&loaded, budget, errorMessage)) {
         return false;
     }
 
@@ -1162,7 +1168,7 @@ bool SQLiteDeckStore::migrateEarlySchema(QString* errorMessage)
     return true;
 }
 
-bool SQLiteDeckStore::saveCardTemplateLayout(const Deck& deck, int templateId, QString* errorMessage)
+bool SQLiteDeckStore::saveCardTemplateLayout(const Deck& deck, qint64 templateId, QString* errorMessage)
 {
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral(
@@ -1203,7 +1209,7 @@ bool SQLiteDeckStore::saveCardTemplateLayout(const Deck& deck, int templateId, Q
     return true;
 }
 
-bool SQLiteDeckStore::loadCardTemplateLayout(Deck* deck, int templateId, QString* errorMessage)
+bool SQLiteDeckStore::loadCardTemplateLayout(Deck* deck, qint64 templateId, ImportBudget& budget, QString* errorMessage)
 {
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral(
@@ -1231,14 +1237,12 @@ bool SQLiteDeckStore::loadCardTemplateLayout(Deck* deck, int templateId, QString
     }
 
     while (query.next()) {
+        if (!budgetModelRow(query, &budget, errorMessage)) return false;
+        if (!budget.frames(1)) { setError(errorMessage, budget.error()); return false; }
         CardTemplateFrame frame;
         frame.kind = cardTemplateFrameKindFromInt(query.value(0).toInt());
         frame.fieldIndex = query.value(1).toInt();
-        frame.bounds = QRect(
-            query.value(2).toInt(),
-            query.value(3).toInt(),
-            query.value(4).toInt(),
-            query.value(5).toInt());
+        if (!readModelBounds(query, 2, &frame.bounds, errorMessage)) return false;
         frame.text = query.value(6).toString();
         frame.styleFlags = static_cast<quint8>(query.value(7).toUInt());
         frame.lineBoxShape = cardTemplateLineBoxShapeFromInt(query.value(8).toInt());
@@ -1352,7 +1356,7 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
     return true;
 }
 
-bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
+bool SQLiteDeckStore::loadReports(Deck* deck, ImportBudget& budget, QString* errorMessage)
 {
     QSqlQuery reportQuery(m_database);
     if (!reportQuery.exec(QStringLiteral(
@@ -1375,8 +1379,16 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         "FROM report_frames WHERE report_id = ? ORDER BY ordinal"));
 
     while (reportQuery.next()) {
+        if (!budgetModelRow(reportQuery, &budget, errorMessage)) return false;
+        for (int column = 3; column <= 27; ++column) {
+            if (column == 24 || column == 26) continue;
+            const qint64 value = reportQuery.value(column).toLongLong();
+            if (value < -MaximumReportGeometryUnits || value > MaximumReportGeometryUnits) {
+                setError(errorMessage, QStringLiteral("The report contains unsupported numeric metadata.")); return false;
+            }
+        }
         ReportDefinition report;
-        const int reportId = reportQuery.value(0).toInt();
+        const qint64 reportId = reportQuery.value(0).toLongLong();
         report.name = reportQuery.value(1).toString();
         report.documentId = reportQuery.value(31).toString();
         report.formatMagic = reportQuery.value(2).toString();
@@ -1408,8 +1420,12 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         report.legacyHeader = reportQuery.value(28).toByteArray();
         const bool previousFontEncoding = reportQuery.value(29).toString().isEmpty();
         if (!previousFontEncoding) {
-            report.dataFont = reportFontFromJson(reportQuery.value(29).toString());
-            report.textFont = reportFontFromJson(reportQuery.value(30).toString());
+            bool dataValid = false, textValid = false;
+            report.dataFont = reportFontFromJson(reportQuery.value(29).toString(), &dataValid);
+            report.textFont = reportFontFromJson(reportQuery.value(30).toString(), &textValid);
+            if (!dataValid || !textValid) {
+                setError(errorMessage, QStringLiteral("The report contains invalid font metadata.")); return false;
+            }
         } else if (report.legacyHeader.size() >= 0xbf) {
             report.dataFont = decodeReportFont(report.legacyHeader, 0x8d);
             report.textFont = decodeReportFont(report.legacyHeader, 0x5b);
@@ -1417,7 +1433,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
             // Version 1.0 stored a pitch/family byte for imported preset fonts,
             // or a negative point count for fonts chosen in the modern dialog.
             const auto upgradeFont = [](ReportFontDefinition* font) {
-                font->legacyHeight = font->legacyHeight > 0 ? -98 : font->legacyHeight * 10;
+                font->legacyHeight = int(font->legacyHeight > 0 ? -98 : qint64(font->legacyHeight) * 10);
             };
             upgradeFont(&report.dataFont);
             upgradeFont(&report.textFont);
@@ -1430,17 +1446,15 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
         }
 
         while (frameQuery.next()) {
+        if (!budgetModelRow(frameQuery, &budget, errorMessage)) return false;
+            if (!budget.frames(1)) { setError(errorMessage, budget.error()); return false; }
             ReportFrameDefinition frame;
             frame.legacyOffset = frameQuery.value(0).toInt();
             frame.signature = static_cast<quint16>(frameQuery.value(1).toUInt());
             frame.sourceId = static_cast<quint16>(frameQuery.value(2).toUInt());
             frame.order = static_cast<quint16>(frameQuery.value(3).toUInt());
             frame.band = static_cast<quint16>(frameQuery.value(4).toUInt());
-            frame.bounds = QRect(
-                frameQuery.value(5).toInt(),
-                frameQuery.value(6).toInt(),
-                frameQuery.value(7).toInt(),
-                frameQuery.value(8).toInt());
+            if (!readModelBounds(frameQuery, 5, &frame.bounds, errorMessage)) return false;
             frame.text = frameQuery.value(9).toString();
             frame.kind = reportFrameKindFromInt(frameQuery.value(10).toInt());
             frame.printEntireContentsFlag = static_cast<quint8>(frameQuery.value(11).toUInt());
@@ -1485,6 +1499,7 @@ bool SQLiteDeckStore::loadReports(Deck* deck, QString* errorMessage)
             classifyReportBands(&report);
         }
 
+        if (!validateReportDefinition(report, errorMessage)) return false;
         deck->addReport(std::move(report));
     }
 
@@ -1522,7 +1537,7 @@ bool SQLiteDeckStore::savePhoneCallLog(const Deck& deck, QString* errorMessage)
     return true;
 }
 
-bool SQLiteDeckStore::loadPhoneCallLog(Deck* deck, QString* errorMessage)
+bool SQLiteDeckStore::loadPhoneCallLog(Deck* deck, ImportBudget& budget, QString* errorMessage)
 {
     QSqlQuery query(m_database);
     if (!query.exec(QStringLiteral(
@@ -1534,6 +1549,7 @@ bool SQLiteDeckStore::loadPhoneCallLog(Deck* deck, QString* errorMessage)
 
     QVector<PhoneCallLogEntry> entries;
     while (query.next()) {
+        if (!budgetModelRow(query, &budget, errorMessage)) return false;
         PhoneCallLogEntry entry;
         entry.calledAtUtc = query.value(0).toString();
         entry.phoneNumber = query.value(1).toString();

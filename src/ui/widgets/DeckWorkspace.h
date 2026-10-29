@@ -211,6 +211,7 @@ private:
     int m_currentFieldIndex = 0;
     ViewMode m_viewMode = ViewMode::Card;
     bool m_dirty = false;
+    bool m_restoringSnapshot = false;
     SearchRequest m_lastSearchRequest;
     bool m_hasLastSearchRequest = false;
     SearchMatch m_lastSearchMatch;

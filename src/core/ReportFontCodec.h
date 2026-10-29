@@ -3,6 +3,8 @@
 #include "ReportDefinition.h"
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <cmath>
+#include <limits>
 
 namespace CardStack {
 inline constexpr quint8 StoredReportBold = 0x01;
@@ -60,10 +62,23 @@ inline QString reportFontToJson(const ReportFontDefinition& font)
         {QStringLiteral("pitchAndFamily"), font.pitchAndFamily}};
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }
-inline ReportFontDefinition reportFontFromJson(const QString& encoded)
+inline ReportFontDefinition reportFontFromJson(const QString& encoded, bool* valid = nullptr)
 {
     ReportFontDefinition font;
-    const auto object = QJsonDocument::fromJson(encoded.toUtf8()).object();
+    const auto document = QJsonDocument::fromJson(encoded.toUtf8());
+    const auto object = document.object();
+    bool numeric = document.isObject();
+    for (const char* name : {"height", "width", "escapement", "orientation", "weight",
+                             "characterSet", "outputPrecision", "clipPrecision", "quality", "pitchAndFamily"}) {
+        const auto value = object.value(QLatin1String(name));
+        if (value.isUndefined()) continue;
+        const double number = value.toDouble();
+        const bool byte = qstrcmp(name, "characterSet") == 0 || qstrcmp(name, "outputPrecision") == 0
+            || qstrcmp(name, "clipPrecision") == 0 || qstrcmp(name, "quality") == 0 || qstrcmp(name, "pitchAndFamily") == 0;
+        numeric = numeric && value.isDouble() && std::isfinite(number) && std::floor(number) == number
+            && number >= (byte ? 0 : double((std::numeric_limits<int>::min)()))
+            && number <= (byte ? 255 : double((std::numeric_limits<int>::max)()));
+    }
     font.faceName = object.value(QStringLiteral("face")).toString();
     font.legacyHeight = object.value(QStringLiteral("height")).toInt();
     font.width = object.value(QStringLiteral("width")).toInt();
@@ -78,6 +93,7 @@ inline ReportFontDefinition reportFontFromJson(const QString& encoded)
     font.clipPrecision = static_cast<quint8>(object.value(QStringLiteral("clipPrecision")).toInt(2));
     font.quality = static_cast<quint8>(object.value(QStringLiteral("quality")).toInt(1));
     font.pitchAndFamily = static_cast<quint8>(object.value(QStringLiteral("pitchAndFamily")).toInt(0x20 | 0x02));
+    if (valid) *valid = numeric && validateReportFont(font);
     return font;
 }
 } // namespace CardStack

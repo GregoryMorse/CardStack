@@ -54,7 +54,7 @@ void renderFrames(
     int logicalYOffset,
     bool clearBackground)
 {
-    if (painter == nullptr || target.isEmpty()) {
+    if (painter == nullptr || target.isEmpty() || !validateReportDefinition(report)) {
         return;
     }
 

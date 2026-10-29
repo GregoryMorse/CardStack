@@ -148,6 +148,14 @@ struct ReportDefinition {
     QVector<ReportFrameDefinition> frames;
 };
 
+// Preserve the full 16-bit report domain independently of editor convenience limits.
+// Larger modern canvases remain bounded for safe coordinate arithmetic.
+inline constexpr int MaximumReportGeometryUnits = 1000000;
+inline constexpr int MaximumReportFontUnits = 32768;
+inline constexpr int MaximumReportGridCount = 65535;
+bool validateReportFont(const ReportFontDefinition& font);
+bool validateReportDefinition(const ReportDefinition& report, QString* errorMessage = nullptr);
+
 inline constexpr quint16 ReportBodyBand = 0;
 inline constexpr quint16 ReportHeaderBand = 1;
 inline constexpr quint16 ReportFooterBand = 2;
