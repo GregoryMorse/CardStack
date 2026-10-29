@@ -114,7 +114,7 @@ $qtCommand = @(
     ('call "{0}" -arch=x64 -host_arch=x64' -f $vsDevCmd),
     ('set "PATH={0};!PATH!"' -f $toolPath),
     ('cd /d "{0}"' -f $QtBuildDir),
-    ('"{0}" -prefix "{1}" -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase -init-submodules' -f $configure, $QtInstallPrefix),
+    ('"{0}" -prefix "{1}" -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase,qtsvg -init-submodules' -f $configure, $QtInstallPrefix),
     ('"{0}" --build . --parallel' -f $cmake),
     ('"{0}" --install .' -f $cmake)
 ) -join " && "

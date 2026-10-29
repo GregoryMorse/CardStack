@@ -1,7 +1,14 @@
 #include <QApplication>
 #include "ApplicationAppearance.h"
+#include "DocumentFile.h"
+#include "BtrieveFileSaverReader.h"
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 #include <QEvent>
+#include <QSettings>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QVector>
 #include <QWidget>
@@ -12,6 +19,7 @@
 
 #include "support/VisualTestSupport.h"
 
+int runFocusedAuditRegressionTests(int argc, char** argv);
 int runMainWindowActionTests(int argc, char** argv);
 int runMainWindowWorkflowTests(int argc, char** argv);
 int runDeckMergeTests(int argc, char** argv);
@@ -43,6 +51,7 @@ QVector<TestEntry> testEntries()
     return {
         {"MainWindowActionTests", runMainWindowActionTests},
         {"MainWindowWorkflowTests", runMainWindowWorkflowTests},
+        {"FocusedAuditRegressionTests", runFocusedAuditRegressionTests},
         {"DeckMergeTests", runDeckMergeTests},
         {"DelimitedTextTests", runDelimitedTextTests},
         {"PhoneCallLogTests", runPhoneCallLogTests},
@@ -95,9 +104,18 @@ void cleanupTopLevelWidgets()
 int main(int argc, char** argv)
 {
     qputenv("QT_LOGGING_RULES", "qt.qpa.*=false");
+    if (argc == 3 && (QString::fromLocal8Bit(argv[1]) == QLatin1String("--read-native-btrieve")
+                     || QString::fromLocal8Bit(argv[1]) == QLatin1String("--unsafe-zero-page"))) {
+#ifdef Q_OS_WIN
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
+        QCoreApplication core(argc, argv);
+        return CardStack::BtrieveFileSaverReader{}.readAllRecords(QString::fromLocal8Bit(argv[2])).ok() ? 0 : 7;
+    }
     if (argc == 3 && QString::fromLocal8Bit(argv[1]) == QLatin1String("--hold-document-lock")) {
         QCoreApplication core(argc, argv);
-        QLockFile lock(QString::fromLocal8Bit(argv[2]) + QStringLiteral(".lock"));
+        QLockFile lock(CardStack::documentLockPath(QString::fromLocal8Bit(argv[2])));
+        lock.setStaleLockTime(0);
         if (!lock.tryLock(0)) return 1;
         std::fputs("locked\n", stdout);
         std::fflush(stdout);
@@ -130,6 +148,13 @@ int main(int argc, char** argv)
     int forwardedArgc = forwardedArgs.size();
     char** forwardedArgv = forwardedArgs.data();
     QApplication app(forwardedArgc, forwardedArgv);
+    QTemporaryDir testSettings;
+    if (!testSettings.isValid()) {
+        qCritical("Could not create isolated test settings directory.");
+        return 2;
+    }
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, testSettings.path());
     CardStack::initializeApplicationAppearance(app);
     QCoreApplication::setOrganizationName(QStringLiteral("CardStackTests"));
     QCoreApplication::setApplicationName(QStringLiteral("CardStackTests"));

@@ -4,6 +4,15 @@
 #include "BuiltInReportTemplates.h"
 #include "Deck.h"
 #include "UiIds.h"
+#include "../support/DesignerResizeProbe.h"
+#include "../support/DesignerGridProbe.h"
+#include "../support/DesignerViewportProbe.h"
+#include "../support/DesignerSelectionProbe.h"
+#include "DesignerClipboard.h"
+#include "SQLitePackageStore.h"
+#include <QTemporaryDir>
+#include "ReportDesignerWidget.h"
+#include "TemplateDesignerWidget.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -58,6 +67,44 @@ class ReportDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void sourceGridMatchesOriginalIntegerAlgorithm() { CardStack::Tests::DesignerGridProbe::sourceAlgorithm(); }
+    void fontFallbackAndSignedHeightPreserveLayoutMetrics() { CardStack::Tests::DesignerGridProbe::reportFonts(); }
+    void keyboardGridDoesNotAccumulateRoundingError() { CardStack::Tests::DesignerGridProbe::reportKeyboard(); }
+    void pointerGridIsIndependentOfViewportZoom() { CardStack::Tests::DesignerGridProbe::reportPointer(); }
+    void clipboardUsesOriginalNormalizedOriginWithoutStagger() { CardStack::Tests::DesignerGridProbe::reportClipboard(); }
+    void reportViewportPreservesOriginalNavigationWithoutEditing()
+    {
+        CardStack::Tests::DesignerViewportProbe::navigation();
+    }
+
+    void reportViewportResizesMarginedScrolledFrames_data()
+    {
+        CardStack::Tests::DesignerResizeProbe::addData();
+    }
+
+    void reportViewportResizesMarginedScrolledFrames()
+    {
+        CardStack::Tests::DesignerViewportProbe::scrolledResize();
+    }
+
+    void reportRenderMatchesDesignerBounds_data()
+    {
+        QTest::addColumn<int>("formType");
+        QTest::newRow("report") << int(ReportFormType::Report);
+        QTest::newRow("card") << int(ReportFormType::Card);
+        QTest::newRow("label") << int(ReportFormType::Label);
+    }
+
+    void reportRenderMatchesDesignerBounds()
+    {
+        CardStack::Tests::DesignerViewportProbe::renderedFramesMatchDesignBounds();
+    }
+
+    void reportRulerLabelsDoNotOverlap()
+    {
+        CardStack::Tests::DesignerViewportProbe::rulers();
+    }
+
     void preservesExactImportedFrameBounds()
     {
         ReportDefinition importedReport = makeReport();
@@ -331,6 +378,229 @@ private slots:
         QVERIFY(!designer.isDirty());
     }
 
+    void blankLineFrameSaveAndReloadKeepsItsDrawingProperties()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        ReportDefinition report = makeReport();
+        report.formatMagic = QStringLiteral("RPT@#$B");
+        ReportFrameDefinition line;
+        line.kind = ReportFrameKind::LineOrBox;
+        line.bounds = QRect(500, 500, 1800, 600);
+        line.lineBoxShape = ReportLineShapeBox;
+        line.lineStyle = ReportLineStyleDash;
+        line.fillPattern = ReportFillPattern25Percent;
+        line.cornerRadius = 7;
+        QVERIFY(line.text.isNull());
+        report.frames = {line};
+        const QString path = directory.filePath(QStringLiteral("empty-text.csreport"));
+        QString error;
+        QVERIFY2(SQLitePackageStore::saveReportPackage({report}, report.name, path, &error), qPrintable(error));
+        QVector<ReportDefinition> loaded;
+        QString name;
+        QVERIFY2(SQLitePackageStore::loadReportPackage(path, &loaded, &name, &error), qPrintable(error));
+        QCOMPARE(loaded.size(), 1);
+        QCOMPARE(loaded.first().frames.first(), line);
+    }
+
+    void reportGroupClipboardWorksAcrossWindowsAndUndo()
+    {
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen"))
+            QSKIP("Clipboard probes require the isolated offscreen clipboard.");
+        ReportDefinition report = makeReport();
+        for (int index = 0; index < 3; ++index) {
+            ReportFrameDefinition frame;
+            frame.kind = index == 1 ? ReportFrameKind::LineOrBox : ReportFrameKind::Text;
+            frame.text = index == 1 ? QString() : QStringLiteral("Copied frame %1").arg(index);
+            frame.bounds = QRect(700 + index * 1000, 600 + index * 500, 700, 320);
+            frame.styleFlags = ReportStyleFlagBold | ReportStyleFlagAlignRight;
+            frame.lineBoxShape = ReportLineShapeBox;
+            frame.lineStyle = ReportLineStyleDash;
+            frame.fillPattern = ReportFillPattern25Percent;
+            frame.cornerRadius = 12;
+            report.frames.append(frame);
+        }
+        ReportDesignerWidget source(report, {});
+        source.show();
+        QCoreApplication::processEvents();
+        Tests::DesignerSelectionProbe::selectRows(source, {0, 2});
+        auto* canvas = source.findChild<QWidget*>(QStringLiteral("reportDesignCanvas"));
+        QVERIFY(canvas);
+        QApplication::setActiveWindow(&source);
+        canvas->setFocus();
+        source.copySelectedFrame();
+        const auto copied = DesignerClipboard::readReport();
+        QCOMPARE(copied.size(), 2);
+        const QPoint copyShift = copied.at(0).bounds.topLeft() - source.report().frames.at(0).bounds.topLeft();
+        for (int index = 0; index < copied.size(); ++index) {
+            auto expected = source.report().frames.at(index == 0 ? 0 : 2);
+            expected.bounds.translate(copyShift);
+            QCOMPARE(copied.at(index), expected);
+        }
+
+        source.cutSelectedFrame();
+        QCOMPARE(source.report().frames.size(), 1);
+        source.undo();
+        QCOMPARE(source.report().frames, report.frames);
+        Tests::DesignerSelectionProbe::expectSelection(source, {0, 2});
+
+        ReportDesignerWidget target(makeReport(), {});
+        QVERIFY(target.canPasteFrame());
+        target.show();
+        QApplication::setActiveWindow(&target);
+        target.findChild<QWidget*>(QStringLiteral("reportDesignCanvas"))->setFocus();
+        target.pasteFrame();
+        QCOMPARE(target.report().frames.size(), 2);
+        const QPoint shift = target.report().frames.at(0).bounds.topLeft() - copied.at(0).bounds.topLeft();
+        for (int index = 0; index < copied.size(); ++index) {
+            auto expected = copied.at(index);
+            expected.bounds.translate(shift);
+            expected.band = reportBandForBounds(target.report(), expected.bounds);
+            QCOMPARE(target.report().frames.at(index), expected);
+        }
+        Tests::DesignerSelectionProbe::expectSelection(target, {0, 1});
+        target.undo();
+        QVERIFY(target.report().frames.isEmpty());
+        QVERIFY(target.selectedFrameIndices().isEmpty());
+        TemplateDesignerWidget otherFormat({}, {});
+        QVERIFY(!otherFormat.canPasteFrame());
+    }
+
+    void reportClipboardCodecPreservesEveryFrameMember()
+    {
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen"))
+            QSKIP("Clipboard probes require the isolated offscreen clipboard.");
+        ReportFrameDefinition frame;
+        frame.legacyOffset = 71;
+        frame.signature = 0xabcd;
+        frame.sourceId = 13;
+        frame.order = 9;
+        frame.band = ReportHeaderBand;
+        frame.bounds = QRect(123, 456, 2100, 410);
+        frame.text = QStringLiteral("[Name] / {page}");
+        frame.fieldPlaceholders = {QStringLiteral("Name")};
+        frame.systemTokens = {QStringLiteral("page")};
+        frame.kind = ReportFrameKind::Data;
+        frame.printEntireContentsFlag = 1;
+        frame.validationFlags = 0x5a;
+        frame.styleFlags = ReportStyleFlagBold | ReportStyleFlagUnderline | ReportStyleFlagAlignCenter;
+        frame.lineBoxShape = ReportLineShapeVertical;
+        frame.lineStyle = ReportLineStyleThickDot;
+        frame.fillPattern = ReportFillPatternLightGrid;
+        frame.cornerRadius = 17;
+        frame.legacyDescriptor = QByteArray("descriptor\0tail", 15);
+        QVERIFY(DesignerClipboard::writeReport({frame}));
+        QCOMPARE(DesignerClipboard::readReport(), QVector<ReportFrameDefinition>{frame});
+    }
+
+    void groupFormattingPreservesExpressionsAndUnrelatedStyles()
+    {
+        ReportDefinition report = makeReport();
+        ReportFrameDefinition text;
+        text.kind = ReportFrameKind::Text;
+        text.text = QStringLiteral("Heading");
+        text.bounds = QRect(500, 500, 1200, 320);
+        text.styleFlags = ReportStyleFlagBold;
+        ReportFrameDefinition data = text;
+        data.kind = ReportFrameKind::Data;
+        data.text = QStringLiteral("[Name] - [Status]");
+        data.fieldPlaceholders = {QStringLiteral("Name"), QStringLiteral("Status")};
+        data.styleFlags = ReportStyleFlagItalic | ReportStyleFlagAlignCenter;
+        ReportFrameDefinition line = text;
+        line.kind = ReportFrameKind::LineOrBox;
+        line.text.clear();
+        line.styleFlags = 0;
+        report.frames = {text, data, line};
+        ReportDesignerWidget designer(report, {QStringLiteral("Name"), QStringLiteral("Status")});
+        Tests::DesignerSelectionProbe::selectRows(designer, {0, 1, 2});
+        const auto before = designer.report().frames;
+        QVERIFY(designer.selectionHasStyledFrames());
+        QVERIFY(!designer.selectionHasStyleFlag(ReportStyleFlagBold));
+        QCOMPARE(designer.selectionAlignment(), -1);
+        designer.setSelectionStyleFlag(ReportStyleFlagBold, true);
+        QVERIFY(designer.selectionHasStyleFlag(ReportStyleFlagBold));
+        QCOMPARE(designer.report().frames.at(1).text, data.text);
+        QCOMPARE(designer.report().frames.at(1).fieldPlaceholders, data.fieldPlaceholders);
+        QCOMPARE(designer.report().frames.at(2), before.at(2));
+        designer.undo();
+        QCOMPARE(designer.report().frames, before);
+        Tests::DesignerSelectionProbe::expectSelection(designer, {0, 1, 2});
+        designer.setSelectionAlignment(ReportStyleFlagAlignRight);
+        QCOMPARE(designer.selectionAlignment(), int(ReportStyleFlagAlignRight));
+        QVERIFY((designer.report().frames.at(1).styleFlags & ReportStyleFlagItalic) != 0);
+        QCOMPARE(designer.report().frames.at(2), before.at(2));
+        designer.undo();
+        QCOMPARE(designer.report().frames, before);
+    }
+
+    void focusedTextClipboardDoesNotCopyOrDeleteReportObjects()
+    {
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen"))
+            QSKIP("Clipboard probes require the isolated offscreen clipboard.");
+        ReportDefinition report = makeReport();
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Text;
+        frame.text = QStringLiteral("Text editing");
+        frame.bounds = QRect(500, 500, 2000, 320);
+        report.frames = {frame};
+        ReportDesignerWidget designer(report, {});
+        designer.show();
+        QApplication::setActiveWindow(&designer);
+        auto* edit = designer.findChild<QPlainTextEdit*>();
+        QVERIFY(edit);
+        edit->setFocus();
+        edit->selectAll();
+        QCoreApplication::processEvents();
+        designer.copySelectedFrame();
+        QCOMPARE(QApplication::clipboard()->text(), frame.text);
+        QVERIFY(!QApplication::clipboard()->mimeData()->hasFormat(QString::fromLatin1(DesignerClipboard::ReportMime)));
+        designer.cutSelectedFrame();
+        QCOMPARE(designer.report().frames.size(), 1);
+        QVERIFY(edit->toPlainText().isEmpty());
+        QApplication::clipboard()->setText(QStringLiteral("Replacement text"));
+        designer.pasteFrame();
+        QCOMPARE(edit->toPlainText(), QStringLiteral("Replacement text"));
+        edit->selectAll();
+        designer.deleteSelectedFrame();
+        QVERIFY(edit->toPlainText().isEmpty());
+        QCOMPARE(designer.report().frames.size(), 1);
+    }
+
+    void selectionMessagesPreserveOriginalGroupBehavior()
+    {
+        ReportDefinition report = makeReport();
+        for (const QRect& bounds : {QRect(900, 700, 1200, 400), QRect(3000, 2100, 1200, 400), QRect(2200, 1300, 800, 400)}) {
+            ReportFrameDefinition frame;
+            frame.kind = ReportFrameKind::Text;
+            frame.text = QStringLiteral("Object %1").arg(report.frames.size() + 1);
+            frame.bounds = bounds;
+            report.frames.append(frame);
+        }
+        ReportDesignerWidget designer(report, {});
+        Tests::DesignerSelectionProbe::exercise(designer, "reportDesignCanvas",
+            QSize(report.formWidth, report.formHeight), 28, 31,
+            QStringLiteral("report"), [&designer]() { return designer.report().frames; });
+    }
+
+    void resizesAllEdgesAndCorners_data()
+    {
+        Tests::DesignerResizeProbe::addData();
+    }
+
+    void resizesAllEdgesAndCorners()
+    {
+        ReportDefinition report = makeReport();
+        ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Text;
+        frame.text = QStringLiteral("Resize from any side");
+        frame.bounds = QRect(900, 700, 1400, 500);
+        report.frames = {frame};
+        ReportDesignerWidget designer(report, {});
+        Tests::DesignerResizeProbe::exercise(designer, "reportDesignCanvas",
+            QSize(report.formWidth, report.formHeight), frame.bounds, 28, QStringLiteral("report"),
+            [&designer]() { return designer.report().frames.first().bounds; });
+    }
+
     void canvasMouseMessagesSelectMoveResizeAndActivateFrames()
     {
         ReportDefinition report = makeReport();
@@ -347,23 +617,7 @@ private slots:
         QWidget* canvas = designer.findChild<QWidget*>(QStringLiteral("reportDesignCanvas"));
         QVERIFY(canvas != nullptr);
 
-        constexpr int RulerThickness = 28;
-        const QRectF available = canvas->rect().adjusted(
-            RulerThickness + 16,
-            RulerThickness + 16,
-            -20,
-            -20);
-        const qreal aspect = static_cast<qreal>(report.formWidth) / report.formHeight;
-        qreal pageWidth = available.width();
-        qreal pageHeight = pageWidth / aspect;
-        if (pageHeight > available.height()) {
-            pageHeight = available.height();
-            pageWidth = pageHeight * aspect;
-        }
-        const QRectF page(available.center().x() - pageWidth / 2.0,
-                          available.center().y() - pageHeight / 2.0,
-                          pageWidth,
-                          pageHeight);
+        const QRectF page = canvas->property("designerPageRect").toRectF();
         const auto visualBounds = [&page, &report](const QRect& bounds) {
             return QRectF(page.left() + bounds.left() * page.width() / report.formWidth,
                           page.top() + bounds.top() * page.height() / report.formHeight,
@@ -372,7 +626,7 @@ private slots:
         };
 
         const QPoint initialCenter = visualBounds(frame.bounds).center().toPoint();
-        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, QPoint(2, 2));
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->property("designerContentRect").toRect().topLeft() + QPoint(2, 2));
         QCOMPARE(designer.selectedFrameIndex(), -1);
         QTest::mouseClick(canvas, Qt::RightButton, Qt::NoModifier, initialCenter);
         QCOMPARE(designer.selectedFrameIndex(), -1);

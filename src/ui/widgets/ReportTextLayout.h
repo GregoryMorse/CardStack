@@ -36,11 +36,18 @@ inline QFont font(const ReportFontDefinition& definition, quint8 flags)
         : std::abs(definition.legacyHeight) * UnitsPerInch / StoredFontUnitsPerInch;
     result.setPixelSize(std::max(1, qRound(height)));
     result.setWeight((flags & ReportStyleFlagBold) != 0 ? QFont::Bold
-        : static_cast<QFont::Weight>(std::clamp(definition.weight, 100, 900)));
+        : static_cast<QFont::Weight>(definition.weight == 0 ? int(QFont::Normal) : std::clamp(definition.weight, 100, 900)));
     result.setItalic(definition.italic || (flags & ReportStyleFlagItalic) != 0);
     result.setUnderline(definition.underline || (flags & ReportStyleFlagUnderline) != 0);
     result.setStrikeOut(definition.strikeOut);
     result.setFixedPitch((definition.pitchAndFamily & 0x03) == 0x01);
+    if (definition.legacyHeight > 0) {
+        // Positive LOGFONT heights describe the complete cell, not the em square.
+        const qreal cellHeight = QFontMetricsF(result).height();
+        int pixels = std::max(1, qFloor(height * result.pixelSize() / std::max<qreal>(1.0, cellHeight)));
+        result.setPixelSize(pixels);
+        if (pixels > 1 && QFontMetricsF(result).height() > height) result.setPixelSize(--pixels);
+    }
     if (definition.width != 0) {
         const qreal desired = std::abs(definition.width) * UnitsPerInch / StoredFontUnitsPerInch;
         result.setStretch(std::clamp(qRound(100.0 * desired / std::max<qreal>(1.0, QFontMetricsF(result).averageCharWidth())), 1, 4000));

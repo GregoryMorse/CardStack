@@ -3,13 +3,13 @@
 #include "ReportDefinition.h"
 
 #include <QWidget>
-#include <optional>
 
 class QCheckBox;
 class QComboBox;
 class QCloseEvent;
 class QFormLayout;
 class QLineEdit;
+class QLabel;
 class QPlainTextEdit;
 class QSpinBox;
 class QTableWidget;
@@ -35,12 +35,18 @@ public:
 
     const ReportDefinition& report() const;
     int selectedFrameIndex() const;
+    const QVector<int>& selectedFrameIndices() const { return m_selectedFrameIndices; }
     const ReportFrameDefinition* selectedFrameDefinition() const;
     QStringList fieldNames() const;
     bool isDirty() const;
     bool canUndo() const { return !m_undoStack.isEmpty(); }
-    bool canCopyFrame() const { return m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_report.frames.size(); }
-    bool canPasteFrame() const { return m_copiedFrame.has_value(); }
+    bool canCopyFrame() const;
+    bool canPasteFrame() const;
+    bool selectionHasStyledFrames() const;
+    bool selectionHasStyleFlag(quint8 flag) const;
+    int selectionAlignment() const;
+    void setSelectionStyleFlag(quint8 flag, bool enabled);
+    void setSelectionAlignment(quint8 alignment);
     void commitPendingEdits();
     void markDirty();
     void setReportName(const QString& name);
@@ -66,6 +72,7 @@ signals:
     void saveRequested(const ReportDefinition& report);
     void dirtyChanged(bool dirty);
     void selectedFrameChanged();
+    void propertiesChanged();
 
 public slots:
     void undo();
@@ -100,6 +107,8 @@ private:
     struct UndoState {
         ReportDefinition report;
         int selectedFrameIndex = -1;
+        QVector<int> selectedFrameIndices;
+        int selectionAnchor = -1;
     };
 
     void pushUndoState();
@@ -108,6 +117,9 @@ private:
     void refreshFrameTable();
     void refreshFrameProperties();
     void selectFrame(int frameIndex);
+    void selectFrames(const QVector<int>& frameIndices);
+    void syncFrameTableSelection();
+    bool copySelectionToClipboard();
     void applyPropertyEdits();
     void setPropertyRowVisible(QWidget* field, bool visible);
     ReportFrameDefinition defaultFrame(ReportFrameKind kind) const;
@@ -116,13 +128,14 @@ private:
     QStringList m_fieldNames;
     bool m_dirty = false;
     int m_selectedFrameIndex = -1;
-    std::optional<ReportFrameDefinition> m_copiedFrame;
+    QVector<int> m_selectedFrameIndices;
     QVector<UndoState> m_undoStack;
     bool m_restoringUndoState = false;
 
     ReportDesignCanvas* m_canvas = nullptr;
     QLineEdit* m_nameEdit = nullptr;
     QTableWidget* m_frameTable = nullptr;
+    QLabel* m_selectionSummary = nullptr;
     QFormLayout* m_propertyForm = nullptr;
     QPlainTextEdit* m_textEdit = nullptr;
     QComboBox* m_kindCombo = nullptr;

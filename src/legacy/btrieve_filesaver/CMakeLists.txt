@@ -1,12 +1,14 @@
 if(CARDSTACK_ENABLE_GPL_BTRIEVEFILESAVER)
+    # Build the pinned PR revision directly; keep one authoritative reader implementation.
+    set(CARDSTACK_BTRIEVE_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code")
     add_library(btrievefilesaver_gpl STATIC
-        ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code/BtrieveFileSaverLib.c
-        ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code/BtrieveFileSaverLib.h
+        ${CARDSTACK_BTRIEVE_SOURCE_DIR}/BtrieveFileSaverLib.c
+        ${CARDSTACK_BTRIEVE_SOURCE_DIR}/BtrieveFileSaverLib.h
     )
 
     target_include_directories(btrievefilesaver_gpl
         PUBLIC
-            ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code
+            ${CARDSTACK_BTRIEVE_SOURCE_DIR}
     )
 
     qt_add_library(cardstack_btrieve_filesaver STATIC
@@ -24,17 +26,19 @@ if(CARDSTACK_ENABLE_GPL_BTRIEVEFILESAVER)
     target_include_directories(cardstack_btrieve_filesaver
         PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}
+        PRIVATE
+            ${CARDSTACK_BTRIEVE_SOURCE_DIR}
     )
 
     add_executable(btrievefilesaver_dump EXCLUDE_FROM_ALL
         ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code/main.c
-        ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code/BtrieveFileSaverLib.c
-        ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code/BtrieveFileSaverLib.h
+        ${CARDSTACK_BTRIEVE_SOURCE_DIR}/BtrieveFileSaverLib.c
+        ${CARDSTACK_BTRIEVE_SOURCE_DIR}/BtrieveFileSaverLib.h
     )
 
     target_include_directories(btrievefilesaver_dump
         PRIVATE
-            ${PROJECT_SOURCE_DIR}/third_party/BtrieveFileSaver-Code
+            ${CARDSTACK_BTRIEVE_SOURCE_DIR}
     )
 else()
     add_library(cardstack_btrieve_filesaver INTERFACE)

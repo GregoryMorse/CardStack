@@ -9,6 +9,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileDialog>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QFont>
 #include <QGroupBox>
@@ -368,27 +369,87 @@ void acceptNextReportFormDialog(ReportFormType formType, int row)
 
 void acceptNextFileDialogWithFile(const QString& objectName, const QString& filePath)
 {
-    auto attemptsRemaining = std::make_shared<int>(50);
-    auto retry = std::make_shared<std::function<void()>>();
-    *retry = [objectName, filePath, attemptsRemaining, retry]() {
-        for (QWidget* widget : QApplication::topLevelWidgets()) {
-            auto* dialog = qobject_cast<QFileDialog*>(widget);
-            if (dialog == nullptr || !dialog->isVisible() || dialog->objectName() != objectName) {
-                continue;
+    constexpr int FileDialogDeadlineMs = 10000;
+    constexpr int FileDialogPollMs = 10;
+    auto clock = std::make_shared<QElapsedTimer>();
+    clock->start();
+    auto target = std::make_shared<QPointer<QFileDialog>>();
+    auto seen = std::make_shared<bool>(false);
+    auto prepared = std::make_shared<bool>(false);
+    auto* timer = new QTimer(qApp);
+    timer->setInterval(FileDialogPollMs);
+    QObject::connect(timer, &QTimer::timeout, timer,
+        [objectName, filePath, clock, target, seen, prepared, timer]() {
+            const auto finish = [timer]() { timer->stop(); timer->deleteLater(); };
+            const auto fail = [&](const QString& message) {
+                if (auto* modal = qobject_cast<QDialog*>(QApplication::activeModalWidget())) modal->reject();
+                if (target->data()) target->data()->reject();
+                QTest::qFail(qPrintable(message), __FILE__, __LINE__);
+                finish();
+            };
+            if (!*seen) {
+                for (QWidget* widget : QApplication::topLevelWidgets()) {
+                    auto* dialog = qobject_cast<QFileDialog*>(widget);
+                    if (dialog && dialog->isVisible() && dialog->objectName() == objectName) {
+                        *target = dialog;
+                        *seen = true;
+                        break;
+                    }
+                }
             }
-
-            dialog->selectFile(filePath);
-            static_cast<QDialog*>(dialog)->accept();
-            return;
-        }
-
-        --(*attemptsRemaining);
-        if (*attemptsRemaining > 0) {
-            QTimer::singleShot(10, qApp, *retry);
-        }
-    };
-
-    QTimer::singleShot(0, qApp, *retry);
+            QDialog* modal = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            QFileDialog* dialog = target->data();
+            if (*seen && (!dialog || !dialog->isVisible())) {
+                const bool exportDialog = objectName == QStringLiteral("cardstackExportReportDialog")
+                    || objectName == QStringLiteral("cardstackExportTemplateDialog");
+                if (exportDialog && qobject_cast<QMessageBox*>(modal) && modal->isVisible()) {
+                    fail(QStringLiteral("Export failed after choosing %1: %2")
+                        .arg(filePath, qobject_cast<QMessageBox*>(modal)->text()));
+                    return;
+                }
+                finish();
+                return;
+            }
+            if (modal && modal->isVisible() && modal != target->data()) {
+                const auto* messageBox = qobject_cast<QMessageBox*>(modal);
+                fail(QStringLiteral("Unexpected modal while choosing %1: %2 / %3")
+                    .arg(filePath, modal->windowTitle(), messageBox ? messageBox->text() : modal->objectName()));
+                return;
+            }
+            if (dialog && !*prepared) {
+                dialog->setDirectory(QFileInfo(filePath).absolutePath());
+                dialog->selectFile(QFileInfo(filePath).fileName());
+                *prepared = true;
+                return;
+            }
+            if (dialog && *prepared) {
+                // QFileSystemModel may finish loading after selectFile() and clear its selection.
+                // Exercise the filename editor, as user entry does, rather than racing the view model.
+                if (auto* nameEdit = dialog->findChild<QLineEdit*>(QStringLiteral("fileNameEdit"))) {
+                    nameEdit->setFocus(Qt::OtherFocusReason);
+                    const QString name = QFileInfo(filePath).fileName();
+                    if (nameEdit->text() != name) nameEdit->setText(name);
+                }
+                const QString selected = QFileInfo(dialog->selectedFiles().value(0)).absoluteFilePath();
+                if (selected == QFileInfo(filePath).absoluteFilePath()) {
+                    if (!QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection)) {
+                        fail(QStringLiteral("File dialog has no invokable accept slot: %1").arg(objectName));
+                        return;
+                    }
+                }
+            }
+            if (clock->elapsed() >= FileDialogDeadlineMs) {
+                QStringList visible;
+                for (QWidget* widget : QApplication::topLevelWidgets()) {
+                    if (widget->isVisible() && qobject_cast<QDialog*>(widget))
+                        visible.append(widget->objectName() + QStringLiteral(": ") + widget->windowTitle());
+                }
+                fail(QStringLiteral("Timed out choosing %1 in %2; visible dialogs: %3; selected files: %4")
+                    .arg(filePath, objectName, visible.join(QStringLiteral(", ")),
+                         dialog ? dialog->selectedFiles().join(QStringLiteral(", ")) : QStringLiteral("<not found>")));
+            }
+        });
+    timer->start();
 }
 
 void acceptNextOpenDialogWithFile(const QString& filePath)

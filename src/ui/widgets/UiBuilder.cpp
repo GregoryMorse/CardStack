@@ -21,6 +21,9 @@
 #include <QAbstractSpinBox>
 #include <QButtonGroup>
 #include <QKeySequence>
+#include <QKeyEvent>
+#include <QFocusEvent>
+#include <QStyleOptionFocusRect>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -91,7 +94,8 @@ void bindDialogLabelMnemonics(QWidget* dialog)
         QWidget* bestCandidate = nullptr;
         int bestScore = std::numeric_limits<int>::max();
         for (QWidget* candidate : candidates) {
-            if (candidate == label || candidate->focusPolicy() == Qt::NoFocus
+            if (candidate == label || !candidate->property("originalControlId").isValid()
+                || candidate->focusPolicy() == Qt::NoFocus
                 || qobject_cast<QAbstractButton*>(candidate) != nullptr) {
                 continue;
             }
@@ -116,6 +120,25 @@ void bindDialogLabelMnemonics(QWidget* dialog)
             if (score < bestScore) {
                 bestScore = score;
                 bestCandidate = candidate;
+            }
+        }
+        if (bestCandidate == nullptr) {
+            // Some file-dialog labels sit farther above their lists than one label height.
+            // Fall back to the nearest actual dialog control, not a Qt implementation child.
+            for (QWidget* candidate : candidates) {
+                if (candidate == label || !candidate->property("originalControlId").isValid()
+                    || candidate->focusPolicy() == Qt::NoFocus
+                    || qobject_cast<QLabel*>(candidate) != nullptr
+                    || qobject_cast<QAbstractButton*>(candidate) != nullptr) {
+                    continue;
+                }
+                const QRect candidateRect(candidate->mapTo(dialog, QPoint(0, 0)), candidate->size());
+                const int score = std::abs(candidateRect.center().x() - labelRect.center().x())
+                    + std::abs(candidateRect.center().y() - labelRect.center().y());
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestCandidate = candidate;
+                }
             }
         }
         if (bestCandidate != nullptr) {
@@ -469,6 +492,7 @@ public:
     {
         setFocusPolicy(Qt::StrongFocus);
         setAutoFillBackground(true);
+        setAccessibleName(QObject::tr("Color palette"));
         setProperty("paletteColorCount", 48);
         setProperty("hasDeckPreview", false);
     }
@@ -476,6 +500,7 @@ public:
     void setSelectedRole(int role)
     {
         m_selectedRole = std::clamp(role, 0, static_cast<int>(m_customColors.size()) - 1);
+        updateAccessibleSelection();
         update();
     }
 
@@ -543,9 +568,68 @@ protected:
             painter.drawRect(swatch.adjusted(0, 0, -1, -1));
             if (colors.at(index) == colorForRole(m_selectedRole)) {
                 painter.drawRect(swatch.adjusted(2, 2, -3, -3));
+                if (hasFocus()) {
+                    QStyleOptionFocusRect focus;
+                    focus.initFrom(this);
+                    focus.rect = swatch.adjusted(4, 4, -4, -4);
+                    focus.backgroundColor = colors.at(index);
+                    style()->drawPrimitive(QStyle::PE_FrameFocusRect, &focus, &painter, this);
+                }
             }
         }
 
+    }
+
+    void keyPressEvent(QKeyEvent* event) override
+    {
+        if (m_useSystemColors || event->modifiers() != Qt::NoModifier) {
+            QWidget::keyPressEvent(event);
+            return;
+        }
+        constexpr int Columns = 8;
+        constexpr int Rows = 6;
+        const int current = paletteColors().indexOf(m_customColors.at(m_selectedRole));
+        int column = current < 0 ? -1 : current % Columns;
+        int row = current < 0 ? -1 : current / Columns;
+        switch (event->key()) {
+        case Qt::Key_Left:
+            if (column < 0) { column = Columns - 1; row = 0; }
+            else column = std::max(0, column - 1);
+            break;
+        case Qt::Key_Up:
+            if (column < 0) { column = 0; row = Rows - 1; }
+            else row = std::max(0, row - 1);
+            break;
+        case Qt::Key_Right:
+            if (column < 0) { column = 0; row = 0; }
+            else column = std::min(Columns - 1, column + 1);
+            break;
+        case Qt::Key_Down:
+            if (column < 0) { column = 0; row = 0; }
+            else row = std::min(Rows - 1, row + 1);
+            break;
+        default:
+            QWidget::keyPressEvent(event);
+            return;
+        }
+        // Arrow selection applies immediately; edges do not wrap.
+        m_customColors[m_selectedRole] = paletteColors().at(row * Columns + column);
+        updateAccessibleSelection();
+        update();
+        notifyStateChanged();
+        event->accept();
+    }
+
+    void focusInEvent(QFocusEvent* event) override
+    {
+        QWidget::focusInEvent(event);
+        update();
+    }
+
+    void focusOutEvent(QFocusEvent* event) override
+    {
+        QWidget::focusOutEvent(event);
+        update();
     }
 
     void mousePressEvent(QMouseEvent* event) override
@@ -559,6 +643,7 @@ protected:
             return;
         }
         m_customColors[m_selectedRole] = paletteColors().at(paletteIndex);
+        updateAccessibleSelection();
         update();
         notifyStateChanged();
     }
@@ -604,6 +689,11 @@ private:
             return result;
         }();
         return colors;
+    }
+
+    void updateAccessibleSelection()
+    {
+        setAccessibleDescription(QObject::tr("Selected color %1").arg(colorForRole(m_selectedRole).name()));
     }
 
     QVector<QColor> m_customColors;
@@ -961,7 +1051,7 @@ QWidget* createControl(QWidget* parent, const UiResourceData::UiControl& control
             frame->setFrameShadow(QFrame::Sunken);
             widget = frame;
         } else {
-            auto* label = new QLabel(plainVisibleText(text), parent);
+            auto* label = new QLabel(mnemonicText(text), parent);
             label->setWordWrap(false);
             widget = label;
         }
@@ -4584,7 +4674,7 @@ std::unique_ptr<QDialog> UiBuilder::createDialog(
 
     initializeUiDialog(dialog.get(), dialogName, context);
     refineDialogGeometry(dialog.get());
-    if (dialogName == QStringLiteral("SEARCH")) {
+    if (dialogName == QStringLiteral("SEARCH") || dialogName == QStringLiteral("PHNDEF")) {
         resizeDialogToVisibleContent(dialog.get());
     }
     bindDialogLabelMnemonics(dialog.get());

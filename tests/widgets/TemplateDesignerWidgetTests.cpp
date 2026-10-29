@@ -3,6 +3,12 @@
 
 #include "../support/ModalDialogDriver.h"
 #include "UiIds.h"
+#include "../support/DesignerResizeProbe.h"
+#include "../support/DesignerGridProbe.h"
+#include "../support/DesignerSelectionProbe.h"
+#include "DesignerClipboard.h"
+#include "ReportDesignerWidget.h"
+#include "TemplateDesignerWidget.h"
 
 #include <QCoreApplication>
 #include <QComboBox>
@@ -47,6 +53,13 @@ class TemplateDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void sourceGridMatchesOriginalIntegerAlgorithm() { CardStack::Tests::DesignerGridProbe::sourceAlgorithm(); }
+    void keyboardGridDoesNotAccumulateRoundingError() { CardStack::Tests::DesignerGridProbe::templateKeyboard(); }
+    void pointerGridIsIndependentOfViewportZoom() { CardStack::Tests::DesignerGridProbe::templatePointer(); }
+    void clipboardUsesOriginalNormalizedOriginWithoutStagger() { CardStack::Tests::DesignerGridProbe::templateClipboard(); }
+    void textFontsScaleWithTemplateGeometry() { CardStack::Tests::DesignerGridProbe::templateFonts(); }
+    void missingFontsPreserveTemplateGeometry() { CardStack::Tests::DesignerGridProbe::templateFonts(QStringLiteral("CardStack Missing Font Test")); }
+    void tableMouseSelectionRestoresKindSpecificProperties() { CardStack::Tests::DesignerGridProbe::templateTable(); }
 
     void addsIndependentDataFieldsAndPreservesAppearance()
     {
@@ -62,6 +75,9 @@ private slots:
         appearance.useSystemColors = false;
         designer.setAppearance(appearance);
         QCOMPARE(designer.appearance(), appearance);
+        designer.undo();
+        QCOMPARE(designer.fieldDefinitions().size(), 3);
+        QVERIFY(designer.appearance() != appearance);
         designer.undo();
         QCOMPARE(designer.fieldDefinitions().size(), 2);
     }
@@ -239,22 +255,19 @@ private slots:
         QVERIFY(lineShapeCombo != nullptr);
         QVERIFY(lineStyleSpin != nullptr);
 
-        frameTable->setCurrentCell(0, 0);
-        frameTable->selectRow(0);
+        Tests::DesignerSelectionProbe::selectRows(designer, {0});
         QCoreApplication::processEvents();
         QVERIFY(!textEdit->isHidden());
         QVERIFY(fieldCombo->isHidden());
         QVERIFY(lineShapeCombo->isHidden());
 
-        frameTable->setCurrentCell(1, 0);
-        frameTable->selectRow(1);
+        Tests::DesignerSelectionProbe::selectRows(designer, {1});
         QCoreApplication::processEvents();
         QVERIFY(textEdit->isHidden());
         QVERIFY(!fieldCombo->isHidden());
         QVERIFY(lineShapeCombo->isHidden());
 
-        frameTable->setCurrentCell(2, 0);
-        frameTable->selectRow(2);
+        Tests::DesignerSelectionProbe::selectRows(designer, {2});
         QCoreApplication::processEvents();
         QVERIFY(textEdit->isHidden());
         QVERIFY(fieldCombo->isHidden());
@@ -268,6 +281,175 @@ private slots:
         lineShapeCombo->setCurrentIndex(lineShapeCombo->findData(static_cast<int>(CardTemplateLineBoxShape::VerticalLine)));
         QCoreApplication::processEvents();
         QCOMPARE(designer.layoutDefinition().frames.at(2).lineBoxShape, CardTemplateLineBoxShape::VerticalLine);
+    }
+
+    void templateGroupClipboardRemapsFieldsAcrossWindowsAndUndo()
+    {
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen"))
+            QSKIP("Clipboard probes require the isolated offscreen clipboard.");
+        const QVector<FieldDefinition> fields = {
+            FieldDefinition(QStringLiteral("Name"), FieldType::Text, 64, true, false, QByteArray("name-metadata"), 180),
+            FieldDefinition(QStringLiteral("Notes"), FieldType::Notes, 8192),
+        };
+        CardTemplateLayout layout;
+        layout.frames = {
+            {CardTemplateFrameKind::DataBox, QRect(700, 600, 1800, 320), QStringLiteral("Name"), 0},
+            {CardTemplateFrameKind::DataBox, QRect(700, 1100, 1800, 320), QStringLiteral("Name"), 0},
+            {CardTemplateFrameKind::NotesBox, QRect(700, 1600, 2400, 800), QStringLiteral("Notes"), 1},
+            {CardTemplateFrameKind::Text, QRect(700, 300, 1800, 220), QStringLiteral("Name"), -1},
+        };
+        layout.frames[0].styleFlags = CardTemplateStyleFlagUnderline | CardTemplateStyleFlagAlignRight;
+        layout.frames[0].legacyDescriptor = QByteArray("frame-metadata");
+        TemplateDesignerWidget source(layout, fields);
+        source.show();
+        QApplication::setActiveWindow(&source);
+        Tests::DesignerSelectionProbe::selectRows(source, {0, 1, 2, 3});
+        source.findChild<QWidget*>(QStringLiteral("templateDesignCanvas"))->setFocus();
+        source.copySelectedFrame();
+        const auto packet = DesignerClipboard::readTemplate();
+        const QPoint copyShift = packet.frames.first().bounds.topLeft() - source.layoutDefinition().frames.first().bounds.topLeft();
+        for (int index = 0; index < packet.frames.size(); ++index) {
+            auto expected = source.layoutDefinition().frames.at(index);
+            expected.bounds.translate(copyShift);
+            QCOMPARE(packet.frames.at(index), expected);
+        }
+        QCOMPARE(packet.fields.size(), 2);
+        QCOMPARE(packet.fields.value(0).legacyDescriptor(), fields.at(0).legacyDescriptor());
+        QCOMPARE(packet.fields.value(0).displayWidth(), 180);
+
+        TemplateDesignerWidget target({}, {FieldDefinition(QStringLiteral("Name"), FieldType::Text, 20), fields.at(1)});
+        target.show();
+        QApplication::setActiveWindow(&target);
+        target.findChild<QWidget*>(QStringLiteral("templateDesignCanvas"))->setFocus();
+        QVERIFY(target.canPasteFrame());
+        target.pasteFrame();
+        QCOMPARE(target.layoutDefinition().frames.size(), 4);
+        QCOMPARE(target.fieldDefinitions().size(), 3);
+        QCOMPARE(target.layoutDefinition().frames.at(0).fieldIndex, 2);
+        QCOMPARE(target.layoutDefinition().frames.at(1).fieldIndex, 2);
+        QCOMPARE(target.layoutDefinition().frames.at(2).fieldIndex, 1);
+        QCOMPARE(target.fieldDefinitions().at(2).maxLength(), 64);
+        QCOMPARE(target.fieldDefinitions().at(2).displayWidth(), 180);
+        QCOMPARE(target.fieldDefinitions().at(2).legacyDescriptor(), fields.at(0).legacyDescriptor());
+        QVERIFY(target.fieldDefinitions().at(2).name() != QStringLiteral("Name"));
+        QCOMPARE(target.layoutDefinition().frames.at(3).text, target.fieldDefinitions().at(2).name());
+        QCOMPARE(target.layoutDefinition().frames.at(0).styleFlags, layout.frames.at(0).styleFlags);
+        QCOMPARE(target.layoutDefinition().frames.at(0).legacyDescriptor, layout.frames.at(0).legacyDescriptor);
+        const QPoint shift = target.layoutDefinition().frames.at(0).bounds.topLeft() - layout.frames.at(0).bounds.topLeft();
+        for (int index = 0; index < layout.frames.size(); ++index)
+            QCOMPARE(target.layoutDefinition().frames.at(index).bounds, layout.frames.at(index).bounds.translated(shift));
+        target.undo();
+        QVERIFY(target.layoutDefinition().frames.isEmpty());
+        QCOMPARE(target.fieldDefinitions().size(), 2);
+        auto* choices = target.findChild<QComboBox*>(QStringLiteral("templateFieldCombo"));
+        QVERIFY(choices);
+        QCOMPARE(choices->findData(2), -1);
+
+        QApplication::setActiveWindow(&source);
+        source.findChild<QWidget*>(QStringLiteral("templateDesignCanvas"))->setFocus();
+        source.cutSelectedFrame();
+        QVERIFY(source.layoutDefinition().frames.isEmpty());
+        QCOMPARE(source.fieldDefinitions().size(), 2);
+        source.undo();
+        QCOMPARE(source.layoutDefinition().frames, layout.frames);
+        Tests::DesignerSelectionProbe::expectSelection(source, {0, 1, 2, 3});
+        source.pasteFrame();
+        QCOMPARE(source.layoutDefinition().frames.size(), 8);
+        QCOMPARE(source.fieldDefinitions().size(), 2);
+        source.undo();
+        QCOMPARE(source.layoutDefinition().frames, layout.frames);
+        ReportDesignerWidget otherFormat({}, {});
+        QVERIFY(!otherFormat.canPasteFrame());
+    }
+
+    void groupFormattingChangesOnlyApplicableTemplateItems()
+    {
+        CardTemplateLayout layout;
+        layout.frames = {
+            {CardTemplateFrameKind::Text, QRect(500, 500, 1800, 300), QStringLiteral("Caption"), -1},
+            {CardTemplateFrameKind::DataBox, QRect(500, 1000, 1800, 300), QStringLiteral("Name"), 0},
+            {CardTemplateFrameKind::LineOrBox, QRect(500, 1500, 1800, 300), {}, -1},
+        };
+        layout.frames[0].styleFlags = CardTemplateStyleFlagBold;
+        layout.frames[1].styleFlags = CardTemplateStyleFlagItalic | CardTemplateStyleFlagAlignCenter;
+        TemplateDesignerWidget designer(layout, makeFields());
+        Tests::DesignerSelectionProbe::selectRows(designer, {0, 1, 2});
+        const auto before = designer.layoutDefinition().frames;
+        QVERIFY(!designer.selectionHasStyleFlag(CardTemplateStyleFlagBold));
+        QCOMPARE(designer.selectionAlignment(), -1);
+        designer.setSelectionStyleFlag(CardTemplateStyleFlagBold, true);
+        QVERIFY(designer.selectionHasStyleFlag(CardTemplateStyleFlagBold));
+        QCOMPARE(designer.layoutDefinition().frames.at(2), before.at(2));
+        designer.undo();
+        QCOMPARE(designer.layoutDefinition().frames, before);
+        Tests::DesignerSelectionProbe::expectSelection(designer, {0, 1, 2});
+        designer.setSelectionAlignment(CardTemplateStyleFlagAlignRight);
+        QCOMPARE(designer.selectionAlignment(), int(CardTemplateStyleFlagAlignRight));
+        QVERIFY((designer.layoutDefinition().frames.at(1).styleFlags & CardTemplateStyleFlagItalic) != 0);
+        QCOMPARE(designer.layoutDefinition().frames.at(2), before.at(2));
+        designer.undo();
+        QCOMPARE(designer.layoutDefinition().frames, before);
+    }
+
+    void focusedTextClipboardDoesNotCopyOrDeleteTemplateObjects()
+    {
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen"))
+            QSKIP("Clipboard probes require the isolated offscreen clipboard.");
+        CardTemplateLayout layout;
+        layout.frames = {{CardTemplateFrameKind::Text, QRect(500, 500, 2000, 320), QStringLiteral("Caption editing"), -1}};
+        TemplateDesignerWidget designer(layout, makeFields());
+        designer.show();
+        QApplication::setActiveWindow(&designer);
+        auto* edit = designer.findChild<QLineEdit*>(QStringLiteral("templateTextEdit"));
+        QVERIFY(edit);
+        edit->setFocus();
+        edit->selectAll();
+        QCoreApplication::processEvents();
+        designer.copySelectedFrame();
+        QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("Caption editing"));
+        QVERIFY(!QApplication::clipboard()->mimeData()->hasFormat(QString::fromLatin1(DesignerClipboard::TemplateMime)));
+        designer.cutSelectedFrame();
+        QVERIFY(edit->text().isEmpty());
+        QCOMPARE(designer.layoutDefinition().frames.size(), 1);
+        QApplication::clipboard()->setText(QStringLiteral("New caption"));
+        designer.pasteFrame();
+        QCOMPARE(edit->text(), QStringLiteral("New caption"));
+        edit->selectAll();
+        designer.deleteSelectedFrame();
+        QVERIFY(edit->text().isEmpty());
+        QCOMPARE(designer.layoutDefinition().frames.size(), 1);
+    }
+
+    void selectionMessagesPreserveOriginalGroupBehavior()
+    {
+        CardTemplateLayout layout;
+        layout.canvasWidth = 6400;
+        layout.canvasHeight = 4800;
+        for (const QRect& bounds : {QRect(900, 700, 1200, 400), QRect(3000, 2100, 1200, 400), QRect(2200, 1300, 800, 400)})
+            layout.frames.append({CardTemplateFrameKind::Text, bounds, QStringLiteral("Object %1").arg(layout.frames.size() + 1), -1});
+        TemplateDesignerWidget designer(layout, makeFields());
+        Tests::DesignerSelectionProbe::exercise(designer, "templateDesignCanvas",
+            QSize(layout.canvasWidth, layout.canvasHeight), 0, 30,
+            QStringLiteral("template"), [&designer]() { return designer.layoutDefinition().frames; });
+    }
+
+    void resizesAllEdgesAndCorners_data()
+    {
+        Tests::DesignerResizeProbe::addData();
+    }
+
+    void resizesAllEdgesAndCorners()
+    {
+        CardTemplateLayout layout;
+        layout.canvasWidth = 6400;
+        layout.canvasHeight = 4800;
+        layout.frames = {
+            {CardTemplateFrameKind::Text, QRect(900, 700, 1600, 500), QStringLiteral("Resize from any side"), -1},
+        };
+        TemplateDesignerWidget designer(layout, makeFields());
+        Tests::DesignerResizeProbe::exercise(designer, "templateDesignCanvas",
+            QSize(layout.canvasWidth, layout.canvasHeight), layout.frames.first().bounds, 0, QStringLiteral("template"),
+            [&designer]() { return designer.layoutDefinition().frames.first().bounds; });
     }
 
     void canvasMouseMessagesAndClipboardPreserveDesignerBehavior()

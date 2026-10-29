@@ -40,6 +40,7 @@ target_link_libraries(CardStack
     PRIVATE
         cardstack_app_lib
         Qt6::Widgets
+        Qt6::Svg
 )
 
 option(CARDSTACK_DEPLOY_QT_TRANSLATIONS "Deploy Qt runtime translation catalogs with windeployqt." OFF)

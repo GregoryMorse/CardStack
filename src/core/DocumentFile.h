@@ -10,11 +10,20 @@ inline QString documentFileIdentity(const QString& path)
 {
     const QFileInfo info(path);
     QString result = info.canonicalFilePath();
-    if (result.isEmpty()) result = QDir::cleanPath(info.absoluteFilePath());
+    if (result.isEmpty()) {
+        QString parent = info.dir().canonicalPath();
+        if (parent.isEmpty()) parent = info.absolutePath();
+        result = QDir::cleanPath(QDir(parent).filePath(info.fileName()));
+    }
 #ifdef Q_OS_WIN
     result = result.toCaseFolded();
 #endif
     return result;
+}
+
+inline QString documentLockPath(const QString& path)
+{
+    return documentFileIdentity(path) + QStringLiteral(".lock");
 }
 
 inline QByteArray documentFileFingerprint(const QString& path, bool* ok = nullptr)

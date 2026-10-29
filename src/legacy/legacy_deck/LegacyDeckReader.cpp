@@ -523,6 +523,10 @@ LegacyDeckReader::Result LegacyDeckReader::readDeck(const QString& filePath, con
     Result result;
     const BtrieveAuditReader auditReader;
     const BtrieveAuditReader::Result audit = auditReader.readFile(filePath);
+    if (!audit.ok()) {
+        result.errorMessage = audit.errorMessage;
+        return result;
+    }
 
     if (audit.ok() && audit.audit.owned &&
         normalizeLegacyOwnerPassword(password).isEmpty() &&

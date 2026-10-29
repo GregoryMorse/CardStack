@@ -3,6 +3,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QScopeGuard>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QVector>
 
 #include <algorithm>
@@ -73,6 +75,8 @@ BtrieveFileSaverReader::Result BtrieveFileSaverReader::readAllRecords(
     std::vector<char> mutablePath(nativePath.begin(), nativePath.end());
     mutablePath.push_back('\0');
 
+    static QMutex nativeReaderMutex;
+    const QMutexLocker lock(&nativeReaderMutex);
     CLIENT_STRUCT client;
     std::memset(&client, 0, sizeof(client));
 

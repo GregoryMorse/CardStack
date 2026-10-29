@@ -1,15 +1,16 @@
 # Building Qt From Source
 
 CardStack can avoid Qt account registration by building open-source Qt from source.
-For this project, the practical dependency is `qtbase`: it contains Qt Core, Widgets,
-SQL, printing support, and the SQLite SQL driver we need for CardStack 1.0.
+The required modules are `qtbase` (Core, Widgets, SQL, printing and the SQLite
+driver) and `qtsvg` (scalable toolbar and window icons). Both must be installed
+in the same Qt prefix and included in packaged builds.
 
 ## Recommended Policy
 
 - Pin a released Qt tag instead of tracking `dev`.
 - Prefer the latest standard-support open-source Qt release for active development.
 - Avoid using commercial-only LTS patch releases as the default open-source build target.
-- Build only `qtbase` unless a future feature proves another module is required.
+- Build `qtbase,qtsvg`; add translation tooling only when needed.
 - Keep Qt outside the CardStack source tree, usually under `.deps/qt-src`,
   `.deps/qt-build`, and `.deps/qt-install`.
 - Cache the installed Qt prefix in CI by OS, compiler, Qt version, and configure flags.
@@ -51,7 +52,7 @@ git switch --detach 6.11.1
 cd ../..
 mkdir .deps/qt-build
 cd .deps/qt-build
-../qt-src/configure.bat -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase -init-submodules
+../qt-src/configure.bat -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase,qtsvg -init-submodules
 cmake --build . --parallel
 cmake --install .
 ```
@@ -109,7 +110,7 @@ git switch --detach 6.11.1
 cd ../..
 mkdir -p .deps/qt-build
 cd .deps/qt-build
-../qt-src/configure -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase -init-submodules
+../qt-src/configure -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase,qtsvg -init-submodules
 cmake --build . --parallel
 cmake --install .
 
@@ -129,7 +130,7 @@ git switch --detach 6.11.1
 cd ../..
 mkdir -p .deps/qt-build
 cd .deps/qt-build
-../qt-src/configure -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase -init-submodules
+../qt-src/configure -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase,qtsvg -init-submodules
 cmake --build . --parallel
 cmake --install .
 
@@ -142,9 +143,9 @@ cmake --build --preset default
 The CI workflow should have two logical jobs.
 
 1. Build or restore Qt:
-   - key: `${{ runner.os }}-${{ matrix.compiler }}-qt-6.11.1-qtbase-release`
+   - key: `${{ runner.os }}-${{ matrix.compiler }}-qt-6.11.1-qtbase-qtsvg-release`
    - restore `.deps/qt-install`
-   - if missing, clone Qt, switch to the pinned tag, configure `qtbase`, build,
+   - if missing, clone Qt, switch to the pinned tag, configure `qtbase,qtsvg`, build,
      install, and save the cache
 
 2. Build CardStack:
@@ -180,7 +181,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/qt-install
-          key: ${{ runner.os }}-qt-${{ matrix.qt-version }}-qtbase-release
+          key: ${{ runner.os }}-qt-${{ matrix.qt-version }}-qtbase-qtsvg-release
 
       - name: Build Qt from source on cache miss
         shell: bash
@@ -190,7 +191,7 @@ jobs:
           git -C .deps/qt-src switch --detach ${{ matrix.qt-version }}
           cmake -E make_directory .deps/qt-build
           cd .deps/qt-build
-          ../qt-src/configure -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase -init-submodules
+          ../qt-src/configure -prefix ../qt-install -release -opensource -confirm-license -nomake examples -nomake tests -submodules qtbase,qtsvg -init-submodules
           cmake --build . --parallel
           cmake --install .
 

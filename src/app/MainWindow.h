@@ -150,6 +150,9 @@ private:
     QLabel* m_cardPositionLabel = nullptr;
     QLabel* m_deckModeLabel = nullptr;
     QWidget* m_designerPropertyToolbar = nullptr;
+    QPointer<QWidget> m_propertyToolbarDesigner;
+    int m_propertyToolbarFrame = -2;
+    int m_propertyToolbarKind = -1;
     QVector<QuickDial> m_quickDials;
     QString m_phoneLongDistancePrefix = QStringLiteral("1");
     QString m_phoneOutsideLinePrefix = QStringLiteral("9");

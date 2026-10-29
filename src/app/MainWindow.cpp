@@ -42,6 +42,7 @@
 #include <QFileInfo>
 #include <QEventLoop>
 #include <QFontDialog>
+#include <QFocusEvent>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -157,6 +158,43 @@ QIcon cardStackIcon()
 QIcon cardStackToolbarIcon(const QString& iconName)
 {
     QIcon icon;
+    if (iconName == QStringLiteral("align-left")
+        || iconName == QStringLiteral("align-center")
+        || iconName == QStringLiteral("align-right")) {
+        const QColor ink(38, 50, 56);
+        for (const int size : {24, 48}) {
+            QPixmap pixmap(size, size);
+            pixmap.fill(Qt::transparent);
+            QPainter painter(&pixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.scale(size / 24.0, size / 24.0);
+            painter.setPen(QPen(ink, 1.6));
+            painter.setBrush(Qt::white);
+            painter.drawRoundedRect(QRectF(4, 5, 16, 14), 2, 2);
+            painter.setPen(QPen(ink, 1.7, Qt::SolidLine, Qt::RoundCap));
+            const qreal starts[3] = {
+                7.0,
+                iconName == QStringLiteral("align-right") ? 10.0
+                    : iconName == QStringLiteral("align-center") ? 8.5 : 7.0,
+                iconName == QStringLiteral("align-right") ? 8.0
+                    : iconName == QStringLiteral("align-center") ? 7.5 : 7.0,
+            };
+            const qreal ends[3] = {
+                17.0,
+                iconName == QStringLiteral("align-right") ? 17.0
+                    : iconName == QStringLiteral("align-center") ? 15.5 : 14.0,
+                iconName == QStringLiteral("align-right") ? 17.0
+                    : iconName == QStringLiteral("align-center") ? 16.5 : 16.0,
+            };
+            for (int row = 0; row < 3; ++row) {
+                const qreal y = 9.0 + row * 3.0;
+                painter.drawLine(QPointF(starts[row], y), QPointF(ends[row], y));
+            }
+            painter.end();
+            icon.addPixmap(pixmap);
+        }
+        return icon;
+    }
     icon.addFile(QStringLiteral(":/cardstack/toolbar/%1.svg").arg(iconName));
     icon.addFile(QStringLiteral(":/cardstack/toolbar/png-24/%1.png").arg(iconName), QSize(24, 24));
     icon.addFile(QStringLiteral(":/cardstack/toolbar/png-48/%1.png").arg(iconName), QSize(48, 48));
@@ -342,6 +380,43 @@ public:
     using QPushButton::QPushButton;
 
 protected:
+    void focusInEvent(QFocusEvent* event) override
+    {
+        setFocusPolicy(Qt::TabFocus);
+        for (QPushButton* sibling : parentWidget()->findChildren<QPushButton*>(
+                 QString(), Qt::FindDirectChildrenOnly)) {
+            if (sibling != this) {
+                sibling->setFocusPolicy(Qt::NoFocus);
+            }
+        }
+        QPushButton::focusInEvent(event);
+    }
+
+    void keyPressEvent(QKeyEvent* event) override
+    {
+        const int step = event->key() == Qt::Key_Left || event->key() == Qt::Key_Up ? -1
+            : event->key() == Qt::Key_Right || event->key() == Qt::Key_Down ? 1 : 0;
+        if (step != 0) {
+            const QList<QPushButton*> buttons = parentWidget()->findChildren<QPushButton*>(
+                QString(), Qt::FindDirectChildrenOnly);
+            const int index = buttons.indexOf(this);
+            if (index >= 0) {
+                QPushButton* target = buttons.at(std::clamp(
+                    index + step, 0, static_cast<int>(buttons.size()) - 1));
+                target->setFocusPolicy(Qt::TabFocus);
+                target->setFocus(Qt::ShortcutFocusReason);
+            }
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            click();
+            event->accept();
+            return;
+        }
+        QPushButton::keyPressEvent(event);
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QStyleOptionButton option;
@@ -1711,6 +1786,7 @@ MainWindow::MainWindow(QWidget* parent, bool openInitialSample, bool restorePrev
     setCentralWidget(m_mdiArea);
     connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this]() {
         refreshMenuForActiveWindow();
+        rebuildDesignerPropertyToolbar();
         updateCommandState();
     });
 
@@ -2221,7 +2297,9 @@ void MainWindow::createIndexBar()
     for (const IndexButtonDefinition& definition : indexButtons) {
         auto* button = new IndexBarButton(definition.label, container);
         button->setObjectName(QStringLiteral("index_%1").arg(definition.key));
-        button->setFocusPolicy(Qt::NoFocus);
+        button->setFocusPolicy(definition.key == QStringLiteral("SPACE") ? Qt::TabFocus : Qt::NoFocus);
+        button->setAccessibleName(definition.key == QStringLiteral("SPACE")
+            ? tr("Skip to blank card titles") : tr("Skip to %1").arg(definition.label));
         button->setFlat(false);
         button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         button->setMinimumWidth(0);
@@ -2315,8 +2393,13 @@ void MainWindow::configureToolBarForMenu(int menuId)
     }
 
     if (m_designerPropertyToolbar != nullptr) {
+        m_designerPropertyToolbar->hide();
+        m_designerPropertyToolbar->setParent(nullptr);
         m_designerPropertyToolbar->deleteLater();
         m_designerPropertyToolbar = nullptr;
+        m_propertyToolbarDesigner.clear();
+        m_propertyToolbarFrame = -2;
+        m_propertyToolbarKind = -1;
     }
     m_buttonBar->clear();
     m_cardPositionLabel = nullptr;
@@ -2439,10 +2522,113 @@ void MainWindow::rebuildDesignerPropertyToolbar()
     if (m_designerPropertyToolbar == nullptr) {
         return;
     }
-    if (QLayout* oldLayout = m_designerPropertyToolbar->layout()) {
-        delete oldLayout;
+    auto* templateDesigner = activeTemplateDesigner();
+    auto* reportDesigner = activeReportDesigner();
+    QWidget* activeDesigner = templateDesigner != nullptr
+        ? static_cast<QWidget*>(templateDesigner) : static_cast<QWidget*>(reportDesigner);
+    const auto* templateFrame = templateDesigner ? templateDesigner->selectedFrameDefinition() : nullptr;
+    const auto* reportFrame = reportDesigner ? reportDesigner->selectedFrameDefinition() : nullptr;
+    const int frameIndex = templateDesigner ? templateDesigner->selectedFrameIndex()
+        : reportDesigner ? reportDesigner->selectedFrameIndex() : -1;
+    const qsizetype selectedCount = templateDesigner ? templateDesigner->selectedFrameIndices().size()
+        : reportDesigner ? reportDesigner->selectedFrameIndices().size() : 0;
+    const bool multiple = selectedCount > 1;
+    const bool groupHasStyle = multiple && (templateDesigner
+        ? templateDesigner->selectionHasStyledFrames() : reportDesigner->selectionHasStyledFrames());
+    const int frameKind = multiple ? (groupHasStyle ? -3 : -2)
+        : templateFrame ? static_cast<int>(templateFrame->kind)
+        : reportFrame ? static_cast<int>(reportFrame->kind) : -1;
+    if (m_propertyToolbarDesigner == activeDesigner && m_propertyToolbarFrame == frameIndex
+        && m_propertyToolbarKind == frameKind) {
+        const auto text = [this](const char* name, const QString& value) {
+            if (auto* edit = m_designerPropertyToolbar->findChild<QLineEdit*>(QString::fromLatin1(name))) {
+                if (!edit->hasFocus()) {
+                    const QSignalBlocker blocker(edit);
+                    edit->setText(value);
+                }
+            }
+        };
+        const auto check = [this](const char* name, bool value) {
+            if (auto* button = m_designerPropertyToolbar->findChild<QAbstractButton*>(QString::fromLatin1(name))) {
+                const QSignalBlocker blocker(button);
+                button->setChecked(value);
+            }
+        };
+        const auto number = [this](const char* name, int value) {
+            if (auto* spin = m_designerPropertyToolbar->findChild<QSpinBox*>(QString::fromLatin1(name))) {
+                const QSignalBlocker blocker(spin);
+                spin->setValue(value);
+            }
+        };
+        const auto combo = [this](const char* name, int value) {
+            if (auto* box = m_designerPropertyToolbar->findChild<QComboBox*>(QString::fromLatin1(name))) {
+                const QSignalBlocker blocker(box);
+                box->setCurrentIndex(value);
+            }
+        };
+        if (multiple) {
+            if (auto* label = m_designerPropertyToolbar->findChild<QLabel*>(QStringLiteral("designerGroupSelectionLabel")))
+                label->setText(tr("%1 frames selected").arg(selectedCount));
+            const auto flag = [templateDesigner, reportDesigner](quint8 value) {
+                return templateDesigner ? templateDesigner->selectionHasStyleFlag(value)
+                    : reportDesigner->selectionHasStyleFlag(value);
+            };
+            check("designerGroupBoldButton", flag(ReportStyleFlagBold));
+            check("designerGroupItalicButton", flag(ReportStyleFlagItalic));
+            check("designerGroupUnderlineButton", flag(ReportStyleFlagUnderline));
+            const int alignment = templateDesigner ? templateDesigner->selectionAlignment() : reportDesigner->selectionAlignment();
+            check("designer-align-left", alignment == 0);
+            check("designer-align-center", alignment == ReportStyleFlagAlignCenter);
+            check("designer-align-right", alignment == ReportStyleFlagAlignRight);
+            return;
+        }
+        if (templateFrame) {
+            const int fieldIndex = templateDesigner->selectedFieldIndex();
+            if (fieldIndex >= 0 && fieldIndex < templateDesigner->fieldDefinitions().size()) {
+                const auto& field = templateDesigner->fieldDefinitions().at(fieldIndex);
+                text("designerFieldNameEdit", field.name());
+                number("designerFieldLengthSpin", field.maxLength());
+                check("designerFieldPhoneCheck", field.isPhone());
+                check("designerFieldShowNameCheck", field.showName());
+            }
+            text("designerTemplateTextEdit", templateFrame->text);
+            check("designer-align-left", (templateFrame->styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight)) == 0);
+            check("designer-align-center", (templateFrame->styleFlags & CardTemplateStyleFlagAlignCenter) != 0);
+            check("designer-align-right", (templateFrame->styleFlags & CardTemplateStyleFlagAlignRight) != 0);
+            if (auto* shape = m_designerPropertyToolbar->findChild<QComboBox*>(QStringLiteral("designerTemplateShapeCombo")))
+                combo("designerTemplateShapeCombo", shape->findData(static_cast<int>(templateFrame->lineBoxShape)));
+        }
+        if (reportFrame) {
+            text("designerReportTextEdit", reportFrame->text);
+            if (auto* field = m_designerPropertyToolbar->findChild<QComboBox*>(QStringLiteral("designerReportFieldCombo"))) {
+                const QString name = reportFrame->fieldPlaceholders.isEmpty() ? QString() : reportFrame->fieldPlaceholders.first();
+                combo("designerReportFieldCombo", field->findText(name));
+            }
+            if (auto* shape = m_designerPropertyToolbar->findChild<QComboBox*>(QStringLiteral("designerReportShapeCombo")))
+                combo("designerReportShapeCombo", shape->findData(reportFrame->lineBoxShape));
+            combo("designerReportLineStyleCombo", reportFrame->lineStyle);
+            combo("designerReportFillPatternCombo", reportFrame->fillPattern);
+            number("designerReportCornerRadiusSpin", reportFrame->cornerRadius);
+            check("designerBold", (reportFrame->styleFlags & ReportStyleFlagBold) != 0);
+            check("designerItalic", (reportFrame->styleFlags & ReportStyleFlagItalic) != 0);
+            check("designerUnderline", (reportFrame->styleFlags & ReportStyleFlagUnderline) != 0);
+            check("designer-align-left", (reportFrame->styleFlags & (ReportStyleFlagAlignCenter | ReportStyleFlagAlignRight)) == 0);
+            check("designer-align-center", (reportFrame->styleFlags & ReportStyleFlagAlignCenter) != 0);
+            check("designer-align-right", (reportFrame->styleFlags & ReportStyleFlagAlignRight) != 0);
+            check("designerReportPrintEntireCheck", reportFrame->printEntireContentsFlag != 0);
+        }
+        return;
     }
-    qDeleteAll(m_designerPropertyToolbar->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly));
+    m_propertyToolbarDesigner = activeDesigner;
+    m_propertyToolbarFrame = frameIndex;
+    m_propertyToolbarKind = frameKind;
+    if (QLayout* oldLayout = m_designerPropertyToolbar->layout()) delete oldLayout;
+    for (QWidget* widget : m_designerPropertyToolbar->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
+        widget->blockSignals(true);
+        widget->hide();
+        widget->setParent(nullptr);
+        widget->deleteLater();
+    }
 
     auto* layout = new QHBoxLayout(m_designerPropertyToolbar);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -2455,6 +2641,12 @@ void MainWindow::rebuildDesignerPropertyToolbar()
     const auto addToggle = [this, layout](const QString& text, bool checked) {
         auto* button = new QToolButton(m_designerPropertyToolbar);
         button->setText(text);
+        const QString name = text == tr("B") ? QStringLiteral("designerBold")
+            : text == tr("I") ? QStringLiteral("designerItalic") : QStringLiteral("designerUnderline");
+        const QString description = text == tr("B") ? tr("Bold") : text == tr("I") ? tr("Italic") : tr("Underline");
+        button->setObjectName(name);
+        button->setAccessibleName(description);
+        button->setToolTip(description);
         button->setCheckable(true);
         button->setChecked(checked);
         button->setAutoRaise(false);
@@ -2466,6 +2658,7 @@ void MainWindow::rebuildDesignerPropertyToolbar()
                                    const QString& accessibleText,
                                    bool checked) {
         auto* button = new QToolButton(m_designerPropertyToolbar);
+        button->setObjectName(QStringLiteral("designer-%1").arg(iconName));
         button->setIcon(cardStackToolbarIcon(iconName));
         button->setIconSize(QSize(18, 18));
         button->setToolTip(accessibleText);
@@ -2477,6 +2670,52 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         layout->addWidget(button);
         return button;
     };
+
+    if (multiple) {
+        auto* label = new QLabel(tr("%1 frames selected").arg(selectedCount), m_designerPropertyToolbar);
+        label->setObjectName(QStringLiteral("designerGroupSelectionLabel"));
+        layout->addWidget(label);
+        if (groupHasStyle) {
+            const auto flag = [templateDesigner, reportDesigner](quint8 value) {
+                return templateDesigner ? templateDesigner->selectionHasStyleFlag(value)
+                    : reportDesigner->selectionHasStyleFlag(value);
+            };
+            auto* bold = addToggle(tr("B"), flag(ReportStyleFlagBold));
+            auto* italic = addToggle(tr("I"), flag(ReportStyleFlagItalic));
+            auto* underline = addToggle(tr("U"), flag(ReportStyleFlagUnderline));
+            bold->setObjectName(QStringLiteral("designerGroupBoldButton"));
+            italic->setObjectName(QStringLiteral("designerGroupItalicButton"));
+            underline->setObjectName(QStringLiteral("designerGroupUnderlineButton"));
+            const auto bindStyle = [this, activeDesigner, templateDesigner, reportDesigner](QToolButton* button, quint8 value) {
+                connect(button, &QToolButton::clicked, activeDesigner,
+                    [this, templateDesigner, reportDesigner, value](bool checked) {
+                        if (templateDesigner) templateDesigner->setSelectionStyleFlag(value, checked);
+                        else if (reportDesigner) reportDesigner->setSelectionStyleFlag(value, checked);
+                        updateCommandState();
+                    });
+            };
+            bindStyle(bold, ReportStyleFlagBold);
+            bindStyle(italic, ReportStyleFlagItalic);
+            bindStyle(underline, ReportStyleFlagUnderline);
+            const int alignment = templateDesigner ? templateDesigner->selectionAlignment() : reportDesigner->selectionAlignment();
+            auto* left = addIconToggle(QStringLiteral("align-left"), tr("Align left"), alignment == 0);
+            auto* center = addIconToggle(QStringLiteral("align-center"), tr("Align center"), alignment == ReportStyleFlagAlignCenter);
+            auto* right = addIconToggle(QStringLiteral("align-right"), tr("Align right"), alignment == ReportStyleFlagAlignRight);
+            const auto bindAlignment = [this, activeDesigner, templateDesigner, reportDesigner](QToolButton* button, quint8 value) {
+                connect(button, &QToolButton::clicked, activeDesigner,
+                    [this, templateDesigner, reportDesigner, value]() {
+                        if (templateDesigner) templateDesigner->setSelectionAlignment(value);
+                        else if (reportDesigner) reportDesigner->setSelectionAlignment(value);
+                        updateCommandState();
+                    });
+            };
+            bindAlignment(left, 0);
+            bindAlignment(center, ReportStyleFlagAlignCenter);
+            bindAlignment(right, ReportStyleFlagAlignRight);
+        }
+        layout->addStretch(1);
+        return;
+    }
 
     if (TemplateDesignerWidget* designer = activeTemplateDesigner()) {
         const CardTemplateFrame* frame = designer->selectedFrameDefinition();
@@ -2530,8 +2769,10 @@ void MainWindow::rebuildDesignerPropertyToolbar()
             auto* left = addIconToggle(QStringLiteral("align-left"), tr("Align left"), (frame->styleFlags & (CardTemplateStyleFlagAlignCenter | CardTemplateStyleFlagAlignRight)) == 0);
             auto* center = addIconToggle(QStringLiteral("align-center"), tr("Align center"), (frame->styleFlags & CardTemplateStyleFlagAlignCenter) != 0);
             auto* right = addIconToggle(QStringLiteral("align-right"), tr("Align right"), (frame->styleFlags & CardTemplateStyleFlagAlignRight) != 0);
-            const auto apply = [designer, textEdit, left, center, right, style = frame->styleFlags]() {
-                quint8 flags = style & (CardTemplateStyleFlagBold | CardTemplateStyleFlagItalic | CardTemplateStyleFlagUnderline);
+            const auto apply = [designer, textEdit, left, center, right]() {
+                const auto* current = designer->selectedFrameDefinition();
+                if (current == nullptr) return;
+                quint8 flags = current->styleFlags & (CardTemplateStyleFlagBold | CardTemplateStyleFlagItalic | CardTemplateStyleFlagUnderline);
                 flags |= right->isChecked() ? CardTemplateStyleFlagAlignRight
                     : (center->isChecked() ? CardTemplateStyleFlagAlignCenter : 0);
                 designer->updateSelectedFrameFromToolbar(textEdit->text(), flags, CardTemplateLineBoxShape::Box, 0, 0, 0);
@@ -2555,10 +2796,13 @@ void MainWindow::rebuildDesignerPropertyToolbar()
             shape->addItem(tr("Vertical"), static_cast<int>(CardTemplateLineBoxShape::VerticalLine));
             shape->setCurrentIndex(std::max(0, shape->findData(static_cast<int>(frame->lineBoxShape))));
             layout->addWidget(shape);
-            connect(shape, &QComboBox::currentIndexChanged, designer, [designer, shape, frame](int) {
+            connect(shape, &QComboBox::currentIndexChanged, designer, [designer, shape](int) {
+                const auto* selected = designer->selectedFrameDefinition();
+                if (selected == nullptr) return;
+                const auto current = *selected;
                 designer->updateSelectedFrameFromToolbar(
-                    {}, frame->styleFlags, static_cast<CardTemplateLineBoxShape>(shape->currentData().toInt()),
-                    frame->lineStyle, frame->fillPattern, frame->cornerRadius);
+                    {}, current.styleFlags, static_cast<CardTemplateLineBoxShape>(shape->currentData().toInt()),
+                    current.lineStyle, current.fillPattern, current.cornerRadius);
             });
         }
         layout->addStretch(1);
@@ -2640,9 +2884,11 @@ void MainWindow::rebuildDesignerPropertyToolbar()
         printEntire->setChecked(frame->printEntireContentsFlag != 0);
         printEntire->setVisible(frame->kind == ReportFrameKind::Data);
         layout->addWidget(printEntire);
-        const auto apply = [designer, frameKind = frame->kind, textEdit, fieldCombo, bold, italic, underline, left, center, right, printEntire]() {
+        const auto apply = [designer, frameKind = frame->kind, textEdit, fieldCombo, bold, italic, underline, left, center, right, printEntire](bool replaceField = false) {
+            const auto* current = designer->selectedFrameDefinition();
+            if (current == nullptr) return;
             const QString text = frameKind == ReportFrameKind::Data
-                ? QStringLiteral("[%1]").arg(fieldCombo->currentText())
+                ? (replaceField ? QStringLiteral("[%1]").arg(fieldCombo->currentText()) : current->text)
                 : textEdit->text();
             quint8 flags = bold->isChecked() ? ReportStyleFlagBold : 0;
             flags |= italic->isChecked() ? ReportStyleFlagItalic : 0;
@@ -2653,10 +2899,10 @@ void MainWindow::rebuildDesignerPropertyToolbar()
             left->setChecked(!center->isChecked() && !right->isChecked());
         };
         if (textEdit != nullptr) {
-            connect(textEdit, &QLineEdit::editingFinished, designer, apply);
+            connect(textEdit, &QLineEdit::editingFinished, designer, [apply]() { apply(); });
         }
         if (fieldCombo != nullptr) {
-            connect(fieldCombo, &QComboBox::currentIndexChanged, designer, [apply](int) { apply(); });
+            connect(fieldCombo, &QComboBox::currentIndexChanged, designer, [apply](int) { apply(true); });
         }
         for (QToolButton* button : {bold, italic, underline}) {
             connect(button, &QToolButton::clicked, designer, [apply]() { apply(); });
@@ -4729,13 +4975,14 @@ void MainWindow::handlePhoneDialerConfigCommand()
         return;
     }
 
+    QVector<QuickDial> draftQuickDials = m_quickDials;
     auto* quickDials = uiControl<QListWidget>(*dialog, Control::PhoneQuickDials);
-    const auto refreshQuickDials = [this, quickDials]() {
+    const auto refreshQuickDials = [&draftQuickDials, quickDials]() {
         if (quickDials == nullptr) {
             return;
         }
         quickDials->clear();
-        for (const QuickDial& quickDial : m_quickDials) {
+        for (const QuickDial& quickDial : draftQuickDials) {
             quickDials->addItem(quickDialDisplay(quickDial.description, quickDial.phoneNumber));
         }
         if (quickDials->count() > 0 && quickDials->currentRow() < 0) {
@@ -4776,32 +5023,32 @@ void MainWindow::handlePhoneDialerConfigCommand()
     refreshQuickDials();
 
     if (auto* add = uiControl<QAbstractButton>(*dialog, Control::PhoneQuickDialAdd)) {
-        connect(add, &QAbstractButton::clicked, dialog.get(), [this, &refreshQuickDials, editQuickDial]() {
+        connect(add, &QAbstractButton::clicked, dialog.get(), [&draftQuickDials, &refreshQuickDials, editQuickDial]() {
             QuickDial quickDial;
             if (editQuickDial({}, &quickDial)) {
-                m_quickDials.append(quickDial);
+                draftQuickDials.append(quickDial);
                 refreshQuickDials();
             }
         });
     }
     if (auto* modify = uiControl<QAbstractButton>(*dialog, Control::PhoneQuickDialModify)) {
-        connect(modify, &QAbstractButton::clicked, dialog.get(), [this, quickDials, &refreshQuickDials, editQuickDial]() {
-            if (quickDials == nullptr || quickDials->currentRow() < 0 || quickDials->currentRow() >= m_quickDials.size()) {
+        connect(modify, &QAbstractButton::clicked, dialog.get(), [&draftQuickDials, quickDials, &refreshQuickDials, editQuickDial]() {
+            if (quickDials == nullptr || quickDials->currentRow() < 0 || quickDials->currentRow() >= draftQuickDials.size()) {
                 return;
             }
             QuickDial quickDial;
-            if (editQuickDial(m_quickDials.at(quickDials->currentRow()), &quickDial)) {
-                m_quickDials[quickDials->currentRow()] = quickDial;
+            if (editQuickDial(draftQuickDials.at(quickDials->currentRow()), &quickDial)) {
+                draftQuickDials[quickDials->currentRow()] = quickDial;
                 refreshQuickDials();
             }
         });
     }
     if (auto* remove = uiControl<QAbstractButton>(*dialog, Control::PhoneQuickDialDelete)) {
-        connect(remove, &QAbstractButton::clicked, dialog.get(), [this, quickDials, &refreshQuickDials]() {
-            if (quickDials == nullptr || quickDials->currentRow() < 0 || quickDials->currentRow() >= m_quickDials.size()) {
+        connect(remove, &QAbstractButton::clicked, dialog.get(), [&draftQuickDials, quickDials, &refreshQuickDials]() {
+            if (quickDials == nullptr || quickDials->currentRow() < 0 || quickDials->currentRow() >= draftQuickDials.size()) {
                 return;
             }
-            m_quickDials.removeAt(quickDials->currentRow());
+            draftQuickDials.removeAt(quickDials->currentRow());
             refreshQuickDials();
         });
     }
@@ -4810,6 +5057,7 @@ void MainWindow::handlePhoneDialerConfigCommand()
         return;
     }
 
+    m_quickDials = std::move(draftQuickDials);
     m_phoneUseLongDistance = isChecked(*dialog, Control::PhoneLongDistance);
     m_phoneGetOutsideLine = isChecked(*dialog, Control::PhoneOutsideLine);
     m_phoneLogCalls = isChecked(*dialog, Control::PhoneLogCall);
@@ -6612,6 +6860,9 @@ void MainWindow::updateCommandState()
         if (QAction* action = findUiAction(Command::EditClear)) {
             action->setEnabled(designer->selectedFrameIndex() >= 0);
         }
+        if (QAction* action = findUiAction(Command::ToolFrameAttributes)) {
+            action->setEnabled(designer->selectedFrameDefinition() != nullptr);
+        }
         for (int commandId : {Command::EditCut, Command::EditCopy}) {
             if (QAction* action = findUiAction(commandId)) {
                 action->setEnabled(designer->canCopyFrame());
@@ -6650,6 +6901,9 @@ void MainWindow::updateCommandState()
         }
         if (QAction* action = findUiAction(Command::EditClear)) {
             action->setEnabled(templateDesigner->selectedFrameIndex() >= 0);
+        }
+        if (QAction* action = findUiAction(Command::ToolFrameAttributes)) {
+            action->setEnabled(templateDesigner->selectedFrameDefinition() != nullptr);
         }
         for (int commandId : {Command::EditCut, Command::EditCopy}) {
             if (QAction* action = findUiAction(commandId)) {
@@ -6742,7 +6996,8 @@ DeckWorkspace* MainWindow::findOpenDeck(const QString& path) const
 
 std::shared_ptr<QLockFile> MainWindow::acquireDeckLock(const QString& path)
 {
-    auto lock = std::make_shared<QLockFile>(QFileInfo(path).absoluteFilePath() + QStringLiteral(".lock"));
+    auto lock = std::make_shared<QLockFile>(documentLockPath(path));
+    lock->setStaleLockTime(0);
     if (!lock->tryLock(0)) {
         QMessageBox::warning(this, tr("CardStack"),
             tr("This deck is in use by another application instance, or its folder is not writable."));
@@ -6835,6 +7090,7 @@ void MainWindow::openReportDesigner(DeckWorkspace* workspace, int reportIndex, c
         subWindow->setWindowTitle(dirty ? QObject::tr("%1 *").arg(name) : name);
         updateWindowMenuEntries();
     });
+    connect(designer, &ReportDesignerWidget::propertiesChanged, this, [this]() { rebuildDesignerPropertyToolbar(); });
     connect(designer, &ReportDesignerWidget::selectedFrameChanged, this, [this]() {
         rebuildDesignerPropertyToolbar();
         updateCommandState();
@@ -6921,6 +7177,7 @@ void MainWindow::openTemplateDesigner(DeckWorkspace* workspace)
         handleTemplateDesignerCommand(commandId);
         updateCommandState();
     });
+    connect(designer, &TemplateDesignerWidget::propertiesChanged, this, [this]() { rebuildDesignerPropertyToolbar(); });
     connect(designer, &TemplateDesignerWidget::selectedFieldChanged, this, [this]() {
         rebuildDesignerPropertyToolbar();
         updateCommandState();
@@ -7014,6 +7271,7 @@ void MainWindow::openTemplateDesignerForNewDeck(Deck deck)
         handleTemplateDesignerCommand(commandId);
         updateCommandState();
     });
+    connect(designer, &TemplateDesignerWidget::propertiesChanged, this, [this]() { rebuildDesignerPropertyToolbar(); });
     connect(designer, &TemplateDesignerWidget::selectedFieldChanged, this, [this]() {
         rebuildDesignerPropertyToolbar();
         updateCommandState();

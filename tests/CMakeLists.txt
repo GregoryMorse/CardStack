@@ -5,6 +5,7 @@ set(CARDSTACK_WINEVDM_TEST_FIXTURE_DIR
 set(CARDSTACK_TEST_SOURCES
     app/MainWindowActionTests.cpp
     app/MainWindowWorkflowTests.cpp
+    app/FocusedAuditRegressionTests.cpp
     core/DeckMergeTests.cpp
     core/DelimitedTextTests.cpp
     core/PhoneCallLogTests.cpp
@@ -58,6 +59,7 @@ set_target_properties(CardStackTests PROPERTIES
 set(CARDSTACK_TEST_SUITE_NAMES
     MainWindowActionTests
     MainWindowWorkflowTests
+    FocusedAuditRegressionTests
     DeckMergeTests
     DelimitedTextTests
     PhoneCallLogTests
@@ -99,3 +101,13 @@ foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;CARDSTACK_WINEVDM_GOLDEN_DIR=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR};CARDSTACK_LEGACY_DECK_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/plain.BTN;CARDSTACK_LEGACY_REPORT_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/reports.RPT"
     )
 endforeach()
+
+if(TARGET CardStack)
+    add_dependencies(CardStackTests CardStack)
+    add_test(NAME CardStackStartupSmoke COMMAND $<TARGET_FILE:CardStack> --smoke-test)
+    set_tests_properties(CardStackStartupSmoke PROPERTIES
+        TIMEOUT 30
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()

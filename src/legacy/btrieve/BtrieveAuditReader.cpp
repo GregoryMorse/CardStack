@@ -101,7 +101,7 @@ int occupiedFixedSlots(const QByteArray& bytes, const BtrieveAuditReader::Audit&
         return 0;
     }
 
-    const int recordsPerPage = (audit.pageSize - 2) / audit.physicalRecordLength;
+    const int recordsPerPage = (audit.pageSize - 6) / audit.physicalRecordLength;
     int occupied = 0;
     for (const BtrieveAuditReader::Page& page : audit.pages) {
         if (page.type != BtrieveAuditReader::PageType::Data) {
@@ -188,11 +188,19 @@ BtrieveAuditReader::Result BtrieveAuditReader::readFile(const QString& filePath)
     audit.acsName = readFixedAscii(bytes, 0x3c, 8);
     audit.userFlags = readU16(bytes, 0x106);
 
-    if (audit.pageSize <= 0 || bytes.size() < audit.pageSize || bytes.size() % audit.pageSize != 0) {
+    constexpr int PageQuantumBytes = 512;
+    constexpr int OldDataPageHeaderBytes = 6;
+    constexpr int VariableRecordPointerBytes = 4;
+    if ((audit.version != 0x0300 && audit.version != 0x0400 && audit.version != 0x0500)
+        || audit.pageSize < PageQuantumBytes || audit.pageSize % PageQuantumBytes != 0
+        || bytes.size() < audit.pageSize || bytes.size() % audit.pageSize != 0) {
         result.errorMessage = QStringLiteral("Invalid or unsupported Btrieve page size.");
         return result;
     }
-    if (audit.physicalRecordLength <= 0) {
+    const int requiredRecordBytes = audit.fixedRecordLength
+        + (audit.variableRecordsAllowed ? VariableRecordPointerBytes : 0);
+    if (audit.fixedRecordLength <= 0 || audit.physicalRecordLength < requiredRecordBytes
+        || audit.physicalRecordLength > audit.pageSize - OldDataPageHeaderBytes) {
         result.errorMessage = QStringLiteral("Invalid Btrieve physical record length.");
         return result;
     }

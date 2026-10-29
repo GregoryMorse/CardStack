@@ -36,7 +36,7 @@ third_party/     Vendored third-party source used by the migration layer
 
 - CMake 3.24 or newer.
 - C++20 compiler.
-- Qt 6 with Widgets, SQL, Test, and PrintSupport modules.
+- Qt 6 with Widgets, SQL, Test, PrintSupport, and SVG modules.
 - SQLite Qt SQL driver.
 
 Windows development prefers Visual Studio 2026 and Qt 6.11.x. Visual Studio 2022 remains an explicit fallback.
@@ -79,6 +79,10 @@ build\vs2026\Debug\CardStackTests.exe --test MainWindowActionTests
 
 The GUI tests use Qt's offscreen platform and avoid focus-stealing mouse or
 keyboard automation.
+
+The application also provides `CardStack --smoke-test` to check packaged icons,
+widget rendering and the SQLite driver without opening decks or restoring a
+session. See [release validation](docs/testing/release-validation.md).
 
 ## Deploy a local Windows test build
 

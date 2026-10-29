@@ -4,7 +4,11 @@
 
 Source: https://github.com/erniehh/BtrieveFileSaver-Code
 
-Included as a Git submodule at commit: `c33c91bc1668c72bff18f14e84a8a8835c7e7739`
+Included as a Git submodule at commit: `fc66ac90ca680b215b069bf8572468ba707d35b1`.
+
+Integration branch: [GregoryMorse/BtrieveFileSaver-Code](https://github.com/GregoryMorse/BtrieveFileSaver-Code/tree/fix-fixed-width-btrieve-fields),
+submitted upstream as [PR #1](https://github.com/erniehh/BtrieveFileSaver-Code/pull/1).
+CardStack builds the pinned submodule implementation directly.
 
 The repository states that it is a clone of the SourceForge Btrieve File Saver project and that the main development was done by dbcoretech.
 

@@ -96,16 +96,6 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-test-logs-${{ matrix.name }}
-          path: |
-            build/tests/*.txt
-            build/Testing/Temporary/LastTest.log
-          if-no-files-found: ignore
-
       - name: Package Windows zip
         if: runner.os == 'Windows'
         shell: pwsh
@@ -115,6 +105,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item -Recurse -Force "build/Release/CardStackDeploy/*" $stage
           Copy-Item -Force README.md,LICENSE,THIRD_PARTY_NOTICES.md $stage
+          ./scripts/test-deployed-cardstack-windows.ps1 -DeployDir $stage
           Compress-Archive -Force -Path "$stage/*" -DestinationPath "artifacts/CardStack-windows-x64.zip"
 
       - name: Package macOS zip
@@ -163,6 +154,17 @@ jobs:
           mv CardStack-*.AppImage artifacts/CardStack-linux-x64.AppImage
           cp README.md LICENSE THIRD_PARTY_NOTICES.md artifacts/
           zip -j artifacts/CardStack-linux-x64.zip artifacts/CardStack-linux-x64.AppImage README.md LICENSE THIRD_PARTY_NOTICES.md
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-test-logs-${{ matrix.name }}
+          path: |
+            build/tests/*.txt
+            build/Testing/Temporary/LastTest.log
+            build/deployment-smoke/*.txt
+          if-no-files-found: ignore
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4

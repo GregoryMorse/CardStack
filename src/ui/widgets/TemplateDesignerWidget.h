@@ -6,13 +6,13 @@
 
 #include <QStringList>
 #include <QWidget>
-#include <optional>
 
 class QCheckBox;
 class QComboBox;
 class QCloseEvent;
 class QFormLayout;
 class QLineEdit;
+class QLabel;
 class QSpinBox;
 class QTableWidget;
 
@@ -37,12 +37,18 @@ public:
     void markSaved();
     bool addDataField(const QString& name, int length, bool phone = false, bool showName = true);
     int selectedFrameIndex() const;
+    const QVector<int>& selectedFrameIndices() const { return m_selectedFrameIndices; }
     const CardTemplateFrame* selectedFrameDefinition() const;
     int selectedFieldIndex() const;
     bool isDirty() const;
     bool canUndo() const { return !m_undoStack.isEmpty(); }
-    bool canCopyFrame() const { return m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_layout.frames.size(); }
-    bool canPasteFrame() const { return m_copiedFrame.has_value(); }
+    bool canCopyFrame() const;
+    bool canPasteFrame() const;
+    bool selectionHasStyledFrames() const;
+    bool selectionHasStyleFlag(quint8 flag) const;
+    int selectionAlignment() const;
+    void setSelectionStyleFlag(quint8 flag, bool enabled);
+    void setSelectionAlignment(quint8 alignment);
     void markDirty();
 
 signals:
@@ -50,6 +56,7 @@ signals:
     void saveRequested(const CardTemplateLayout& layout);
     void dirtyChanged(bool dirty);
     void selectedFieldChanged();
+    void propertiesChanged();
 
 public slots:
     void undo();
@@ -82,7 +89,10 @@ private:
     struct UndoState {
         CardTemplateLayout layout;
         QVector<FieldDefinition> fields;
+        DeckAppearance appearance;
         int selectedFrameIndex = -1;
+        QVector<int> selectedFrameIndices;
+        int selectionAnchor = -1;
     };
 
     void pushUndoState();
@@ -90,6 +100,10 @@ private:
     void refreshFrameTable();
     void refreshFrameProperties();
     void selectFrame(int frameIndex);
+    void selectFrames(const QVector<int>& frameIndices);
+    void syncFrameTableSelection();
+    bool copySelectionToClipboard();
+    void refreshFieldChoices();
     void applyPropertyEdits();
     void setPropertyRowVisible(QWidget* field, bool visible);
     CardTemplateFrame defaultFrame(CardTemplateFrameKind kind) const;
@@ -100,12 +114,13 @@ private:
     DeckAppearance m_appearance;
     bool m_dirty = false;
     int m_selectedFrameIndex = -1;
-    std::optional<CardTemplateFrame> m_copiedFrame;
+    QVector<int> m_selectedFrameIndices;
     QVector<UndoState> m_undoStack;
     bool m_restoringUndoState = false;
 
     TemplateDesignCanvas* m_canvas = nullptr;
     QTableWidget* m_frameTable = nullptr;
+    QLabel* m_selectionSummary = nullptr;
     QFormLayout* m_propertyForm = nullptr;
     QComboBox* m_kindCombo = nullptr;
     QComboBox* m_fieldCombo = nullptr;

@@ -14,7 +14,7 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql Test PrintSupport)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql Test PrintSupport Svg)
 find_package(Qt6 QUIET OPTIONAL_COMPONENTS LinguistTools)
 
 qt_standard_project_setup()

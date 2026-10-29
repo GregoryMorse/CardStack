@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QScopedValueRollback>
 #include <QTemporaryFile>
 
 #include <QJsonArray>
@@ -418,6 +419,7 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
         setError(errorMessage, QStringLiteral("Unlock the document before saving encrypted data."));
         return false;
     }
+    QScopedValueRollback<bool> persistenceGuard(m_deferPersistence, true);
     if (!m_database.transaction()) {
         setError(errorMessage, m_database.lastError());
         return false;
@@ -456,6 +458,7 @@ bool SQLiteDeckStore::saveDeck(const Deck& deck, QString* errorMessage)
     m_credentials = {deck.securityPassword(), deck.securityKey()};
     m_authenticated = deck.hasSecurity() && deck.securityKey() != nullptr;
     m_deferPersistence = false;
+    persistenceGuard.commit();
     return persist(errorMessage);
 }
 
@@ -1299,7 +1302,7 @@ bool SQLiteDeckStore::saveReports(const Deck& deck, QString* errorMessage)
             frameQuery.bindValue(8, frame.bounds.top());
             frameQuery.bindValue(9, frame.bounds.width());
             frameQuery.bindValue(10, frame.bounds.height());
-            frameQuery.bindValue(11, frame.text);
+            frameQuery.bindValue(11, frame.text.isNull() ? QStringLiteral("") : frame.text);
             frameQuery.bindValue(12, reportFrameKindToInt(frame.kind));
             frameQuery.bindValue(13, frame.printEntireContentsFlag);
             frameQuery.bindValue(14, frame.validationFlags);

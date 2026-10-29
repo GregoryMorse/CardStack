@@ -193,14 +193,20 @@ void Deck::setCards(QVector<CardRecord> cards)
 
 void Deck::addReport(ReportDefinition report)
 {
-    if (report.documentId.isEmpty()) report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (report.documentId.isEmpty() || std::any_of(m_reports.cbegin(), m_reports.cend(),
+            [&report](const auto& existing) { return existing.documentId == report.documentId; })) {
+        report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
     m_reports.append(std::move(report));
 }
 
 void Deck::insertReport(int index, ReportDefinition report)
 {
     const int safeIndex = std::clamp(index, 0, static_cast<int>(m_reports.size()));
-    if (report.documentId.isEmpty()) report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (report.documentId.isEmpty() || std::any_of(m_reports.cbegin(), m_reports.cend(),
+            [&report](const auto& existing) { return existing.documentId == report.documentId; })) {
+        report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
     m_reports.insert(safeIndex, std::move(report));
 }
 
@@ -338,7 +344,8 @@ void Deck::setReport(int index, ReportDefinition report)
         return;
     }
 
-    if (report.documentId.isEmpty()) report.documentId = m_reports[index].documentId;
+    report.documentId = m_reports[index].documentId;
+    if (report.documentId.isEmpty()) report.documentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_reports[index] = std::move(report);
 }
 

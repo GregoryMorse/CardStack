@@ -1624,7 +1624,10 @@ bool DeckWorkspace::sortCardsByTitleIfNeeded()
 
 void DeckWorkspace::pushUndoSnapshot()
 {
-    m_undoStack.append({m_deck, m_deletedCards, m_currentCardIndex, m_currentFieldIndex, m_viewMode});
+    Deck content = m_deck;
+    content.clearSecurity();
+    content.setStorageOrigin({}, {});
+    m_undoStack.append({std::move(content), m_deletedCards, m_currentCardIndex, m_currentFieldIndex, m_viewMode});
     while (m_undoStack.size() > MaxUndoSnapshots) {
         m_undoStack.removeFirst();
     }
@@ -1632,7 +1635,16 @@ void DeckWorkspace::pushUndoSnapshot()
 
 void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
 {
+    const QString passwordRecord = m_deck.securityPassword();
+    const bool encrypted = m_deck.hasEncryptedSecurity();
+    const auto key = m_deck.securityKey();
+    const QString path = m_deck.storagePath();
+    const QByteArray fingerprint = m_deck.storageFingerprint();
+    const QString identity = m_deck.documentId();
     m_deck = snapshot.deck;
+    m_deck.restoreSecurityRecord(passwordRecord, encrypted, key);
+    m_deck.setStorageOrigin(path, fingerprint);
+    m_deck.setDocumentId(identity);
     ensureEditableCard();
     m_deletedCards = snapshot.deletedCards;
     m_currentCardIndex = snapshot.cardIndex;
