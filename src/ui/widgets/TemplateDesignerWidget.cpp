@@ -1,5 +1,6 @@
 #include "TemplateDesignerWidget.h"
 #include "DesignerResizeHandles.h"
+#include "DesignerFrameTable.h"
 #include "DesignerSelection.h"
 #include "DesignerInteractionGrid.h"
 #include "DesignerClipboard.h"
@@ -1183,7 +1184,7 @@ void TemplateDesignerWidget::buildUi()
 
     auto* side = new QWidget(splitter);
     auto* sideLayout = new QVBoxLayout(side);
-    m_frameTable = new QTableWidget(side);
+    m_frameTable = new DesignerFrameTable(side);
     m_frameTable->setColumnCount(3);
     m_frameTable->setHorizontalHeaderLabels({tr("#"), tr("Kind"), tr("Text")});
     m_frameTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);

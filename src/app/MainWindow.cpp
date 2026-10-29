@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "ReportFormGeometry.h"
 #include "DocumentFile.h"
 #include <QLockFile>
 
@@ -5320,8 +5321,10 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             return false;
         }
 
-        setEditText(*defineDialog, Control::DefineFormWidth, QString::number(selectedPreset.formWidth / 1000.0, 'f', 3));
-        setEditText(*defineDialog, Control::DefineFormHeight, QString::number(selectedPreset.formHeight / 1000.0, 'f', 3));
+        QSize initialPage(selectedPreset.pageWidth, selectedPreset.pageHeight);
+        if (selectedPreset.orientation != 0 && initialPage.width() < initialPage.height()) initialPage.transpose();
+        setEditText(*defineDialog, Control::DefineFormWidth, QString::number(initialPage.width() / 1000.0, 'f', 3));
+        setEditText(*defineDialog, Control::DefineFormHeight, QString::number(initialPage.height() / 1000.0, 'f', 3));
         setEditText(*defineDialog, Control::DefineFormMarginLeft, QString::number(selectedPreset.marginLeft / 1000.0, 'f', 3));
         setEditText(*defineDialog, Control::DefineFormMarginTop, QString::number(selectedPreset.marginTop / 1000.0, 'f', 3));
         setEditText(*defineDialog, Control::DefineFormMarginRight, QString::number(selectedPreset.marginRight / 1000.0, 'f', 3));
@@ -5338,9 +5341,20 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                         : QString::number(std::max(1, selectedPreset.columns)));
         if (auto* paperSize = uiControl<QComboBox>(*defineDialog, Control::DefineFormPageSize)) {
             paperSize->clear();
-            paperSize->addItem(
-                selectedPreset.label.section(QLatin1Char('\t'), 0, 0), selectedPreset.paperStyleId);
-            paperSize->setCurrentIndex(0);
+            for (const ReportFormPreset& paper : reportFormPresets(ReportFormType::Report)) {
+                const QSize size(std::min(paper.pageWidth, paper.pageHeight), std::max(paper.pageWidth, paper.pageHeight));
+                if (paperSize->findData(size) < 0)
+                    paperSize->addItem(paper.label.section(QLatin1Char('\t'), 0, 0), size);
+            }
+            const QSize selectedSize(std::min(initialPage.width(), initialPage.height()),
+                                     std::max(initialPage.width(), initialPage.height()));
+            int index = paperSize->findData(selectedSize);
+            if (index < 0) {
+                paperSize->addItem(selectedPreset.label.section(QLatin1Char('\t'), 0, 0), selectedSize);
+                index = paperSize->count() - 1;
+            }
+            paperSize->addItem(tr("Custom"), QSize());
+            paperSize->setCurrentIndex(index);
         }
         const auto setDefineEditWidth = [defineDialog = defineDialog.get()](int controlId, int width) {
             if (auto* edit = uiControl<QLineEdit>(*defineDialog, controlId)) {
@@ -5394,7 +5408,7 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             }
         }
         setChecked(*defineDialog,
-                   selectedPreset.orientation != 0 || selectedPreset.formWidth > selectedPreset.formHeight
+                   selectedPreset.orientation != 0 || initialPage.width() > initialPage.height()
                        ? Control::DefineFormLandscape
                        : Control::DefineFormPortrait,
                    true);
@@ -5407,6 +5421,21 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 return ReportFormType::Label;
             }
             return ReportFormType::Report;
+        };
+        const auto readFormGeometry = [defineDialog = defineDialog.get(), currentDefineType] {
+            int width = formMeasureValue(*defineDialog, Control::DefineFormWidth, DefaultReportPageWidthMils);
+            int height = formMeasureValue(*defineDialog, Control::DefineFormHeight, DefaultReportPageHeightMils);
+            if (isChecked(*defineDialog, Control::DefineFormLandscape) && height > width) std::swap(width, height);
+            const bool grid = currentDefineType() != ReportFormType::Report;
+            return reportFormGeometry(QSize(width, height),
+                QMargins(formMeasureValue(*defineDialog, Control::DefineFormMarginLeft, 0),
+                         formMeasureValue(*defineDialog, Control::DefineFormMarginTop, 0),
+                         formMeasureValue(*defineDialog, Control::DefineFormMarginRight, 0),
+                         formMeasureValue(*defineDialog, Control::DefineFormMarginBottom, 0)),
+                QSize(grid ? formMeasureValue(*defineDialog, Control::DefineFormHorizontalGutter, 0) : 0,
+                      grid ? formMeasureValue(*defineDialog, Control::DefineFormVerticalGutter, 0) : 0),
+                grid ? positiveEditValue(*defineDialog, Control::DefineFormRows, 1) : 1,
+                grid ? positiveEditValue(*defineDialog, Control::DefineFormColumns, 1) : 1);
         };
         const auto formTypeName = [this](ReportFormType type) {
             switch (type) {
@@ -5432,6 +5461,7 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         const auto updateDefineFormState = [
             defineDialog = defineDialog.get(),
             currentDefineType,
+            readFormGeometry,
             formTypeName,
             setControlsEnabled,
             formatInches,
@@ -5440,10 +5470,9 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             const ReportFormType type = currentDefineType();
             const bool multiCell = type != ReportFormType::Report;
             const QString typeName = formTypeName(type);
-            const int widthMils = formMeasureValue(*defineDialog, Control::DefineFormWidth, DefaultReportPageWidthMils);
-            const int heightMils = formMeasureValue(*defineDialog, Control::DefineFormHeight, DefaultReportPageHeightMils);
-            const int rows = multiCell ? positiveEditValue(*defineDialog, Control::DefineFormRows, 1) : 1;
-            const int columns = multiCell ? positiveEditValue(*defineDialog, Control::DefineFormColumns, 1) : 1;
+            const ReportFormGeometry geometry = readFormGeometry();
+            const int widthMils = geometry.formWidth, heightMils = geometry.formHeight;
+            const int rows = geometry.rows, columns = geometry.columns;
 
             if (auto* groupBox = uiControl<QGroupBox>(*defineDialog, Control::DefineFormCountGroup)) {
                 groupBox->setTitle(multiCell
@@ -5469,6 +5498,8 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 {
                     Control::DefineFormHorizontalGutter,
                     Control::DefineFormVerticalGutter,
+                    Control::DefineFormHorizontalGutterSpin,
+                    Control::DefineFormVerticalGutterSpin,
                 },
                 multiCell);
             setControlsEnabled({Control::DefineFormRows, Control::DefineFormColumns}, true);
@@ -5479,7 +5510,45 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
                 sample->setProperty("formSampleColumns", std::max(1, columns));
                 sample->setProperty("formSampleWidthMils", widthMils);
                 sample->setProperty("formSampleHeightMils", heightMils);
+                sample->setProperty("formSamplePageWidthMils", geometry.page.width());
+                sample->setProperty("formSamplePageHeightMils", geometry.page.height());
+                sample->setProperty("formSampleMarginLeft", geometry.margins.left());
+                sample->setProperty("formSampleMarginTop", geometry.margins.top());
+                sample->setProperty("formSampleMarginRight", geometry.margins.right());
+                sample->setProperty("formSampleMarginBottom", geometry.margins.bottom());
+                sample->setProperty("formSampleHorizontalGutter", geometry.gutters.width());
+                sample->setProperty("formSampleVerticalGutter", geometry.gutters.height());
+                sample->setProperty("formSampleHeaderHeight", multiCell ? 0
+                    : formMeasureValue(*defineDialog, Control::DefineFormRows, DefaultReportBandHeightMils));
+                sample->setProperty("formSampleFooterHeight", multiCell ? 0
+                    : formMeasureValue(*defineDialog, Control::DefineFormColumns, DefaultReportBandHeightMils));
                 sample->update();
+            }
+            if (auto* paperSize = uiControl<QComboBox>(*defineDialog, Control::DefineFormPageSize)) {
+                const QSize size(std::min(geometry.page.width(), geometry.page.height()),
+                                 std::max(geometry.page.width(), geometry.page.height()));
+                const int index = paperSize->findData(size);
+                const QSignalBlocker paperSignals(paperSize);
+                paperSize->setCurrentIndex(index < 0 ? paperSize->count() - 1 : index);
+            }
+            if (auto* ok = uiControl<QAbstractButton>(*defineDialog, Control::Ok)) {
+                bool countsValid = true;
+                if (multiCell) {
+                    for (int id : {Control::DefineFormRows, Control::DefineFormColumns}) {
+                        auto* edit = uiControl<QLineEdit>(*defineDialog, id);
+                        bool parsed = false;
+                        const int value = edit ? edit->text().toInt(&parsed) : 0;
+                        countsValid = countsValid && parsed && value >= 1 && value <= MaximumFormGridCount;
+                    }
+                }
+                const bool bandsValid = multiCell
+                    || qint64(formMeasureValue(*defineDialog, Control::DefineFormRows, 0))
+                         + formMeasureValue(*defineDialog, Control::DefineFormColumns, 0) < geometry.formHeight;
+                const bool valid = geometry.valid() && countsValid && bandsValid;
+                ok->setEnabled(valid);
+                ok->setToolTip(valid ? QString() : !countsValid
+                    ? tr("Rows and columns must be whole numbers from 1 to 100.")
+                    : tr("Margins, gaps, headers and footers must leave room for the form on the page."));
             }
         };
 
@@ -5538,15 +5607,70 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         connectMicroScroll(Control::DefineFormRowsSpin, Control::DefineFormRows, false);
         connectMicroScroll(Control::DefineFormColumnsSpin, Control::DefineFormColumns, false);
 
-        for (int controlId : {
-                 Control::DefineFormCard,
-                 Control::DefineFormLabel,
-                 Control::DefineFormReport,
-                 Control::DefineFormPortrait,
-                 Control::DefineFormLandscape,
-             }) {
+        if (auto* paperSize = uiControl<QComboBox>(*defineDialog, Control::DefineFormPageSize)) {
+            connect(paperSize, &QComboBox::currentIndexChanged, defineDialog.get(),
+                [defineDialog = defineDialog.get(), paperSize, updateDefineFormState](int index) {
+                    QSize size = paperSize->itemData(index).toSize();
+                    if (size.width() <= 0 || size.height() <= 0) return;
+                    if (isChecked(*defineDialog, Control::DefineFormLandscape)) size.transpose();
+                    auto* width = uiControl<QLineEdit>(*defineDialog, Control::DefineFormWidth);
+                    auto* height = uiControl<QLineEdit>(*defineDialog, Control::DefineFormHeight);
+                    const QSignalBlocker widthSignals(width), heightSignals(height);
+                    width->setText(QString::number(size.width() / 1000.0, 'f', 3));
+                    height->setText(QString::number(size.height() / 1000.0, 'f', 3));
+                    updateDefineFormState();
+                });
+        }
+        defineDialog->setProperty("formOrientationLandscape",
+                                  isChecked(*defineDialog, Control::DefineFormLandscape));
+        const auto changeOrientation = [defineDialog = defineDialog.get(), updateDefineFormState](bool landscape) {
+            if (defineDialog->property("formOrientationLandscape").toBool() == landscape) return;
+            defineDialog->setProperty("formOrientationLandscape", landscape);
+            auto* width = uiControl<QLineEdit>(*defineDialog, Control::DefineFormWidth);
+            auto* height = uiControl<QLineEdit>(*defineDialog, Control::DefineFormHeight);
+            if (width && height) {
+                const QString previousWidth = width->text(), previousHeight = height->text();
+                const QSignalBlocker widthSignals(width), heightSignals(height);
+                width->setText(previousHeight);
+                height->setText(previousWidth);
+            }
+            updateDefineFormState();
+        };
+        for (const auto& orientation : {std::pair{Control::DefineFormPortrait, false},
+                                        std::pair{Control::DefineFormLandscape, true}}) {
+            if (auto* button = uiControl<QAbstractButton>(*defineDialog, orientation.first)) {
+                connect(button, &QAbstractButton::toggled, defineDialog.get(),
+                    [changeOrientation, landscape = orientation.second](bool checked) {
+                        if (checked) changeOrientation(landscape);
+                    });
+            }
+        }
+        defineDialog->setProperty("formCountIsReport", currentDefineType() == ReportFormType::Report);
+        defineDialog->setProperty("formGridRows", QString::number(std::max(1, selectedPreset.rows)));
+        defineDialog->setProperty("formGridColumns", QString::number(std::max(1, selectedPreset.columns)));
+        defineDialog->setProperty("formHeaderHeight", QString::number((report->headerHeight > 0
+            ? report->headerHeight : DefaultReportBandHeightMils) / 1000.0, 'f', 2));
+        defineDialog->setProperty("formFooterHeight", QString::number((report->footerHeight > 0
+            ? report->footerHeight : DefaultReportBandHeightMils) / 1000.0, 'f', 2));
+        const auto changeFormType = [defineDialog = defineDialog.get(), currentDefineType, updateDefineFormState] {
+            const bool isReport = currentDefineType() == ReportFormType::Report;
+            const bool wasReport = defineDialog->property("formCountIsReport").toBool();
+            if (isReport != wasReport) {
+                auto* rows = uiControl<QLineEdit>(*defineDialog, Control::DefineFormRows);
+                auto* columns = uiControl<QLineEdit>(*defineDialog, Control::DefineFormColumns);
+                const QSignalBlocker rowSignals(rows), columnSignals(columns);
+                defineDialog->setProperty(wasReport ? "formHeaderHeight" : "formGridRows", rows->text());
+                defineDialog->setProperty(wasReport ? "formFooterHeight" : "formGridColumns", columns->text());
+                rows->setText(defineDialog->property(isReport ? "formHeaderHeight" : "formGridRows").toString());
+                columns->setText(defineDialog->property(isReport ? "formFooterHeight" : "formGridColumns").toString());
+                defineDialog->setProperty("formCountIsReport", isReport);
+            }
+            updateDefineFormState();
+        };
+        for (int controlId : {Control::DefineFormCard, Control::DefineFormLabel, Control::DefineFormReport}) {
             if (auto* button = uiControl<QAbstractButton>(*defineDialog, controlId)) {
-                connect(button, &QAbstractButton::clicked, defineDialog.get(), updateDefineFormState);
+                connect(button, &QAbstractButton::toggled, defineDialog.get(),
+                    [changeFormType](bool checked) { if (checked) changeFormType(); });
             }
         }
         for (int controlId : {
@@ -5572,6 +5696,8 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             return configureReportForm(report);
         }
 
+        const ReportFormGeometry geometry = readFormGeometry();
+        if (!geometry.valid()) return false;
         ReportFormPreset preset;
         preset.type = ReportFormType::Report;
         if (isChecked(*defineDialog, Control::DefineFormCard)) {
@@ -5579,31 +5705,18 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
         } else if (isChecked(*defineDialog, Control::DefineFormLabel)) {
             preset.type = ReportFormType::Label;
         }
-        preset.formWidth = formMeasureValue(*defineDialog, Control::DefineFormWidth, DefaultReportPageWidthMils);
-        preset.formHeight = formMeasureValue(*defineDialog, Control::DefineFormHeight, DefaultReportPageHeightMils);
-        if (isChecked(*defineDialog, Control::DefineFormLandscape) && preset.formHeight > preset.formWidth) {
-            std::swap(preset.formWidth, preset.formHeight);
-        }
-        preset.rows = preset.type == ReportFormType::Report
-            ? 1
-            : positiveEditValue(*defineDialog, Control::DefineFormRows,
-                                preset.type == ReportFormType::Label ? DefaultLabelRows : 1);
-        preset.columns = preset.type == ReportFormType::Report
-            ? 1
-            : positiveEditValue(*defineDialog, Control::DefineFormColumns,
-                                preset.type == ReportFormType::Label ? DefaultLabelColumns : 1);
+        preset.formWidth = geometry.formWidth;
+        preset.formHeight = geometry.formHeight;
+        preset.rows = geometry.rows;
+        preset.columns = geometry.columns;
         preset.marginLeft = formMeasureValue(*defineDialog, Control::DefineFormMarginLeft, 0);
         preset.marginTop = formMeasureValue(*defineDialog, Control::DefineFormMarginTop, 0);
         preset.marginRight = formMeasureValue(*defineDialog, Control::DefineFormMarginRight, 0);
         preset.marginBottom = formMeasureValue(*defineDialog, Control::DefineFormMarginBottom, 0);
         preset.horizontalGutter = formMeasureValue(*defineDialog, Control::DefineFormHorizontalGutter, 0);
         preset.verticalGutter = formMeasureValue(*defineDialog, Control::DefineFormVerticalGutter, 0);
-        preset.pageWidth = preset.marginLeft + preset.marginRight
-            + preset.columns * preset.formWidth
-            + std::max(0, preset.columns - 1) * preset.horizontalGutter;
-        preset.pageHeight = preset.marginTop + preset.marginBottom
-            + preset.rows * preset.formHeight
-            + std::max(0, preset.rows - 1) * preset.verticalGutter;
+        preset.pageWidth = geometry.page.width();
+        preset.pageHeight = geometry.page.height();
         preset.orientation = preset.pageWidth > preset.pageHeight ? 1 : 0;
         preset.paperStyleId = preset.type == ReportFormType::Card
             ? CardFormNameLastId + 1

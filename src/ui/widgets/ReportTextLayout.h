@@ -15,6 +15,8 @@ inline constexpr qreal UnitsPerInch = 1000.0;
 inline constexpr qreal StoredFontUnitsPerInch = 720.0;
 inline constexpr qreal DefaultFontPoints = 9.0;
 inline constexpr qreal Padding = 0.0;
+inline constexpr qreal MinimumWidthScale = 0.01;
+inline constexpr qreal MaximumWidthScale = 40.0;
 
 inline QString normalizedText(QString text)
 {
@@ -48,12 +50,16 @@ inline QFont font(const ReportFontDefinition& definition, quint8 flags)
         result.setPixelSize(pixels);
         if (pixels > 1 && QFontMetricsF(result).height() > height) result.setPixelSize(--pixels);
     }
-    if (definition.width != 0) {
-        const qreal desired = std::abs(definition.width) * UnitsPerInch / StoredFontUnitsPerInch;
-        result.setStretch(std::clamp(qRound(100.0 * desired / std::max<qreal>(1.0, QFontMetricsF(result).averageCharWidth())), 1, 4000));
-    }
     if (definition.quality == 3) result.setStyleStrategy(QFont::NoAntialias);
     return result;
+}
+// Keep font matching independent of width; use the same geometric scale for shaping and paint.
+inline qreal horizontalScale(const ReportFontDefinition& definition, const QFont& selectedFont)
+{
+    if (definition.width == 0) return 1.0;
+    const qreal desired = std::abs(qreal(definition.width)) * UnitsPerInch / StoredFontUnitsPerInch;
+    return std::clamp(desired / std::max<qreal>(1.0, QFontMetricsF(selectedFont).averageCharWidth()),
+                      MinimumWidthScale, MaximumWidthScale);
 }
 inline QRectF textRect(const QRectF& bounds)
 {
@@ -74,7 +80,9 @@ inline QVector<QString> chunks(const QString& original, const ReportFontDefiniti
     if (text.isEmpty()) return {QString()};
     QString layoutText = text;
     layoutText.replace(QLatin1Char('\n'), QChar::LineSeparator);
-    QTextLayout layout(layoutText, font(definition, flags));
+    const QFont selectedFont = font(definition, flags);
+    const qreal widthScale = horizontalScale(definition, selectedFont);
+    QTextLayout layout(layoutText, selectedFont);
     configure(layout, flags, true);
     const QRectF area = textRect(bounds);
     QVector<QString> result;
@@ -84,7 +92,7 @@ inline QVector<QString> chunks(const QString& original, const ReportFontDefiniti
     while (true) {
         QTextLine line = layout.createLine();
         if (!line.isValid()) break;
-        line.setLineWidth(std::max<qreal>(1.0, area.width()));
+        line.setLineWidth(std::max<qreal>(1.0, area.width() / widthScale));
         if (height > 0.0 && height + line.height() > area.height()) {
             result.append(text.mid(chunkStart, line.textStart() - chunkStart));
             chunkStart = line.textStart();
@@ -104,14 +112,16 @@ inline void draw(QPainter& painter, const QString& original, const ReportFontDef
     if (area.width() <= 0 || area.height() <= 0) return;
     QString text = normalizedText(original);
     text.replace(QLatin1Char('\n'), QChar::LineSeparator);
-    QTextLayout layout(text, font(definition, flags));
+    const QFont selectedFont = font(definition, flags);
+    const qreal widthScale = horizontalScale(definition, selectedFont);
+    QTextLayout layout(text, selectedFont);
     configure(layout, flags, wrap);
     qreal y = 0.0;
     layout.beginLayout();
     while (true) {
         QTextLine line = layout.createLine();
         if (!line.isValid()) break;
-        line.setLineWidth(area.width());
+        line.setLineWidth(area.width() / widthScale);
         line.setPosition(QPointF(0, y));
         y += line.height();
     }
@@ -121,6 +131,7 @@ inline void draw(QPainter& painter, const QString& original, const ReportFontDef
     painter.translate(area.topLeft());
     const int rotation = definition.escapementTenths != 0 ? definition.escapementTenths : definition.orientationTenths;
     if (rotation != 0) painter.rotate(-rotation / 10.0);
+    painter.scale(widthScale, 1.0);
     layout.draw(&painter, QPointF());
     painter.restore();
 }

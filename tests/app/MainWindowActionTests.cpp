@@ -48,6 +48,7 @@
 #include "SQLitePackageStore.h"
 #include "TemplateDesignerWidget.h"
 #include "UiBuilder.h"
+#include "../support/UiPolishProbe.h"
 #include "UiIds.h"
 
 using namespace CardStack;
@@ -1757,6 +1758,7 @@ private slots:
     void newReportCustomFormUpdatesDefineFormPreviewState()
     {
         MainWindow window(nullptr, true);
+        Tests::prepareNativeTestSurface(window);
         window.show();
         QCoreApplication::processEvents();
 
@@ -1809,6 +1811,8 @@ private slots:
                 UiBuilder::controlById(dialog, UiIds::Control::DefineFormReport));
             auto* landscape = qobject_cast<QAbstractButton*>(
                 UiBuilder::controlById(dialog, UiIds::Control::DefineFormLandscape));
+            auto* portrait = qobject_cast<QAbstractButton*>(
+                UiBuilder::controlById(dialog, UiIds::Control::DefineFormPortrait));
             auto* pageSize = qobject_cast<QComboBox*>(
                 UiBuilder::controlById(dialog, UiIds::Control::DefineFormPageSize));
             auto* rows = qobject_cast<QLineEdit*>(
@@ -1830,6 +1834,7 @@ private slots:
             QVERIFY(label != nullptr);
             QVERIFY(report != nullptr);
             QVERIFY(landscape != nullptr);
+            QVERIFY(portrait != nullptr);
             QVERIFY(pageSize != nullptr);
             QVERIFY(rows != nullptr);
             QVERIFY(columns != nullptr);
@@ -1846,9 +1851,53 @@ private slots:
             QCOMPARE(width->text().toDouble(), 8.5);
             QCOMPARE(height->text().toDouble(), 14.0);
             QCOMPARE(pageSize->currentText(), QStringLiteral("Legal"));
+            QVERIFY(pageSize->count() >= 3);
+            const int letter = pageSize->findData(QSize(8500, 11000));
+            const int legal = pageSize->findData(QSize(8500, 14000));
+            QVERIFY(letter >= 0 && legal >= 0);
+            pageSize->setCurrentIndex(letter);
+            QCOMPARE(height->text().toDouble(), 11.0);
+            pageSize->setCurrentIndex(legal);
+            QCOMPARE(height->text().toDouble(), 14.0);
+
+            QWidget* horizontalGutterSpin = UiBuilder::controlById(dialog, UiIds::Control::DefineFormHorizontalGutterSpin);
+            QWidget* verticalGutterSpin = UiBuilder::controlById(dialog, UiIds::Control::DefineFormVerticalGutterSpin);
+            QVERIFY(horizontalGutterSpin && verticalGutterSpin);
+            QVERIFY(!horizontalGutterSpin->isEnabled());
+            QVERIFY(!verticalGutterSpin->isEnabled());
+
+            QVERIFY(portrait->isChecked());
+            const QString portraitWidth = width->text(), portraitHeight = height->text();
+            QWidget* widthSpin = UiBuilder::controlById(dialog, UiIds::Control::DefineFormWidthSpin);
+            QVERIFY(widthSpin);
+            const QRect spinGeometry = widthSpin->geometry();
+            QCoreApplication::processEvents();
+            const QImage portraitSample = sample->grab().toImage();
+            Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_form_portrait"));
+            landscape->click();
+            QCoreApplication::processEvents();
+            QCOMPARE(width->text(), portraitHeight);
+            QCOMPARE(height->text(), portraitWidth);
+            QCOMPARE(sample->property("formSampleWidthMils").toInt(), 14000);
+            QCOMPARE(sample->property("formSampleHeightMils").toInt(), 8500);
+            QVERIFY(sample->grab().toImage() != portraitSample);
+            QCOMPARE(widthSpin->geometry(), spinGeometry);
+            Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_form_landscape"));
+            landscape->click();
+            QCOMPARE(width->text(), portraitHeight);
+            portrait->click();
+            QCoreApplication::processEvents();
+            QCOMPARE(width->text(), portraitWidth);
+            QCOMPARE(height->text(), portraitHeight);
+            QCOMPARE(sample->grab().toImage(), portraitSample);
+            QTest::keyClick(landscape, Qt::Key_Space);
+            QCOMPARE(width->text(), portraitHeight);
+            portrait->click();
 
             label->click();
             landscape->click();
+            QVERIFY(horizontalGutterSpin->isEnabled());
+            QVERIFY(verticalGutterSpin->isEnabled());
             rows->setText(QStringLiteral("2"));
             columns->setText(QStringLiteral("3"));
             width->setText(QStringLiteral("4.00"));
@@ -1862,13 +1911,30 @@ private slots:
             sawDefineFormState = countGroup->title() == QStringLiteral("Labels per page") &&
                 rows->isEnabled() &&
                 columns->isEnabled() &&
-                widthLabel->text().startsWith(QStringLiteral("Label width (in): 4.00")) &&
-                heightLabel->text().startsWith(QStringLiteral("Label height (in): 6.00")) &&
+                widthLabel->text().startsWith(QStringLiteral("Label width (in): 2.00")) &&
+                heightLabel->text().startsWith(QStringLiteral("Label height (in): 2.00")) &&
                 sample->property("formSample").toBool() &&
                 sample->property("formSampleRows").toInt() == 2 &&
                 sample->property("formSampleColumns").toInt() == 3 &&
-                sample->property("formSampleWidthMils").toInt() == 4000 &&
-                sample->property("formSampleHeightMils").toInt() == 6000;
+                sample->property("formSampleWidthMils").toInt() == 2000 &&
+                sample->property("formSampleHeightMils").toInt() == 2000;
+            Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_label_landscape"));
+            auto* leftMargin = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormMarginLeft));
+            auto* gutter = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormHorizontalGutter));
+            auto* ok = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::Ok));
+            QVERIFY(leftMargin && gutter && ok);
+            const QImage unspaced = sample->grab().toImage();
+            leftMargin->setText(QStringLiteral("0.50"));
+            gutter->setText(QStringLiteral("0.25"));
+            QCOMPARE(sample->property("formSampleWidthMils").toInt(), 1666);
+            QCOMPARE(pageSize->currentText(), QStringLiteral("Custom"));
+            QCoreApplication::processEvents();
+            QVERIFY(sample->grab().toImage() != unspaced);
+            leftMargin->setText(QStringLiteral("10.00"));
+            QVERIFY(!ok->isEnabled());
+            leftMargin->setText(QStringLiteral("0.50"));
+            QVERIFY(ok->isEnabled());
+            Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_label_spaced_landscape"));
             dialog->accept();
         });
 
@@ -1881,8 +1947,12 @@ private slots:
 
         const ReportDefinition report = designer->report();
         QCOMPARE(report.formType, ReportFormType::Label);
-        QCOMPARE(report.formWidth, 6000);
-        QCOMPARE(report.formHeight, 4000);
+        QCOMPARE(report.formWidth, 1666);
+        QCOMPARE(report.formHeight, 2000);
+        QCOMPARE(report.pageWidth, 6000);
+        QCOMPARE(report.pageHeight, 4000);
+        QCOMPARE(report.marginLeft, 500);
+        QCOMPARE(report.horizontalGutter, 250);
         QCOMPARE(report.rows, 2);
         QCOMPARE(report.columns, 3);
     }

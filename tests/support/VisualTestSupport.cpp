@@ -22,6 +22,11 @@ void installVisualTestFonts()
     }
     installed = true;
 
+    // Native Qt already has complete font families, including bold and italic faces.
+    // Registering only a regular face can shadow those installed variants.
+    if (QGuiApplication::platformName() != QLatin1String("offscreen")
+        && !qEnvironmentVariableIsSet("CARDSTACK_VISUAL_TEST_FONT")) return;
+
     QStringList candidates;
     if (qEnvironmentVariableIsSet("CARDSTACK_VISUAL_TEST_FONT")) {
         candidates.append(qEnvironmentVariable("CARDSTACK_VISUAL_TEST_FONT"));

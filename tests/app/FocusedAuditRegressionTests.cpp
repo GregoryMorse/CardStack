@@ -4,6 +4,7 @@
 #include "LegacyDeckReader.h"
 #include "MainWindow.h"
 #include "../support/DesignerSelectionProbe.h"
+#include "../support/UiPolishProbe.h"
 #include "ReportDesignerWidget.h"
 #include "SQLiteDeckStore.h"
 #include "SQLitePackageStore.h"
@@ -867,17 +868,43 @@ private slots:
         QVERIFY(designer.report().frames.isEmpty());
     }
 
+    void allContextHelpUsesReadableDialogTitles() { Tests::UiPolishProbe::helpTitles(); }
+    void customFormHelpIsAvailableFromKeyboard() { Tests::UiPolishProbe::customFormKeyboardHelp(); }
+    void customFormGeometryUsesPageMarginsAndGrid() { Tests::UiPolishProbe::formGeometry(); }
+    void microScrollArrowsAreSubstantialWithoutResizing() { Tests::UiPolishProbe::microScroll(); }
+
     void frameTableEnterOpensAttributesInsteadOfEditingCells()
     {
-        ReportDesignerWidget designer(makeReport(), {QStringLiteral("Name")});
-        auto* table = designer.findChild<QTableWidget*>();
-        QVERIFY(table);
-        QSignalSpy commands(&designer, &ReportDesignerWidget::commandRequested);
-        table->setCurrentCell(0, 2);
-        QTest::keyClick(table, Qt::Key_Return);
-        QVERIFY(!commands.isEmpty());
-        QCOMPARE(commands.last().at(0).toInt(), UiIds::Command::ToolFrameAttributes);
-        QCOMPARE(designer.report().frames.at(0).text, QStringLiteral("Original frame text"));
+        const auto verify = [](auto& designer, auto signal) {
+            auto* table = designer.template findChild<QTableWidget*>();
+            QVERIFY(table);
+            QCOMPARE(table->editTriggers(), QAbstractItemView::NoEditTriggers);
+            QSignalSpy commands(&designer, signal);
+            table->setCurrentCell(0, 2);
+            const QString originalText = table->item(0, 2)->text();
+            for (Qt::Key key : {Qt::Key_Return, Qt::Key_Enter}) {
+                commands.clear();
+                QTest::keyClick(table, key);
+                QCOMPARE(commands.size(), 1);
+                QCOMPARE(commands.last().at(0).toInt(), UiIds::Command::ToolFrameAttributes);
+                QCOMPARE(table->item(0, 2)->text(), originalText);
+                QVERIFY(!table->isPersistentEditorOpen(table->item(0, 2)));
+                QVERIFY(!designer.isDirty());
+            }
+        };
+        ReportDesignerWidget report(makeReport(), {QStringLiteral("Name")});
+        verify(report, &ReportDesignerWidget::commandRequested);
+        QCOMPARE(report.report().frames.at(0).text, QStringLiteral("Original frame text"));
+
+        CardTemplateLayout layout;
+        CardTemplateFrame text;
+        text.kind = CardTemplateFrameKind::Text;
+        text.text = QStringLiteral("Original template text");
+        text.bounds = QRect(300, 300, 1800, 400);
+        layout.frames.append(text);
+        TemplateDesignerWidget cardTemplate(layout, {});
+        verify(cardTemplate, &TemplateDesignerWidget::commandRequested);
+        QCOMPARE(cardTemplate.layoutDefinition().frames.at(0).text, text.text);
     }
 
     void canonicalAliasesShareOneDocumentLock()

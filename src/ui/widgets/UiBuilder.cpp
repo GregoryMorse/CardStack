@@ -3,6 +3,7 @@
 
 #include "DeckSystemColors.h"
 #include "Deck.h"
+#include "ReportFormGeometry.h"
 #include "UiIds.h"
 #include "UiResourceData.h"
 
@@ -36,6 +37,7 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollBar>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QSet>
 #include <QSpinBox>
@@ -250,11 +252,27 @@ QString plainVisibleText(QString text)
     return result;
 }
 
+void showCardStackHelp(QWidget* parent);
+
+void installContextHelpShortcut(QDialog* dialog)
+{
+    const QString name = QStringLiteral("contextHelpShortcut");
+    if (dialog->findChild<QShortcut*>(name)) return;
+    auto* shortcut = new QShortcut(QKeySequence(Qt::Key_F1), dialog);
+    shortcut->setObjectName(name);
+    shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    QObject::connect(shortcut, &QShortcut::activated, dialog, [dialog] { showCardStackHelp(dialog); });
+}
+
 void showCardStackHelp(QWidget* parent)
 {
     QDialog dialog(parent);
     const QString dialogName = parent == nullptr ? QString() : parent->property("legacyDialogName").toString();
-    dialog.setWindowTitle(dialogName.isEmpty() ? QObject::tr("CardStack Help") : QObject::tr("%1 Help").arg(dialogName));
+    dialog.setObjectName(QStringLiteral("cardstackHelpDialog"));
+    if (parent && parent->testAttribute(Qt::WA_DontShowOnScreen)) dialog.setAttribute(Qt::WA_DontShowOnScreen);
+    QString title = parent == nullptr ? QString() : plainVisibleText(parent->windowTitle());
+    if (title == dialogName) title.clear();
+    dialog.setWindowTitle(title.isEmpty() ? QObject::tr("CardStack Help") : QObject::tr("%1 Help").arg(title));
     dialog.resize(HtmlDialogWidthPx, HtmlDialogHeightPx);
 
     auto* layout = new QVBoxLayout(&dialog);
@@ -287,9 +305,10 @@ void showCardStackHelp(QWidget* parent)
             "<p>Create a ready-to-use deck or open the visual template designer immediately.</p>"
             "<ul>"
             "<li><b>New deck from template</b> creates a normal deck from the selected template.</li>"
-            "<li><b>Design deck from scratch</b> creates a minimal deck and opens the template designer.</li>"
-            "<li><b>Design deck patterned after template</b> creates the selected template deck and opens the designer.</li>"
-            "<li><b>Design deck patterned after deck</b> clones the active deck layout for editing.</li>"
+            "<li><b>Design deck from scratch</b> opens a blank template designer.</li>"
+            "<li><b>Design deck patterned after template</b> copies the selected template into the designer.</li>"
+            "<li><b>Design deck patterned after deck</b> asks you to choose a deck file and copies its layout.</li>"
+            "<li>Save and close the template, then choose whether to create a deck from it.</li>"
             "</ul>");
     } else if (dialogName == QStringLiteral("CHOOSECOLOR")) {
         dialogHelpHtml = QObject::tr(
@@ -363,6 +382,16 @@ void showCardStackHelp(QWidget* parent)
             "<li>Select an existing report name to replace it.</li>"
             "<li>Type a new name to save a new report design.</li>"
             "<li>Report packages can also be exported for sharing.</li>"
+            "</ul>");
+    } else if (dialogName == QStringLiteral("DEFINEFORM")) {
+        dialogHelpHtml = QObject::tr(
+            "<h1>Define Custom Form</h1>"
+            "<p>Set the paper size, margins and spacing in inches. The computed dimensions show the usable report area or the size of each card or label.</p>"
+            "<ul>"
+            "<li><b>Portrait</b> and <b>Landscape</b> swap width and height. The sample and computed dimensions update immediately.</li>"
+            "<li>For cards and labels, set rows, columns and the gaps between cells.</li>"
+            "<li>For reports, the lower measurements set header and footer heights instead.</li>"
+            "<li>The small arrow buttons adjust measurements without changing the control layout.</li>"
             "</ul>");
     } else if (dialogName == QStringLiteral("REPORTFORM")) {
         dialogHelpHtml = QObject::tr(
@@ -822,8 +851,15 @@ protected:
         if (property("formSample").toBool()) {
             const int rows = std::max(1, property("formSampleRows").toInt());
             const int columns = std::max(1, property("formSampleColumns").toInt());
-            const int widthMils = std::max(1, property("formSampleWidthMils").toInt());
-            const int heightMils = std::max(1, property("formSampleHeightMils").toInt());
+            const int widthMils = std::max(1, property("formSamplePageWidthMils").isValid()
+                ? property("formSamplePageWidthMils").toInt() : property("formSampleWidthMils").toInt());
+            const int heightMils = std::max(1, property("formSamplePageHeightMils").isValid()
+                ? property("formSamplePageHeightMils").toInt() : property("formSampleHeightMils").toInt());
+            const auto geometry = reportFormGeometry(QSize(widthMils, heightMils),
+                QMargins(property("formSampleMarginLeft").toInt(), property("formSampleMarginTop").toInt(),
+                         property("formSampleMarginRight").toInt(), property("formSampleMarginBottom").toInt()),
+                QSize(property("formSampleHorizontalGutter").toInt(), property("formSampleVerticalGutter").toInt()),
+                rows, columns);
             const QRectF canvasRect = rect().adjusted(12, 10, -12, -10);
             const qreal pageAspect = static_cast<qreal>(widthMils) / static_cast<qreal>(heightMils);
             QRectF pageRect = canvasRect;
@@ -845,13 +881,26 @@ protected:
             painter.setBrush(QColor(255, 255, 255));
             painter.drawRect(pageRect);
 
-            for (int column = 1; column < columns; ++column) {
-                const qreal x = pageRect.left() + pageRect.width() * column / columns;
-                painter.drawLine(QPointF(x, pageRect.top()), QPointF(x, pageRect.bottom()));
-            }
-            for (int row = 1; row < rows; ++row) {
-                const qreal y = pageRect.top() + pageRect.height() * row / rows;
-                painter.drawLine(QPointF(pageRect.left(), y), QPointF(pageRect.right(), y));
+            painter.setBrush(Qt::NoBrush);
+            if (geometry.valid()) {
+                for (int row = 0; row < geometry.rows; ++row) {
+                    for (int column = 0; column < geometry.columns; ++column) {
+                        const QRect cell = geometry.cell(row, column);
+                        if (cell == QRect(0, 0, widthMils, heightMils)) continue;
+                        painter.drawRect(QRectF(pageRect.left() + cell.x() * pageRect.width() / widthMils,
+                            pageRect.top() + cell.y() * pageRect.height() / heightMils,
+                            cell.width() * pageRect.width() / widthMils, cell.height() * pageRect.height() / heightMils));
+                    }
+                }
+                const QRect content = geometry.cell(0, 0);
+                for (const auto& band : {std::pair{property("formSampleHeaderHeight").toInt(), false},
+                                        std::pair{property("formSampleFooterHeight").toInt(), true}}) {
+                    if (band.first <= 0 || band.first >= content.height()) continue;
+                    const qreal y = pageRect.top() + (band.second ? content.bottom() + 1 - band.first
+                        : content.top() + band.first) * pageRect.height() / heightMils;
+                    painter.drawLine(QPointF(pageRect.left() + content.left() * pageRect.width() / widthMils, y),
+                        QPointF(pageRect.left() + (content.right() + 1) * pageRect.width() / widthMils, y));
+                }
             }
             return;
         }
@@ -982,13 +1031,11 @@ private:
     {
         const int centerX = rect.center().x();
         const int centerY = rect.center().y();
-        if (up) {
-            painter->drawLine(centerX - 2, centerY + 1, centerX, centerY - 2);
-            painter->drawLine(centerX, centerY - 2, centerX + 2, centerY + 1);
-        } else {
-            painter->drawLine(centerX - 2, centerY - 1, centerX, centerY + 2);
-            painter->drawLine(centerX, centerY + 2, centerX + 2, centerY - 1);
-        }
+        painter->setBrush(painter->pen().color());
+        const QPolygon triangle = up
+            ? QPolygon{QPoint(centerX - 2, centerY + 1), QPoint(centerX, centerY - 2), QPoint(centerX + 2, centerY + 1)}
+            : QPolygon{QPoint(centerX - 2, centerY - 1), QPoint(centerX, centerY + 2), QPoint(centerX + 2, centerY - 1)};
+        painter->drawPolygon(triangle);
     }
 };
 
@@ -3444,6 +3491,7 @@ void connectStandardDialogButtons(QDialog* dialog, QWidget* widget, int controlI
     } else if (controlId == Control::Cancel) {
         QObject::connect(button, &QPushButton::clicked, dialog, &QDialog::reject);
     } else if (controlId == Control::Help) {
+        installContextHelpShortcut(dialog);
         QObject::connect(button, &QPushButton::clicked, dialog, [dialog]() {
             showCardStackHelp(dialog);
         });
@@ -4633,7 +4681,9 @@ std::unique_ptr<QDialog> UiBuilder::createDialog(
     }
 
     auto dialog = std::make_unique<QDialog>(parent);
+    if (parent && parent->testAttribute(Qt::WA_DontShowOnScreen)) dialog->setAttribute(Qt::WA_DontShowOnScreen);
     dialog->setProperty("legacyDialogName", dialogName);
+    if (dialogName == QStringLiteral("DEFINEFORM")) installContextHelpShortcut(dialog.get());
     dialog->setWindowTitle(plainVisibleText(uiText(dialogResource->title).isEmpty() ? dialogName : uiText(dialogResource->title)));
 
     if (dialogResource->fontTypeface != nullptr && dialogResource->fontTypeface[0] != '\0') {

@@ -3,6 +3,7 @@
 #include "DesignerInteractionGrid.h"
 #include "DesignerClipboard.h"
 #include "DesignerSelectionProbe.h"
+#include "NativeTestSurface.h"
 #include "ReportDesignerWidget.h"
 #include "ReportTextLayout.h"
 #include <QFontInfo>
@@ -20,6 +21,8 @@ inline int originalSnap(int value)
 }
 inline void sourceAlgorithm()
 {
+    if (QScreen* screen = QGuiApplication::primaryScreen())
+        qInfo() << "Visual primary DPR:" << screen->devicePixelRatio();
     for (int value = -240; value <= 240; ++value)
         QCOMPARE(DesignerInteraction::Grid::snapPixel(value), originalSnap(value));
     QCOMPARE(DesignerInteraction::TemplateGrid.copyDelta(QRect(300, 400, 800, 160), 22), QPoint(-210, -120));
@@ -53,7 +56,7 @@ inline CardTemplateLayout templateDefinition()
 
 inline void show(QWidget& widget)
 {
-    widget.setAttribute(Qt::WA_DontShowOnScreen);
+    prepareNativeTestSurface(widget);
     widget.resize(1080, 760);
     widget.show();
     QCoreApplication::processEvents();
@@ -235,22 +238,60 @@ inline void reportFonts()
             const QFontMetricsF metrics(selected);
             for (const QChar glyph : QStringLiteral("CardStack 0123456789 \u00bd"))
                 QVERIFY2(metrics.inFontUcs4(glyph.unicode()), "Fallback font does not contain a required glyph");
-            definition.width = 40;
-            const QFont stretched = ReportTextLayout::font(definition, 0);
-            const auto advance = [](const QFont& font) {
-                QTextLayout layout(QStringLiteral("MMMM0000iiii"), font);
-                layout.beginLayout();
-                QTextLine line = layout.createLine();
-                line.setLineWidth(10000);
-                const qreal width = line.naturalTextWidth();
-                layout.endLayout();
-                return width;
+            const auto inkWidth = [](const ReportFontDefinition& requested) {
+                QImage image(4000, 240, QImage::Format_ARGB32_Premultiplied);
+                image.fill(Qt::white);
+                QPainter painter(&image);
+                painter.setPen(Qt::black);
+                ReportTextLayout::draw(painter, QStringLiteral("MMMM0000iiii"), requested,
+                                       0, false, QRectF(0, 0, image.width(), image.height()));
+                painter.end();
+                int left = image.width(), right = -1;
+                for (int y = 0; y < image.height(); ++y) {
+                    const auto* pixels = reinterpret_cast<const QRgb*>(image.constScanLine(y));
+                    for (int x = 0; x < image.width(); ++x) {
+                        if (qGray(pixels[x]) >= 220) continue;
+                        left = std::min(left, x);
+                        right = std::max(right, x);
+                    }
+                }
+                return right < left ? 0 : right - left + 1;
             };
-            const qreal expectedRatio = (40.0 * 1000.0 / 720.0) / QFontMetricsF(selected).averageCharWidth();
-            const qreal actualRatio = advance(stretched) / advance(selected);
-            QVERIFY2(qAbs(actualRatio - expectedRatio) < 0.025,
-                qPrintable(QStringLiteral("Family %1, height %2: expected advance ratio %3, actual %4")
-                    .arg(family).arg(height).arg(expectedRatio).arg(actualRatio)));
+            const int naturalInk = inkWidth(definition);
+            QVERIFY(naturalInk > 0);
+            for (int width : {20, 40, 60}) {
+                definition.width = width;
+                const qreal expectedRatio = (width * ReportTextLayout::UnitsPerInch
+                    / ReportTextLayout::StoredFontUnitsPerInch) / metrics.averageCharWidth();
+                const qreal actualRatio = qreal(inkWidth(definition)) / naturalInk;
+                QVERIFY2(qAbs(actualRatio - expectedRatio) < 0.025,
+                    qPrintable(QStringLiteral("Family %1, height %2, width %3: expected ink ratio %4, actual %5")
+                        .arg(family).arg(height).arg(width).arg(expectedRatio).arg(actualRatio)));
+                const QString paragraph = QStringLiteral("One two three four five six seven eight nine ten. ").repeated(4);
+                QTextLayout reference(QStringLiteral("Text"), selected);
+                reference.beginLayout();
+                QTextLine referenceLine = reference.createLine();
+                referenceLine.setLineWidth(10000);
+                const int oneLineHeight = qCeil(referenceLine.height());
+                reference.endLayout();
+                constexpr int WrapWidth = 850;
+                const auto parts = ReportTextLayout::chunks(paragraph, definition, 0,
+                                                            QRect(0, 0, WrapWidth, oneLineHeight));
+                QVERIFY(parts.size() > 1);
+                QString reconstructed;
+                for (const QString& part : parts) reconstructed += part;
+                QCOMPARE(reconstructed, paragraph);
+                for (const QString& part : parts) {
+                    QTextLayout shaped(part.trimmed(), selected);
+                    shaped.beginLayout();
+                    QTextLine line = shaped.createLine();
+                    line.setLineWidth(10000);
+                    const qreal occupiedWidth = line.naturalTextWidth() * expectedRatio;
+                    shaped.endLayout();
+                    QVERIFY2(occupiedWidth <= WrapWidth + 1,
+                        qPrintable(QStringLiteral("Wrapped text exceeds the report frame: %1").arg(occupiedWidth)));
+                }
+            }
             definition.width = 0;
             auto report = reportDefinition();
             report.frames.first().text = QStringLiteral("CardStack 123 \u00bd");
@@ -263,6 +304,17 @@ inline void reportFonts()
             qInfo().noquote() << "Font request:" << family << "resolved:" << resolved.family() << "stored height:" << height;
             const QString prefix = family == QStringLiteral("Arial") ? QStringLiteral("report_font") : QStringLiteral("report_fallback");
             capture(designer, prefix + (height < 0 ? QStringLiteral("_em") : QStringLiteral("_cell")));
+            if (family == QStringLiteral("Arial") && height < 0) {
+                for (int width : {20, 60}) {
+                    auto widthReport = report;
+                    widthReport.textFont.width = width;
+                    ReportDesignerWidget widthDesigner(widthReport, {});
+                    show(widthDesigner);
+                    capture(widthDesigner, width == 20 ? QStringLiteral("report_width_condensed")
+                                                      : QStringLiteral("report_width_expanded"));
+                    widthDesigner.save();
+                }
+            }
             designer.save();
         }
     }
