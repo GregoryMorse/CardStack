@@ -127,6 +127,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
+      - name: Check native reader alignment and malformed input
+        run: |
+          mkdir -p native-safety
+          clang -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+            third_party/BtrieveFileSaver-Code/BtrieveFileSaverLib.c \
+            third_party/BtrieveFileSaver-Code/tests/memory_input_test.c \
+            -o native-safety/memory-input-test
+          ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            ./native-safety/memory-input-test native-safety/disposable.btr
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
