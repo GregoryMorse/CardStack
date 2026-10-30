@@ -12,6 +12,7 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QFont>
+#include <QFontInfo>
 #include <QGroupBox>
 #include <QLabel>
 #include <QKeySequence>
@@ -45,6 +46,7 @@
 #include "FieldDefinition.h"
 #include "ReportDesignerWidget.h"
 #include "SQLiteDeckStore.h"
+#include "LegacyDeckReader.h"
 #include "SQLitePackageStore.h"
 #include "TemplateDesignerWidget.h"
 #include "UiBuilder.h"
@@ -54,6 +56,15 @@
 using namespace CardStack;
 
 namespace {
+
+bool saveRuntimeDialogImage(QDialog* dialog, const QString& fileName)
+{
+    const QString output = qEnvironmentVariable("CARDSTACK_RUNTIME_DIALOG_GALLERY_DIR");
+    if (output.isEmpty()) return true;
+    QDir directory(output);
+    return (directory.exists() || directory.mkpath(QStringLiteral(".")))
+        && Tests::saveWidgetImage(*dialog, directory, fileName);
+}
 
 void collectCommandIdsFromActions(const QList<QAction*>& actions, QSet<int>* commandIds)
 {
@@ -119,6 +130,14 @@ QSet<int> commandIdsFromToolBar(QToolBar* toolBar)
 bool saveMainWindowImage(MainWindow& window, const QDir& outputDirectory, const QString& fileName)
 {
     window.resize(1040, 720);
+    if (auto* mdi = window.findChild<QMdiArea*>()) {
+        if (auto* child = mdi->activeSubWindow()) {
+            const QSize chrome = window.size() - mdi->viewport()->size();
+            window.resize(window.size().expandedTo(child->minimumSizeHint() + chrome));
+            child->showMaximized();
+        }
+    }
+    QCoreApplication::processEvents();
     return Tests::saveWidgetImage(window, outputDirectory, fileName);
 }
 
@@ -1736,18 +1755,13 @@ private slots:
             QVERIFY(footerLabel->width() >= footerLabel->fontMetrics().horizontalAdvance(footerLabel->text()));
             QVERIFY(headerLabel->geometry().right() < rows->geometry().left());
             QVERIFY(footerLabel->geometry().right() < columns->geometry().left());
-            const QString gallery = qEnvironmentVariable("CARDSTACK_APP_GALLERY_DIR");
-            if (!gallery.isEmpty()) {
-                QVERIFY(QDir().mkpath(gallery));
-                QVERIFY(dialog->grab().save(QDir(gallery).filePath(QStringLiteral("app_custom_report_form_initial.png"))));
-            }
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_initial.png")));
             rows->setText(QStringLiteral("0.50"));
             columns->setText(QStringLiteral("1.25"));
             emit rows->editingFinished();
             emit columns->editingFinished();
             QCoreApplication::processEvents();
-            if (!gallery.isEmpty())
-                QVERIFY(dialog->grab().save(QDir(gallery).filePath(QStringLiteral("app_custom_report_form_bands.png"))));
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_report_bands.png")));
             dialog->accept();
         });
         action->trigger();
@@ -1789,6 +1803,7 @@ private slots:
             QVERIFY(customButton != nullptr);
             QCOMPARE(list->count(), 5);
             QCOMPARE(list->currentRow(), 0);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_reportform_initial.png")));
             const QRect fixedListGeometry = list->geometry();
             for (int row = 0; row < list->count(); ++row) {
                 QVERIFY(!list->item(row)->data(Qt::AccessibleTextRole).toString().contains(
@@ -1804,11 +1819,26 @@ private slots:
             QCOMPARE(list->count(), 30);
             QCOMPARE(list->currentRow(), 0);
             QCOMPARE(list->geometry(), fixedListGeometry);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_reportform_card_variant.png")));
+            auto* labelButton = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::ReportFormLabel));
+            QVERIFY(labelButton != nullptr); labelButton->click();
+            QCoreApplication::processEvents();
+            QVERIFY(list->count() > 0);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_reportform_label_variant.png")));
             report->click();
             QCoreApplication::processEvents();
             QCOMPARE(list->count(), 5);
             QCOMPARE(list->currentRow(), 0);
             QCOMPARE(list->geometry(), fixedListGeometry);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_reportform_report_variant.png")));
+            int widest = 0, extent = -1;
+            for (int row = 0; row < list->count(); ++row) {
+                const int width = list->fontMetrics().horizontalAdvance(list->item(row)->data(Qt::AccessibleTextRole).toString());
+                if (width > extent) { widest = row; extent = width; }
+            }
+            list->setCurrentRow(widest);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_reportform_wide.png")));
+            list->setCurrentRow(0);
             customButton->click();
         });
         handleNextDialogByLegacyName(QStringLiteral("DEFINEFORM"), [&sawDefineFormState](QDialog* dialog) {
@@ -1852,6 +1882,33 @@ private slots:
             QVERIFY(heightLabel != nullptr);
             QVERIFY(sample != nullptr);
 
+            const auto verifyEditSpinPairs = [dialog] {
+                const int pairs[][2] = {
+                    {UiIds::Control::DefineFormWidth, UiIds::Control::DefineFormWidthSpin},
+                    {UiIds::Control::DefineFormHeight, UiIds::Control::DefineFormHeightSpin},
+                    {UiIds::Control::DefineFormMarginTop, UiIds::Control::DefineFormMarginTopSpin},
+                    {UiIds::Control::DefineFormMarginLeft, UiIds::Control::DefineFormMarginLeftSpin},
+                    {UiIds::Control::DefineFormMarginRight, UiIds::Control::DefineFormMarginRightSpin},
+                    {UiIds::Control::DefineFormMarginBottom, UiIds::Control::DefineFormMarginBottomSpin},
+                    {UiIds::Control::DefineFormHorizontalGutter, UiIds::Control::DefineFormHorizontalGutterSpin},
+                    {UiIds::Control::DefineFormVerticalGutter, UiIds::Control::DefineFormVerticalGutterSpin},
+                    {UiIds::Control::DefineFormRows, UiIds::Control::DefineFormRowsSpin},
+                    {UiIds::Control::DefineFormColumns, UiIds::Control::DefineFormColumnsSpin},
+                };
+                for (const auto& pair : pairs) {
+                    auto* edit = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, pair[0]));
+                    QWidget* spin = UiBuilder::controlById(dialog, pair[1]);
+                    QVERIFY(edit != nullptr && spin != nullptr);
+                    QCOMPARE(spin->geometry().left(), edit->geometry().right() + 1);
+                    QVERIFY(!spin->geometry().intersects(edit->geometry()));
+                    const int cursor = edit->cursorPosition();
+                    edit->setCursorPosition(edit->text().size());
+                    QCOMPARE(edit->cursorPositionAt(QPoint(0, edit->height() / 2)), 0);
+                    edit->setCursorPosition(cursor);
+                }
+            };
+            verifyEditSpinPairs();
+
             QVERIFY(report->isChecked());
             QVERIFY(rows->isEnabled());
             QVERIFY(columns->isEnabled());
@@ -1859,6 +1916,7 @@ private slots:
             QCOMPARE(height->text().toDouble(), 14.0);
             QCOMPARE(pageSize->currentText(), QStringLiteral("Legal"));
             QVERIFY(pageSize->count() >= 3);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_report_variant.png")));
             const int letter = pageSize->findData(QSize(8500, 11000));
             const int legal = pageSize->findData(QSize(8500, 14000));
             QVERIFY(letter >= 0 && legal >= 0);
@@ -1866,6 +1924,14 @@ private slots:
             QCOMPARE(height->text().toDouble(), 11.0);
             pageSize->setCurrentIndex(legal);
             QCOMPARE(height->text().toDouble(), 14.0);
+            int widestPage = 0, pageExtent = -1;
+            for (int row = 0; row < pageSize->count(); ++row) {
+                const int extent = pageSize->fontMetrics().horizontalAdvance(pageSize->itemText(row));
+                if (extent > pageExtent) { widestPage = row; pageExtent = extent; }
+            }
+            pageSize->setCurrentIndex(widestPage);
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_wide.png")));
+            pageSize->setCurrentIndex(legal);
 
             QWidget* horizontalGutterSpin = UiBuilder::controlById(dialog, UiIds::Control::DefineFormHorizontalGutterSpin);
             QWidget* verticalGutterSpin = UiBuilder::controlById(dialog, UiIds::Control::DefineFormVerticalGutterSpin);
@@ -1877,10 +1943,32 @@ private slots:
             const QString portraitWidth = width->text(), portraitHeight = height->text();
             QWidget* widthSpin = UiBuilder::controlById(dialog, UiIds::Control::DefineFormWidthSpin);
             QVERIFY(widthSpin);
+            QGroupBox* orientationFrame = nullptr;
+            for (auto* group : dialog->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly)) {
+                if (!group->geometry().intersects(portrait->geometry())
+                    || !group->geometry().intersects(landscape->geometry())) continue;
+                if (orientationFrame == nullptr
+                    || group->width() * group->height() < orientationFrame->width() * orientationFrame->height())
+                    orientationFrame = group;
+            }
+            QVERIFY(orientationFrame != nullptr);
+            QGroupBox* pageFrame = nullptr;
+            for (auto* group : dialog->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly)) {
+                if (group != orientationFrame && group->geometry().contains(widthSpin->geometry().center())
+                    && group->geometry().intersects(orientationFrame->geometry())) { pageFrame = group; break; }
+            }
+            QVERIFY(pageFrame != nullptr);
+            QVERIFY(pageFrame->geometry().contains(orientationFrame->geometry()));
+            QVERIFY(widthLabel->geometry().left() > pageFrame->geometry().right());
+            QVERIFY(heightLabel->geometry().left() > pageFrame->geometry().right());
+            QVERIFY(widthSpin->geometry().right() < orientationFrame->geometry().left());
+            QVERIFY(UiBuilder::controlById(dialog, UiIds::Control::DefineFormHeightSpin)->geometry().right()
+                    < orientationFrame->geometry().left());
             const QRect spinGeometry = widthSpin->geometry();
             QCoreApplication::processEvents();
             const QImage portraitSample = sample->grab().toImage();
             Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_form_portrait"));
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_portrait_variant.png")));
             landscape->click();
             QCoreApplication::processEvents();
             QCOMPARE(width->text(), portraitHeight);
@@ -1890,6 +1978,8 @@ private slots:
             QVERIFY(sample->grab().toImage() != portraitSample);
             QCOMPARE(widthSpin->geometry(), spinGeometry);
             Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_form_landscape"));
+            verifyEditSpinPairs();
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_landscape_variant.png")));
             landscape->click();
             QCOMPARE(width->text(), portraitHeight);
             portrait->click();
@@ -1901,6 +1991,13 @@ private slots:
             QCOMPARE(width->text(), portraitHeight);
             portrait->click();
 
+            auto* cardType = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormCard));
+            QVERIFY(cardType != nullptr); cardType->click();
+            rows->setText(QStringLiteral("1")); columns->setText(QStringLiteral("1"));
+            emit rows->editingFinished(); emit columns->editingFinished();
+            QCOMPARE(countGroup->title(), QStringLiteral("Cards per page"));
+            verifyEditSpinPairs();
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_card_variant.png")));
             label->click();
             landscape->click();
             QVERIFY(horizontalGutterSpin->isEnabled());
@@ -1926,6 +2023,8 @@ private slots:
                 sample->property("formSampleWidthMils").toInt() == 2000 &&
                 sample->property("formSampleHeightMils").toInt() == 2000;
             Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_label_landscape"));
+            verifyEditSpinPairs();
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_label_variant.png")));
             auto* leftMargin = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormMarginLeft));
             auto* gutter = qobject_cast<QLineEdit*>(UiBuilder::controlById(dialog, UiIds::Control::DefineFormHorizontalGutter));
             auto* ok = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::Ok));
@@ -1942,6 +2041,7 @@ private slots:
             leftMargin->setText(QStringLiteral("0.50"));
             QVERIFY(ok->isEnabled());
             Tests::UiPolishProbe::capture(*dialog, QStringLiteral("custom_label_spaced_landscape"));
+            QVERIFY(saveRuntimeDialogImage(dialog, QStringLiteral("runtime_defineform_spaced_label.png")));
             dialog->accept();
         });
 
@@ -2103,6 +2203,64 @@ private slots:
         QCOMPARE(loaded.fieldCount(), workspace->deck().fieldCount());
     }
 
+    void writesWinIndexInspectionImagesWhenConfigured()
+    {
+        const QString output = qEnvironmentVariable("CARDSTACK_WININDEX_GALLERY_DIR");
+        const QString fixtures = qEnvironmentVariable("CARDSTACK_WINEVDM_GOLDEN_DIR");
+        if (fixtures.isEmpty()) QSKIP("Set the fixture path to verify imported WINDEX layout persistence.");
+        if (!output.isEmpty()) Tests::installVisualTestFonts();
+        const QString fixture = qEnvironmentVariable("CARDSTACK_WININDEX_GALLERY_FILE", QStringLiteral("EXTN.TN"));
+        const auto imported = LegacyDeckReader{}.readDeck(QDir(fixtures).filePath(fixture));
+        QVERIFY2(imported.ok(), qPrintable(imported.errorMessage));
+        QVERIFY(!imported.deck.cardTemplateLayout().frames.isEmpty());
+        QTemporaryDir temporary;
+        QString error;
+        const QString file = temporary.filePath(QStringLiteral("imported.cardstack"));
+        { SQLiteDeckStore store; QVERIFY2(store.create(file, &error), qPrintable(error)); QVERIFY2(store.saveDeck(imported.deck, &error), qPrintable(error)); }
+        Deck loaded;
+        { SQLiteDeckStore store; QVERIFY2(store.open(file, &error), qPrintable(error)); QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error)); }
+        QCOMPARE(loaded.cardTemplateLayout(), imported.deck.cardTemplateLayout());
+        QCOMPARE(loaded.appearance(), imported.deck.appearance());
+        QCOMPARE(loaded.sortKeys(), imported.deck.sortKeys());
+        QDir directory(output);
+        if (!output.isEmpty()) QVERIFY(directory.exists() || directory.mkpath(QStringLiteral(".")));
+        MainWindow window(nullptr, false);
+        window.show();
+        acceptNextOpenDialogWithFile(file);
+        findCommandAction(window.menuBar(), UiIds::Command::FileOpen)->trigger();
+        QTRY_VERIFY(window.findChild<DeckWorkspace*>() != nullptr);
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        findCommandAction(window.menuBar(), UiIds::Command::ViewCard)->trigger();
+        QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Card);
+        QVERIFY(findCommandAction(window.menuBar(), UiIds::Command::ViewCard)->isChecked());
+        QCoreApplication::processEvents();
+        QFont expectedData, expectedName;
+        QVERIFY(expectedData.fromString(workspace->deck().appearance().dataFont));
+        QVERIFY(expectedName.fromString(workspace->deck().appearance().nameFont));
+        auto* editor = workspace->findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        QLabel* caption = nullptr;
+        for (int field = 0; field < workspace->deck().fieldCount() && !caption; ++field)
+            if (workspace->deck().fieldAt(field).showName())
+                caption = workspace->findChild<QLabel*>(QStringLiteral("fieldCaption_%1").arg(field));
+        QVERIFY(editor != nullptr); QVERIFY(caption != nullptr);
+        QCOMPARE(QFontInfo(editor->font()).family(), QFontInfo(expectedData).family());
+        QCOMPARE(QFontInfo(editor->font()).pixelSize(), QFontInfo(expectedData).pixelSize());
+        QCOMPARE(QFontInfo(caption->font()).family(), QFontInfo(expectedName).family());
+        QCOMPARE(QFontInfo(caption->font()).pixelSize(), QFontInfo(expectedName).pixelSize());
+        if (!output.isEmpty()) QVERIFY(saveMainWindowImage(window, directory, QStringLiteral("windex_card.png")));
+        findCommandAction(window.menuBar(), UiIds::Command::ViewTable)->trigger();
+        QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Table);
+        QVERIFY(findCommandAction(window.menuBar(), UiIds::Command::ViewTable)->isChecked());
+        if (!output.isEmpty()) QVERIFY(saveMainWindowImage(window, directory, QStringLiteral("windex_table.png")));
+        findCommandAction(window.menuBar(), UiIds::Command::ViewCard)->trigger();
+        QCoreApplication::processEvents();
+        QCOMPARE(QFontInfo(editor->font()).pixelSize(), QFontInfo(expectedData).pixelSize());
+        QCOMPARE(QFontInfo(caption->font()).pixelSize(), QFontInfo(expectedName).pixelSize());
+        findCommandAction(window.menuBar(), UiIds::Command::FileRedefine)->trigger();
+        QTRY_VERIFY(window.findChild<TemplateDesignerWidget*>() != nullptr);
+        if (!output.isEmpty()) QVERIFY(saveMainWindowImage(window, directory, QStringLiteral("windex_template.png")));
+    }
+
     void writesManualAppInspectionImagesWhenConfigured()
     {
         const QString outputPath = qEnvironmentVariable("CARDSTACK_APP_GALLERY_DIR");
@@ -2113,6 +2271,40 @@ private slots:
         Tests::installVisualTestFonts();
         QDir outputDirectory(outputPath);
         QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
+        const auto openSource = [&outputDirectory](MainWindow& window, const QString& source, const QString& captureName) {
+            bool summarySeen = false;
+            bool summarySaved = false;
+            QString failure;
+            QElapsedTimer deadline;
+            deadline.start();
+            QTimer guard;
+            guard.setInterval(10);
+            QObject::connect(&guard, &QTimer::timeout, &window, [&]() {
+                auto* modal = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                if (auto* box = qobject_cast<QMessageBox*>(modal)) {
+                    guard.stop();
+                    if (box->icon() == QMessageBox::Information
+                        && box->text().startsWith(QStringLiteral("Legacy Btrieve import succeeded."))) {
+                        summarySeen = true;
+                        summarySaved = Tests::saveWidgetImage(*box, outputDirectory, captureName);
+                        box->button(QMessageBox::Ok)->click();
+                    } else {
+                        failure = box->windowTitle() + QStringLiteral(": ") + box->text();
+                        box->reject();
+                    }
+                } else if (deadline.elapsed() > 15000) {
+                    guard.stop();
+                    failure = QStringLiteral("Source import did not complete within its gallery deadline.");
+                    if (modal) modal->reject();
+                }
+            });
+            acceptNextOpenDialogWithFile(source);
+            guard.start();
+            findCommandAction(window.menuBar(), UiIds::Command::FileOpen)->trigger();
+            guard.stop();
+            if (!failure.isEmpty()) qWarning("Gallery import: %s", qPrintable(failure));
+            return summarySeen && summarySaved && failure.isEmpty();
+        };
 
         {
             MainWindow window(nullptr, false);
@@ -2120,37 +2312,64 @@ private slots:
         }
 
         {
-            MainWindow window(nullptr, true);
+            const QString oracleDeck = qEnvironmentVariable("CARDSTACK_GALLERY_LEGACY_DECK");
+            MainWindow window(nullptr, oracleDeck.isEmpty());
+            if (!oracleDeck.isEmpty()) {
+                window.show();
+                auto* open = findCommandAction(window.menuBar(), UiIds::Command::FileOpen);
+                QVERIFY(open != nullptr);
+                QVERIFY(openSource(window, oracleDeck, QStringLiteral("app_deck_import_summary.png")));
+                QTRY_VERIFY(window.findChild<DeckWorkspace*>() != nullptr);
+            }
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_deck_toolbar.png")));
+            auto* workspace = window.findChild<DeckWorkspace*>();
+            QVERIFY(workspace != nullptr);
+            findCommandAction(window.menuBar(), UiIds::Command::ViewTable)->trigger();
+            QCOMPARE(workspace->viewMode(), DeckWorkspace::ViewMode::Table);
+            QVERIFY(findCommandAction(window.menuBar(), UiIds::Command::ViewTable)->isChecked());
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_deck_table_toolbar.png")));
         }
 
         {
+            const QString oracleDeck = qEnvironmentVariable("CARDSTACK_GALLERY_LEGACY_DECK");
             MainWindow window(nullptr, false);
             window.show();
             QCoreApplication::processEvents();
-            auto* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
-            QVERIFY(newAction != nullptr);
-            acceptNextNewFileDialog(1);
-            newAction->trigger();
+            if (!oracleDeck.isEmpty()) {
+                QVERIFY(openSource(window, oracleDeck, QStringLiteral("app_template_import_summary.png")));
+                QTRY_VERIFY(window.findChild<DeckWorkspace*>() != nullptr);
+                findCommandAction(window.menuBar(), UiIds::Command::FileRedefine)->trigger();
+            } else {
+                auto* newAction = findCommandAction(window.menuBar(), UiIds::Command::FileNew);
+                QVERIFY(newAction != nullptr);
+                acceptNextNewFileDialog(1);
+                newAction->trigger();
+            }
             QCoreApplication::processEvents();
             QTRY_VERIFY(window.findChild<TemplateDesignerWidget*>() != nullptr);
             auto* designer = window.findChild<TemplateDesignerWidget*>();
-            while (designer->selectedFrameIndex() >= 0) {
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_source_toolbar.png")));
+            for (int remaining = 1024; designer->selectedFrameIndex() >= 0 && remaining > 0; --remaining) {
+                designer->setFocus(Qt::OtherFocusReason);
                 designer->deleteSelectedFrame();
             }
+            QVERIFY2(designer->selectedFrameIndex() < 0, "Gallery could not clear the initial designer frames.");
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar.png")));
             designer->addTextFrameWithText(QStringLiteral("Heading"));
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_text.png")));
+            designer->setFocus(Qt::OtherFocusReason);
             designer->deleteSelectedFrame();
             designer->addDataBoxFrameForField(designer->fieldNames().value(0));
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_data.png")));
+            designer->setFocus(Qt::OtherFocusReason);
             designer->deleteSelectedFrame();
             designer->addNotesBoxFrame();
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_template_toolbar_notes.png")));
+            designer->setFocus(Qt::OtherFocusReason);
             designer->deleteSelectedFrame();
             designer->addLineBoxFrameShape(CardTemplateLineBoxShape::Box, 0, 0, 0);
             QCoreApplication::processEvents();
@@ -2158,32 +2377,56 @@ private slots:
         }
 
         {
-            MainWindow window(nullptr, true);
+            const QString oracleDeck = qEnvironmentVariable("CARDSTACK_GALLERY_LEGACY_DECK");
+            MainWindow window(nullptr, oracleDeck.isEmpty());
             window.show();
             QCoreApplication::processEvents();
-            auto* newReportAction = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
-            QVERIFY(newReportAction != nullptr);
-            acceptNextReportFormDialog(ReportFormType::Report, 0);
-            newReportAction->trigger();
+            bool selectedSourceReport = oracleDeck.isEmpty();
+            if (!oracleDeck.isEmpty()) {
+                QVERIFY(openSource(window, oracleDeck, QStringLiteral("app_report_import_summary.png")));
+                QTRY_VERIFY(window.findChild<DeckWorkspace*>() != nullptr);
+                handleNextDialogByLegacyName(QStringLiteral("DESIGNREPORTS"), [&selectedSourceReport](QDialog* dialog) {
+                    auto* list = qobject_cast<QListWidget*>(UiBuilder::controlById(dialog, UiIds::Control::ReportsList));
+                    auto* modify = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog, UiIds::Control::ReportsModify));
+                    if (list == nullptr || list->count() == 0 || modify == nullptr) { dialog->reject(); return; }
+                    list->setCurrentRow(0);
+                    selectedSourceReport = true;
+                    modify->click();
+                });
+                findCommandAction(window.menuBar(), UiIds::Command::FilePrintReport)->trigger();
+            } else {
+                auto* newReportAction = findCommandAction(window.menuBar(), UiIds::Command::FileNewReport);
+                QVERIFY(newReportAction != nullptr);
+                acceptNextReportFormDialog(ReportFormType::Report, 0);
+                newReportAction->trigger();
+            }
+            QVERIFY2(selectedSourceReport, "The source report sidecar must be present for a paired gallery.");
             QCoreApplication::processEvents();
             QTRY_VERIFY(window.findChild<ReportDesignerWidget*>() != nullptr);
             auto* designer = window.findChild<ReportDesignerWidget*>();
-            while (designer->selectedFrameIndex() >= 0) {
-                designer->deleteSelectedFrame();
+            QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_source_toolbar.png")));
+            for (int remaining = 1024; designer->selectedFrameIndex() >= 0 && remaining > 0; --remaining) {
+                designer->setFocus(Qt::OtherFocusReason);
+                designer->setFocus(Qt::OtherFocusReason);
+            designer->deleteSelectedFrame();
             }
+            QVERIFY2(designer->selectedFrameIndex() < 0, "Gallery could not clear the initial designer frames.");
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar.png")));
             designer->addTextFrameWithText(QStringLiteral("Heading"), 0);
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_text.png")));
+            designer->setFocus(Qt::OtherFocusReason);
             designer->deleteSelectedFrame();
             designer->addDataFrameForField(designer->fieldNames().value(0), 0, true);
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_data.png")));
+            designer->setFocus(Qt::OtherFocusReason);
             designer->deleteSelectedFrame();
             designer->addSystemFrameWithText(QStringLiteral("Page Number"), 0);
             QCoreApplication::processEvents();
             QVERIFY(saveMainWindowImage(window, outputDirectory, QStringLiteral("app_report_toolbar_system.png")));
+            designer->setFocus(Qt::OtherFocusReason);
             designer->deleteSelectedFrame();
             designer->addLineBoxFrameShape(ReportLineBoxShape::Box, 0, 0, 0);
             QCoreApplication::processEvents();

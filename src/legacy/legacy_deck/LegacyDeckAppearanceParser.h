@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Deck.h"
+#include "LegacyTextCodec.h"
 
 #include <QColor>
 #include <QFont>
@@ -68,9 +69,7 @@ inline QString fontString(const QByteArray& bytes, int offset)
            && bytes.at(offset + FontFaceNameOffset + faceLength) != '\0') {
         ++faceLength;
     }
-    const QString family = QString::fromLocal8Bit(
-        bytes.constData() + offset + FontFaceNameOffset,
-        faceLength).trimmed();
+    const QString family = LegacyTextCodec::decode(QByteArrayView(bytes).sliced(offset + FontFaceNameOffset, faceLength)).trimmed();
     if (family.isEmpty()) {
         return {};
     }
@@ -94,6 +93,28 @@ inline QString fontString(const QByteArray& bytes, int offset)
 inline DeckAppearance parse(const QByteArray& record)
 {
     DeckAppearance appearance;
+    if (record.mid(5, 6) == QByteArrayLiteral("WINDEX")) {
+        constexpr int WinIndexNameFontOffset = 0x29c;
+        constexpr int WinIndexDataFontOffset = 0x2ce;
+        if (record.size() < WinIndexDataFontOffset + Win16LogFontSize) return appearance;
+        const auto convertedFont = [&](int offset) {
+            QByteArray bytes = record.mid(offset, Win16LogFontSize);
+            constexpr quint16 NormalFontWeight = 400;
+            constexpr quint8 SwissFontFamily = 0x20;
+            bytes[FontWeightOffset] = char(NormalFontWeight & 0xff);
+            bytes[FontWeightOffset + 1] = char(NormalFontWeight >> 8);
+            bytes[FontPitchAndFamilyOffset] = char(SwissFontFamily);
+            bytes.replace(FontFaceNameOffset, FontFaceNameLength, QByteArray(FontFaceNameLength, '\0'));
+            bytes.replace(FontFaceNameOffset, 5, "Arial");
+            return fontString(bytes, 0);
+        };
+        appearance.dataFont = convertedFont(WinIndexDataFontOffset);
+        appearance.textFont = appearance.dataFont;
+        appearance.nameFont = convertedFont(WinIndexNameFontOffset);
+        appearance.indexFont = appearance.nameFont;
+        appearance.useSystemColors = true;
+        return appearance;
+    }
     if (record.size() < MinimumAppearanceRecordSize) {
         return appearance;
     }

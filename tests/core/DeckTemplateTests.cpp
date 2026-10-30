@@ -85,7 +85,7 @@ private slots:
         QCOMPARE(software.fieldAt(0).maxLength(), 30);
         QCOMPARE(software.fieldAt(10).name(), QStringLiteral("Notes"));
         QCOMPARE(software.fieldAt(10).type(), FieldType::Notes);
-        QCOMPARE(software.fieldAt(10).maxLength(), 40);
+        QCOMPARE(software.fieldAt(10).maxLength(), DefaultNotesMaximumLength);
         QCOMPARE(software.reportCount(), 3);
         QCOMPARE(software.reportAt(0).name, QStringLiteral("Index Card (3 x 5 - laser)"));
         QCOMPARE(software.reportAt(1).name, QStringLiteral("Index Card (3 x 5 - pin)"));
@@ -122,7 +122,7 @@ private slots:
         QCOMPARE(mailingListTemplate->reports.first().formatMagic, QStringLiteral("RPT@#$A"));
         QCOMPARE(mailingListTemplate->reports.first().frames.first().kind, ReportFrameKind::Data);
         QCOMPARE(mailingListTemplate->reports.first().frames.first().fieldPlaceholders, QVector<QString>{QStringLiteral("First Name")});
-        QCOMPARE(mailingListTemplate->reports.first().frames.first().bounds, QRect(250, 250, 1625, 219));
+        QCOMPARE(mailingListTemplate->reports.first().frames.first().bounds, QRect(63, 63, 1625, 218));
     }
 
     void supportsScratchAndPatternedDeckCreation()

@@ -1,0 +1,2047 @@
+﻿{
+    "version":  1,
+    "notes":  [
+                  "Hashes attest corpus identity, not completeness. Synthetic records are not original UI-generated evidence.",
+                  "The original DLL supports blocked and interleaved owner-key schedules; both historical and fresh UI-authored fixtures are retained."
+              ],
+    "files":  [
+                  {
+                      "name":  "damaged_truncated.BTN",
+                      "size":  2048,
+                      "sha256":  "0d14bee04f86aed233c20ca8412f5b111db346e66aa58d6657464ec70ab6b543",
+                      "origin":  "synthetic-boundary"
+                  },
+                  {
+                      "name":  "many_fields.BTN",
+                      "size":  8192,
+                      "sha256":  "1d8ac5028ff8f911b87e312faf560d06b8c073fa2080cc97e2b24d58fdca07ea",
+                      "origin":  "synthetic-boundary"
+                  },
+                  {
+                      "name":  "max_lengths.BTN",
+                      "size":  24576,
+                      "sha256":  "5ce10fec4675488f321c11496743750ff9388d9d7763e32e940a4c2f3f49f692",
+                      "origin":  "synthetic-boundary"
+                  },
+                  {
+                      "name":  "notes_heavy.BTN",
+                      "size":  24576,
+                      "sha256":  "154044b0f6653092e2ea56651930f5a1550310215598e6e4a07ebc2a7807ac3d",
+                      "origin":  "synthetic-boundary"
+                  },
+                  {
+                      "name":  "oem_text.BTN",
+                      "size":  24576,
+                      "sha256":  "899775b00b7e905547c3b112e0ae14c40218870a3cce9ab29d1a970407999400",
+                      "origin":  "synthetic-boundary"
+                  },
+                  {
+                      "name":  "plain.BTN",
+                      "size":  24576,
+                      "sha256":  "367b42ebeb7af8e6b8652340507d85775171d7d501ffc424fef98f2248494a64",
+                      "origin":  "original-sample"
+                  },
+                  {
+                      "name":  "PWTN.TN",
+                      "size":  8192,
+                      "sha256":  "e4c75fd3c6ff47468894116c6444a156f15f881fdfa9de53fff79e2425c43626",
+                      "origin":  "historical-oracle-export"
+                  },
+                  {
+                      "name":  "reports.BTN",
+                      "size":  24576,
+                      "sha256":  "367b42ebeb7af8e6b8652340507d85775171d7d501ffc424fef98f2248494a64",
+                      "origin":  "original-sample"
+                  },
+                  {
+                      "name":  "reports.RPT",
+                      "size":  8704,
+                      "sha256":  "b0fa664189d747b76897a4eae38fe6fe7cd5c6fd0b51f631370f0768e6f655da",
+                      "origin":  "original-sample"
+                  },
+                  {
+                      "name":  "unusual_index.BTN",
+                      "size":  24576,
+                      "sha256":  "944aa47d0d233cc6c9bd70578e4fd4129f6f9caf895f1afcf616016d82d2c157",
+                      "origin":  "synthetic-boundary"
+                  },
+                  {
+                      "name":  "blocked_cipher_previous.BTN",
+                      "size":  24576,
+                      "sha256":  "166fafd73fa13533898d2d57be20d3e4420ee94a320262a7df29cd130dce4517",
+                      "origin":  "historical-oracle-export"
+                  },
+                  {
+                      "name":  "long_ui.BTN",
+                      "size":  32768,
+                      "sha256":  "cb5f4b431d9356df1fc1e6d85dcd6d1c7f9dab4823f13800987f7ccce04c3007",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-long-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "ansi_ui.BTN",
+                      "size":  24576,
+                      "sha256":  "059759534cbe1ca80f008ed31b818bc9ce2f490c129869cfa0cb71eadafb8631",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-ansi-roundtrip",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "cycle_locked.BTN",
+                      "size":  24576,
+                      "sha256":  "d669e894dd63b66946518a22dcb93849ab3cc0e1bf176b7a79e6301ef4891cac",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-security-cycle",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "security_cycle.BTN",
+                      "size":  24576,
+                      "sha256":  "e8ea44b52ba0e7a197b9873dec708d904fd6baeff524a3f7610895d51f4de9d1",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-security-cycle",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK01.BTN",
+                      "size":  24576,
+                      "sha256":  "e17e3432947fff7e93022a276e246fbf25e6f4e7b04c18000646e59c1c7a0002",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-01",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK01.RPT",
+                      "size":  7168,
+                      "sha256":  "d70a09944359a82eca592602c52d21d8d579a32a63e5932cde5e69c82db3b243",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-01",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK02.BTN",
+                      "size":  24576,
+                      "sha256":  "9e3f3a927cbd5a76d90d788e937feab4bcb36343fe7cf444afd55396b0203012",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-02",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK02.RPT",
+                      "size":  22016,
+                      "sha256":  "0e582adc46586817894706e8020bb09e55331781d71a84219ec951126f955dc0",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-02",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK03.BTN",
+                      "size":  24576,
+                      "sha256":  "29ffa671de044edc042a6685228ce058fdfc8530b191d8b17979aa8de0aa827a",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-03",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK03.RPT",
+                      "size":  10752,
+                      "sha256":  "17f787d7282936bad99a8c76b56f16aeac269196efe23eeda0e3480b01423863",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-03",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK04.BTN",
+                      "size":  24576,
+                      "sha256":  "40f33cd1331c7c9ebdfb8a75a47599663df5bcf17428b4aa65e5515e6543e5e4",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-04",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK04.RPT",
+                      "size":  2560,
+                      "sha256":  "da5952cd62c0756bee04b4843d82c1fad0cecb08ecdcc1263f5cb43b84883f70",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-04",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK05.BTN",
+                      "size":  24576,
+                      "sha256":  "6c03b2c901d97b2b16f9c5c6c504825ef360da9c2b0fadb8e11200774c46f21d",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-05",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK05.RPT",
+                      "size":  5120,
+                      "sha256":  "94a6470bda9a49069d18a8b243692f6057475a7e166babe1e5a2519841bba87d",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-05",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK06.BTN",
+                      "size":  24576,
+                      "sha256":  "c8f070cc4e99d68b89e983c7bf36121c3e8f14dec8aa37fc23caf850ba895fe2",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-06",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK06.RPT",
+                      "size":  8704,
+                      "sha256":  "ef15f61201e5d98ddf52e6184a94e7afb3c4627b87d1cd71cd4a3a0de354f57d",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-06",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK07.BTN",
+                      "size":  24576,
+                      "sha256":  "5d208f662f3a5a93fc0a587e1bf8a537075ed9678e3cc3fbc1d025f17bf2072c",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-07",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK07.RPT",
+                      "size":  2560,
+                      "sha256":  "1f6a4181d2d0d5414bee65bf8b00761d92a3336fd631e2252344af38a6b718c5",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-07",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK08.BTN",
+                      "size":  24576,
+                      "sha256":  "e33fe35d6236a98ea34da3ae50dacf9f1fd366089419d751c0e2ef8610329614",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-08",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK08.RPT",
+                      "size":  7680,
+                      "sha256":  "0bd38d9ac0fda619c6400a66c26b78442061992187eee961dc8926214386ec37",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-08",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK09.BTN",
+                      "size":  24576,
+                      "sha256":  "4f0d3572dd711ea07d25b1ed66c77f86bf78c1e96c069f1e36135f1b8001b487",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-09",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK09.RPT",
+                      "size":  2048,
+                      "sha256":  "270e97c2d262b2189c4fe80149744c9c6e870f454cbb2d0f1a17ce42752f732e",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-09",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK10.BTN",
+                      "size":  24576,
+                      "sha256":  "2508d565d64d3c15593ab7d74ba242fd4519529040b6a17a0325e72269241854",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-10",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK10.RPT",
+                      "size":  14848,
+                      "sha256":  "04d710c918df92d53cc4c033c09d3313a2c8ed22f1d786dcf30d5594da5ca07c",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-10",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK11.BTN",
+                      "size":  24576,
+                      "sha256":  "cd984cd586bce5b11660b51e90de8bf70a0390af22dbdb1d74a170e53aed2f9c",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-11",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK11.RPT",
+                      "size":  4608,
+                      "sha256":  "72335408025b1796bce607e0b0850069fdeff57c91110cc18bad432380c206fc",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-11",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK12.BTN",
+                      "size":  24576,
+                      "sha256":  "0a06f4ea48ba70343c632e18d72f11a6e48b81014854951a092c87eaabe001db",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-12",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK12.RPT",
+                      "size":  19968,
+                      "sha256":  "24f7359fa3b00c050ac3e5f2fb77312ab0f2d918f8441a1a18b1ad19c3da01bc",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-12",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK13.BTN",
+                      "size":  24576,
+                      "sha256":  "a6d921959baceeefd07266831da600edc90518d27a7216e3ea1ac6dc170d3df8",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-13",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK13.RPT",
+                      "size":  8704,
+                      "sha256":  "b0fa664189d747b76897a4eae38fe6fe7cd5c6fd0b51f631370f0768e6f655da",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-13",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK14.BTN",
+                      "size":  24576,
+                      "sha256":  "b4c14ea7b842d0a9e784a1677ead6d45e0134a6b22c90b7ced02a74af3da5151",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-14",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "STK14.RPT",
+                      "size":  7680,
+                      "sha256":  "5183777aa436e0ea6037f08f727e0f2c86f36675add3ef1a8fc9d2d24f62ac6c",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-stock-14",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "many_ui.BTN",
+                      "size":  32768,
+                      "sha256":  "b3f2d5dba2990e653af4b02191faf76803e39857385c31b126b48ed378678df3",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-many-records",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "EXDBF.DBF",
+                      "size":  1243,
+                      "sha256":  "6bd9afd4e64d5893e8c7f45553b1ab48a73aa3b0317acefd64305647bcf0d743",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-dbase",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "EXDBF.DBT",
+                      "size":  4,
+                      "sha256":  "67abdd721024f0ff4e0b3f4c2fc13bc5bad42d0b7851d456d88d203d15aaa450",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-dbase",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "NOTEDBF.DBF",
+                      "size":  1243,
+                      "sha256":  "74f5d4a6e76572dc7112e2b38fdbeaf7cb977b8f488359a687fa75c0e8f10fa2",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-dbase-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "NOTEDBF.DBT",
+                      "size":  6713,
+                      "sha256":  "a146c2368d4eb8e42528e25c7312de06ce47ed34d65e17fe95312822490e25b0",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-dbase-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "EXCRD.CRD",
+                      "size":  316,
+                      "sha256":  "83ad9a38ea99e9a2a988c38461a1dceeeedd3dd474d8160e4f8d6fed958c6ca4",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-cardfile",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "NOTECRD.CRD",
+                      "size":  6502,
+                      "sha256":  "35b817ca61296c5fbc5cf52ff28bf66683ec86c2518422a6240c6cf2b6a1ed14",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-cardfile-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "EXWP.WP",
+                      "size":  467,
+                      "sha256":  "b99934a49929934ace534a28f0d2f04f5d5a6c323d7a2a3d930f0ce5209454ea",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-wordperfect",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "NOTEWP.WP",
+                      "size":  6673,
+                      "sha256":  "54946efcef832e17820cd948e37ede5a0b267d7537269dbc01896683082a62f8",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-wordperfect-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "EXTN.TN",
+                      "size":  8192,
+                      "sha256":  "662ca676429fe5d4c6396b59fdae1f8fbc5ef76a41352c623bb86d96ab806682",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-takenote",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "NOTETN.TN",
+                      "size":  14336,
+                      "sha256":  "01a46841a7db5cc38c86bec52671b2e723b9d4bf348789c38062771c88acab0f",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-takenote-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "pwonly.BTN",
+                      "size":  24576,
+                      "sha256":  "173e0d20202a4eed6af2362d4e78430d408c2c1ca1d1a2ef869a0f8859371e30",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-password-only",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "crypt.BTN",
+                      "size":  24576,
+                      "sha256":  "5e2edc97f5e7c5c2d8771baafdff439e74820a63a95696d960c581ce60a53f2d",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-password-encrypted",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "long_encrypted.BTN",
+                      "size":  32768,
+                      "sha256":  "6813e6c33d41655bd3a0b921315ffaebf2fa043beb6e61fcbad15be9c2e932db",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-long-notes-encrypted",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "max_notes.BTN",
+                      "size":  32768,
+                      "sha256":  "d0e6f4ebe5663b9d55b60f98ec1912dfd743ec594aaea4b1384c80f57e806b74",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-max-notes",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "long_blocked.BTN",
+                      "size":  32768,
+                      "sha256":  "ccb150a806e06dee7970317e00ed5339d8d2a757e2bd57c190e25b8e73b2f7e4",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-long-notes-encrypted-blocked",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "custom_forty_fields.BTN",
+                      "size":  24576,
+                      "sha256":  "bf43f0c542878bc972bc9f1f601e3734efeb64c1a7214963f715fcdeec111472",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-custom-forty-fields",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  },
+                  {
+                      "name":  "mailing_layout.TN",
+                      "size":  7168,
+                      "sha256":  "0ed1067dbf673c69e25fc2e4d951f3858adb452ef757659c917fd9f75511a6c2",
+                      "origin":  "original-ui",
+                      "recipe":  "oracle-export-takenote-mailing",
+                      "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+                      "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                  }
+              ],
+    "cases":  [
+                  {
+                      "id":  "plain",
+                      "format":  "deck",
+                      "file":  "plain.BTN",
+                      "name":  "Software Library",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "protected":  false,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ]
+                  },
+                  {
+                      "id":  "notes-synthetic",
+                      "format":  "deck",
+                      "file":  "notes_heavy.BTN",
+                      "cardCount":  3,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Line1\r\nLine2\r\nLegacy note edge"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "Tabbed\tand CRLF\r\nnotes sample"
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "012345678901234567890123456789012345678"
+                                   ]
+                               ]
+                  },
+                  {
+                      "id":  "fixed-length-synthetic",
+                      "format":  "deck",
+                      "file":  "max_lengths.BTN",
+                      "cardCount":  3,
+                      "rows":  [
+                                   [
+                                       "PRODUCT-MAX-123456789012345",
+                                       "VER-12345",
+                                       "COMPANY-MAX-123456789012345678901234567890123",
+                                       "SERIAL-1234567890123456",
+                                       "REGISTERED-MAX-1234567890123456789012345678901",
+                                       "PURCHASED-2026-07",
+                                       "FROM-MAX-123456789012345678",
+                                       "TECH-SUPPORT-12345",
+                                       "SUPPORT-PLAN-12345",
+                                       "CUSTOMER-SERVICE-1",
+                                       "NOTES-MAX-12345678901234567890123456789"
+                                   ],
+                                   [
+                                       "PRODUCT-MAX-123456789012345",
+                                       "VER-12345",
+                                       "COMPANY-MAX-123456789012345678901234567890123",
+                                       "SERIAL-1234567890123456",
+                                       "REGISTERED-MAX-1234567890123456789012345678901",
+                                       "PURCHASED-2026-07",
+                                       "FROM-MAX-123456789012345678",
+                                       "TECH-SUPPORT-12345",
+                                       "SUPPORT-PLAN-12345",
+                                       "CUSTOMER-SERVICE-1",
+                                       "NOTES-MAX-12345678901234567890123456789"
+                                   ],
+                                   [
+                                       "PRODUCT-MAX-123456789012345",
+                                       "VER-12345",
+                                       "COMPANY-MAX-123456789012345678901234567890123",
+                                       "SERIAL-1234567890123456",
+                                       "REGISTERED-MAX-1234567890123456789012345678901",
+                                       "PURCHASED-2026-07",
+                                       "FROM-MAX-123456789012345678",
+                                       "TECH-SUPPORT-12345",
+                                       "SUPPORT-PLAN-12345",
+                                       "CUSTOMER-SERVICE-1",
+                                       "NOTES-MAX-12345678901234567890123456789"
+                                   ]
+                               ]
+                  },
+                  {
+                      "id":  "many-fields-synthetic",
+                      "format":  "deck",
+                      "file":  "many_fields.BTN",
+                      "fieldCount":  14,
+                      "cardCount":  2
+                  },
+                  {
+                      "id":  "dos-codec-synthetic",
+                      "format":  "deck",
+                      "file":  "oem_text.BTN",
+                      "encoding":  "dos437",
+                      "fieldCount":  11,
+                      "cardCount":  3
+                  },
+                  {
+                      "id":  "index-synthetic",
+                      "format":  "deck",
+                      "file":  "unusual_index.BTN",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ]
+                  },
+                  {
+                      "id":  "truncated-negative",
+                      "format":  "deck",
+                      "file":  "damaged_truncated.BTN",
+                      "reject":  true
+                  },
+                  {
+                      "id":  "reports",
+                      "format":  "reports",
+                      "file":  "reports.RPT",
+                      "reportCount":  3
+                  },
+                  {
+                      "id":  "protected-takenote",
+                      "file":  "PWTN.TN",
+                      "password":  "Legacy01",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "protected":  true,
+                      "verified":  true,
+                      "format":  "interchange"
+                  },
+                  {
+                      "id":  "blocked-key-mode-historical",
+                      "file":  "blocked_cipher_previous.BTN",
+                      "format":  "deck",
+                      "password":  "Crypt01",
+                      "protected":  true,
+                      "encrypted":  true,
+                      "verified":  true,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true
+                  },
+                  {
+                      "id":  "oracle-long-notes",
+                      "format":  "deck",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "long_ui.BTN"
+                  },
+                  {
+                      "id":  "oracle-ansi-roundtrip",
+                      "format":  "deck",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "rows":  [
+                                   [
+                                       "  Café ™  ",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "ansi_ui.BTN"
+                  },
+                  {
+                      "id":  "cycle-locked-correct",
+                      "format":  "deck",
+                      "password":  "Legacy01",
+                      "protected":  true,
+                      "encrypted":  true,
+                      "verified":  true,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "cycle_locked.BTN"
+                  },
+                  {
+                      "id":  "cycle-locked-wrong",
+                      "format":  "deck",
+                      "password":  "wrong",
+                      "reject":  true,
+                      "file":  "cycle_locked.BTN"
+                  },
+                  {
+                      "id":  "cycle-locked-empty",
+                      "format":  "deck",
+                      "reject":  true,
+                      "file":  "cycle_locked.BTN"
+                  },
+                  {
+                      "id":  "security-cycle",
+                      "format":  "deck",
+                      "protected":  false,
+                      "encrypted":  false,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "security_cycle.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-01",
+                      "format":  "deck",
+                      "stockTemplate":  "Book Library",
+                      "reportFile":  "STK01.RPT",
+                      "file":  "STK01.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-02",
+                      "format":  "deck",
+                      "stockTemplate":  "Business Cards",
+                      "reportFile":  "STK02.RPT",
+                      "file":  "STK02.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-03",
+                      "format":  "deck",
+                      "stockTemplate":  "Credit Cards",
+                      "reportFile":  "STK03.RPT",
+                      "file":  "STK03.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-04",
+                      "format":  "deck",
+                      "stockTemplate":  "Data/Boxes",
+                      "reportFile":  "STK04.RPT",
+                      "file":  "STK04.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-05",
+                      "format":  "deck",
+                      "stockTemplate":  "File Folders",
+                      "reportFile":  "STK05.RPT",
+                      "file":  "STK05.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-06",
+                      "format":  "deck",
+                      "stockTemplate":  "Home Inventory",
+                      "reportFile":  "STK06.RPT",
+                      "file":  "STK06.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-07",
+                      "format":  "deck",
+                      "stockTemplate":  "Mailing List",
+                      "reportFile":  "STK07.RPT",
+                      "file":  "STK07.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-08",
+                      "format":  "deck",
+                      "stockTemplate":  "Music Library",
+                      "reportFile":  "STK08.RPT",
+                      "file":  "STK08.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-09",
+                      "format":  "deck",
+                      "stockTemplate":  "Notes",
+                      "reportFile":  "STK09.RPT",
+                      "file":  "STK09.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-10",
+                      "format":  "deck",
+                      "stockTemplate":  "Personnel Records",
+                      "reportFile":  "STK10.RPT",
+                      "file":  "STK10.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-11",
+                      "format":  "deck",
+                      "stockTemplate":  "Recipes",
+                      "reportFile":  "STK11.RPT",
+                      "file":  "STK11.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-12",
+                      "format":  "deck",
+                      "stockTemplate":  "Rolodex Cards",
+                      "reportFile":  "STK12.RPT",
+                      "file":  "STK12.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-13",
+                      "format":  "deck",
+                      "stockTemplate":  "Software Library",
+                      "reportFile":  "STK13.RPT",
+                      "file":  "STK13.BTN"
+                  },
+                  {
+                      "id":  "oracle-stock-14",
+                      "format":  "deck",
+                      "stockTemplate":  "Video Library",
+                      "reportFile":  "STK14.RPT",
+                      "file":  "STK14.BTN"
+                  },
+                  {
+                      "id":  "oracle-many-records",
+                      "format":  "deck",
+                      "fieldCount":  11,
+                      "cardCount":  27,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 1",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 2",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 3",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 4",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 5",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 6",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 7",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 8",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 9",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 10",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 11",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 12",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 13",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 14",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 15",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 16",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 17",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 18",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 19",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 20",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 21",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 22",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 23",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "Oracle Row 24",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "many_ui.BTN"
+                  },
+                  {
+                      "id":  "oracle-export-dbase",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "file":  "EXDBF.DBF"
+                  },
+                  {
+                      "id":  "oracle-export-dbase-notes",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+                                   ],
+                                   [
+                                       "WindowsT",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "NOTEDBF.DBF"
+                  },
+                  {
+                      "id":  "oracle-export-cardfile",
+                      "fieldCount":  2,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "file":  "EXCRD.CRD"
+                  },
+                  {
+                      "id":  "oracle-export-cardfile-notes",
+                      "fieldCount":  2,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "requiredText":  [
+                                           "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+                                           "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                           "1234567890",
+                                           "Café"
+                                       ],
+                      "file":  "NOTECRD.CRD"
+                  },
+                  {
+                      "id":  "oracle-export-wordperfect",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "file":  "EXWP.WP"
+                  },
+                  {
+                      "id":  "oracle-export-wordperfect-notes",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "NOTEWP.WP"
+                  },
+                  {
+                      "id":  "oracle-export-takenote",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "file":  "EXTN.TN"
+                  },
+                  {
+                      "id":  "oracle-export-takenote-notes",
+                      "fieldCount":  11,
+                      "cardCount":  3,
+                      "format":  "interchange",
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "NOTETN.TN"
+                  },
+                  {
+                      "id":  "oracle-password-only",
+                      "format":  "deck",
+                      "password":  "Legacy01",
+                      "protected":  true,
+                      "encrypted":  false,
+                      "verified":  true,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "pwonly.BTN"
+                  },
+                  {
+                      "id":  "oracle-password-only-wrong",
+                      "format":  "deck",
+                      "password":  "Wrong01",
+                      "reject":  true,
+                      "file":  "pwonly.BTN"
+                  },
+                  {
+                      "id":  "oracle-password-only-empty",
+                      "format":  "deck",
+                      "reject":  true,
+                      "file":  "pwonly.BTN"
+                  },
+                  {
+                      "id":  "oracle-password-encrypted",
+                      "format":  "deck",
+                      "password":  "Crypt01",
+                      "protected":  true,
+                      "encrypted":  true,
+                      "verified":  true,
+                      "rows":  [
+                                   [
+                                       "buttonFile",
+                                       "1.0",
+                                       "ButtonWare Incorporated",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       ""
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "crypt.BTN"
+                  },
+                  {
+                      "id":  "oracle-password-encrypted-wrong",
+                      "format":  "deck",
+                      "password":  "Wrong01",
+                      "reject":  true,
+                      "file":  "crypt.BTN"
+                  },
+                  {
+                      "id":  "oracle-password-encrypted-empty",
+                      "format":  "deck",
+                      "reject":  true,
+                      "file":  "crypt.BTN"
+                  },
+                  {
+                      "id":  "oracle-long-notes-encrypted",
+                      "format":  "deck",
+                      "password":  "Legacy01",
+                      "protected":  true,
+                      "encrypted":  true,
+                      "verified":  true,
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "long_encrypted.BTN"
+                  },
+                  {
+                      "id":  "oracle-max-notes",
+                      "format":  "deck",
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "max_notes.BTN"
+                  },
+                  {
+                      "id":  "oracle-long-notes-encrypted-blocked",
+                      "format":  "deck",
+                      "password":  "Crypt01",
+                      "protected":  true,
+                      "encrypted":  true,
+                      "verified":  true,
+                      "rows":  [
+                                   [
+                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+                                       "1234567890",
+                                       "Café",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "1-900-454-8000",
+                                       "",
+                                       "(206) 454-0479",
+                                       "Note 001: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 002: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 003: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 004: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 005: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 006: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 007: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 008: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 009: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 010: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 011: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 012: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 013: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 014: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 015: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 016: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 017: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 018: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 019: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 020: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 021: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 022: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 023: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 024: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 025: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 026: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 027: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 028: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 029: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 030: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 031: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 032: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 033: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 034: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 035: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 036: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 037: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 038: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 039: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 040: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 041: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 042: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 043: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 044: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 045: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 046: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 047: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 048: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 049: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 050: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 051: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 052: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 053: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 054: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 055: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 056: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 057: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 058: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 059: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 060: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 061: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 062: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 063: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 064: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 065: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 066: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 067: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 068: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 069: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 070: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 071: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 072: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 073: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 074: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 075: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 076: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 077: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 078: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 079: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 080: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 081: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 082: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 083: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 084: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 085: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 086: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 087: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 088: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 089: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 090: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 091: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 092: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 093: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 094: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 095: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 096: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 097: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 098: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 099: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\r\nNote 100: abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+                                   ],
+                                   [
+                                       "Windows™",
+                                       "",
+                                       "Microsoft Corporation",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ],
+                                   [
+                                       "other software",
+                                       "1.0",
+                                       "any company",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "rowsUnordered":  true,
+                      "file":  "long_blocked.BTN"
+                  },
+                  {
+                      "id":  "oracle-custom-forty-fields",
+                      "format":  "deck",
+                      "fieldCount":  40,
+                      "fieldNames":  [
+                                         "Name_1",
+                                         "Name_2",
+                                         "Name_3",
+                                         "Name_4",
+                                         "Name_5",
+                                         "Name_6",
+                                         "Name_7",
+                                         "Name_8",
+                                         "Name_9",
+                                         "Name_10",
+                                         "Name_11",
+                                         "Name_12",
+                                         "Name_13",
+                                         "Name_14",
+                                         "Name_15",
+                                         "Name_16",
+                                         "Name_17",
+                                         "Name_18",
+                                         "Name_19",
+                                         "Name_20",
+                                         "Name_21",
+                                         "Name_22",
+                                         "Name_23",
+                                         "Name_24",
+                                         "Name_25",
+                                         "Name_26",
+                                         "Name_27",
+                                         "Name_28",
+                                         "Name_29",
+                                         "Name_30",
+                                         "Name_31",
+                                         "Name_32",
+                                         "Name_33",
+                                         "Name_34",
+                                         "Name_35",
+                                         "Name_36",
+                                         "Name_37",
+                                         "Name_38",
+                                         "Name_39",
+                                         "Name_40"
+                                     ],
+                      "fieldMaxLength":  25,
+                      "layoutFieldCount":  40,
+                      "file":  "custom_forty_fields.BTN"
+                  },
+                  {
+                      "id":  "oracle-export-takenote-mailing",
+                      "format":  "interchange",
+                      "name":  "Mailing List",
+                      "fieldCount":  10,
+                      "cardCount":  1,
+                      "layoutFieldCount":  10,
+                      "rows":  [
+                                   [
+                                       "Alex",
+                                       "Morgan",
+                                       "42 Maple St",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       ""
+                                   ]
+                               ],
+                      "file":  "mailing_layout.TN"
+                  }
+              ],
+    "coverage":  [
+                     {
+                         "id":  "real-security-cycle",
+                         "status":  "verified",
+                         "reason":  "Original-app generation and native reopen checks; importer contracts must also pass before promotion."
+                     },
+                     {
+                         "id":  "real-long-notes-and-boundary-input",
+                         "status":  "verified",
+                         "reason":  "Original-app generation and native reopen checks; importer contracts must also pass before promotion."
+                     },
+                     {
+                         "id":  "all-stock-template-save-reopen",
+                         "status":  "verified",
+                         "reason":  "Original-app generation and native reopen checks; importer contracts must also pass before promotion."
+                     },
+                     {
+                         "id":  "variable-and-multi-page-storage",
+                         "status":  "verified",
+                         "reason":  "Original-app generation and native reopen checks; importer contracts must also pass before promotion."
+                     },
+                     {
+                         "id":  "nonempty-export-memos",
+                         "status":  "verified",
+                         "reason":  "Original-app generation and native reopen checks; importer contracts must also pass before promotion."
+                     },
+                     {
+                         "id":  "custom-forty-field-save-reopen",
+                         "status":  "verified",
+                         "reason":  "Original-app generation and native reopen checks; importer contracts must also pass before promotion."
+                     }
+                 ]
+}

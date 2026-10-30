@@ -1,4 +1,9 @@
+#include "LegacyReportReader.h"
+#include <QFileInfo>
+#include "../support/VisualTestSupport.h"
 #include "UiBuilder.h"
+#include "LegacyDeckReader.h"
+#include <QAbstractItemView>
 #include "UiResourceData.h"
 
 #include <QAbstractItemView>
@@ -470,23 +475,7 @@ void applyInterestingDialogState(QDialog* dialog)
 
 bool saveDialogImage(QDialog* dialog, const QDir& outputDirectory, const QString& fileStem)
 {
-    if (dialog == nullptr) {
-        return false;
-    }
-
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
-    QCoreApplication::processEvents();
-    QTest::qWait(30);
-    QCoreApplication::processEvents();
-
-    const QPixmap pixmap = dialog->grab();
-    if (pixmap.isNull()) {
-        return false;
-    }
-
-    return pixmap.save(outputDirectory.filePath(fileStem + QStringLiteral(".png")));
+    return dialog && CardStack::Tests::saveWidgetImage(*dialog, outputDirectory, fileStem + QStringLiteral(".png"));
 }
 
 QString clickHelpButtonAndCaptureText(QAbstractButton* helpButton)
@@ -1624,7 +1613,30 @@ private slots:
         QDir outputDirectory(outputPath);
         QVERIFY2(outputDirectory.exists() || outputDirectory.mkpath(QStringLiteral(".")), qPrintable(outputPath));
 
-        const UiBuilder::DialogContext context = populatedContext();
+        UiBuilder::DialogContext context = populatedContext();
+        const QString oracleDeck = qEnvironmentVariable("CARDSTACK_GALLERY_LEGACY_DECK");
+        if (!oracleDeck.isEmpty()) {
+            auto imported = LegacyDeckReader{}.readDeck(oracleDeck);
+            QVERIFY2(imported.ok(), qPrintable(imported.errorMessage));
+        const QString sidecar = QFileInfo(oracleDeck).dir().filePath(QFileInfo(oracleDeck).completeBaseName() + QStringLiteral(".RPT"));
+        if (QFileInfo::exists(sidecar)) {
+            const auto reports = LegacyReportReader{}.readFile(sidecar);
+            QVERIFY2(reports.ok(), qPrintable(reports.errorMessage));
+            for (const auto& report : reports.reports) imported.deck.addReport(report);
+        }
+            context.searchDirectionAvailable = imported.deck.cardCount() > 0;
+            context.deckName = imported.deck.name();
+            context.deckDescription = imported.deck.description();
+            context.fieldNames.clear();
+            for (const auto& field : imported.deck.fields()) context.fieldNames.append(field.name());
+            context.reportNames.clear();
+            context.reports.clear();
+            for (int index = 0; index < imported.deck.reportCount(); ++index) {
+                const auto& report = imported.deck.reportAt(index);
+                context.reportNames.append(report.name);
+                context.reports.append({QStringLiteral("Report"), report.name, index});
+            }
+        }
         int written = 0;
         for (const QString& dialogName : UiBuilder::dialogNames()) {
             if (isToolbarResourceName(dialogName)) {
@@ -1650,6 +1662,16 @@ private slots:
                     .arg(written, 2, 10, QLatin1Char('0'))
                     .arg(stem)),
                 qPrintable(QStringLiteral("Could not save wide-state dialog image for %1").arg(dialogName)));
+            for (QComboBox* combo : wideDialog->findChildren<QComboBox*>()) {
+                if (combo->isHidden() || combo->count() == 0) continue;
+                combo->showPopup();
+                QCoreApplication::processEvents();
+                QWidget* popup = combo->view()->window();
+                QVERIFY(popup != nullptr);
+                QVERIFY(Tests::saveWidgetImage(*popup, outputDirectory, QStringLiteral("%1_%2_dropdown_%3.png")
+                    .arg(written, 2, 10, QLatin1Char('0')).arg(stem).arg(combo->property("originalControlId").toInt())));
+                combo->hidePopup();
+            }
             wideDialog->close();
 
             if (dialogName == QStringLiteral("SEARCH")) {
@@ -1670,6 +1692,24 @@ private slots:
                             .arg(stem, suffix)),
                         qPrintable(QStringLiteral("Could not save variant dialog image for %1").arg(dialogName)));
                     variantDialog->close();
+                }
+            }
+            if (dialogName == QStringLiteral("DEFINEFORM") || dialogName == QStringLiteral("REPORTFORM")) {
+                QVector<std::pair<int, QString>> variants{
+                    {UiIds::Control::ReportFormCard, QStringLiteral("card_variant")},
+                    {UiIds::Control::ReportFormLabel, QStringLiteral("label_variant")},
+                    {UiIds::Control::ReportFormReport, QStringLiteral("report_variant")}};
+                if (dialogName == QStringLiteral("DEFINEFORM")) {
+                    variants.append({UiIds::Control::DefineFormPortrait, QStringLiteral("portrait_variant")});
+                    variants.append({UiIds::Control::DefineFormLandscape, QStringLiteral("landscape_variant")});
+                }
+                for (const auto& [controlId, suffix] : variants) {
+                    auto variant = UiBuilder::createDialog(dialogName, nullptr, context);
+                    auto* button = qobject_cast<QAbstractButton*>(UiBuilder::controlById(variant.get(), controlId));
+                    QVERIFY(button != nullptr);
+                    button->click();
+                    QVERIFY(saveDialogImage(variant.get(), outputDirectory, QStringLiteral("%1_%2_%3")
+                        .arg(written, 2, 10, QLatin1Char('0')).arg(stem, suffix)));
                 }
             }
             ++written;

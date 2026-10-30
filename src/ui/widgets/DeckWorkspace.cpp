@@ -1,6 +1,7 @@
 #include <QFrame>
 #include <QTextDocument>
 #include "DeckWorkspace.h"
+#include "DeckIndexOrder.h"
 #include "ReportFieldBindings.h"
 
 #include <QFont>
@@ -28,6 +29,7 @@
 #include <QPlainTextEdit>
 #include <QRegularExpression>
 #include <QScrollArea>
+#include <QShowEvent>
 #include <QSignalBlocker>
 #include <QScopedValueRollback>
 #include <QSplitter>
@@ -324,38 +326,6 @@ Deck deckWithSchema(
 
 constexpr int MaxUndoSnapshots = 50;
 
-int titleBucketRank(const QString& title)
-{
-    const QString trimmed = title.trimmed();
-    if (trimmed.isEmpty() || !trimmed.at(0).isLetterOrNumber()) {
-        return 0;
-    }
-
-    const QChar first = trimmed.at(0).toUpper();
-    if (first >= QLatin1Char('A') && first <= QLatin1Char('Z')) {
-        return 1 + first.unicode() - QLatin1Char('A').unicode();
-    }
-    if (first >= QLatin1Char('0') && first <= QLatin1Char('9')) {
-        return 27 + first.unicode() - QLatin1Char('0').unicode();
-    }
-    return 0;
-}
-
-bool indexSortsBefore(const CardRecord& left, const CardRecord& right, const QVector<DeckSortKey>& sortKeys)
-{
-    for (const DeckSortKey& key : sortKeys) {
-        const QString leftTitle = left.valueAt(key.fieldIndex).trimmed();
-        const QString rightTitle = right.valueAt(key.fieldIndex).trimmed();
-        int comparison = titleBucketRank(leftTitle) - titleBucketRank(rightTitle);
-        if (comparison == 0) {
-            comparison = QString::localeAwareCompare(leftTitle, rightTitle);
-        }
-        if (comparison != 0) {
-            return key.descending ? comparison > 0 : comparison < 0;
-        }
-    }
-    return false;
-}
 
 } // namespace
 
@@ -441,6 +411,13 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     m_tableView->viewport()->setAutoFillBackground(true);
     showCardView();
     setCurrentCardIndex(0);
+}
+
+void DeckWorkspace::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    // MDI parenting can replace inherited control fonts after construction.
+    applyStoredAppearance();
 }
 
 const Deck& DeckWorkspace::deck() const

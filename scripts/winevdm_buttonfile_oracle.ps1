@@ -12,17 +12,29 @@ param(
     [switch]$Interactive,
     [switch]$NoDownload,
     [switch]$KeepProcess,
-    [switch]$TraceWindows
+    [switch]$TraceWindows,
+    [ValidateRange(1,3600)][int]$TimeoutSeconds = 300,
+    [switch]$IsolatedWorker,
+    [string]$RunRequest = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not ("CardStack.Oracle.Native" -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot "WineVdmOracleNative.cs") -ReferencedAssemblies System.dll,System.Core.dll,System.Drawing.dll,System.Windows.Forms.dll
+}
+if ($IsolatedWorker) {
+    [CardStack.Oracle.Native]::RequirePrivate()
+    $request = Get-Content -LiteralPath $RunRequest -Raw | ConvertFrom-Json
+    foreach ($name in @('LegacyExe','LegacyDir','WineVdmDir','ScenarioPath','OutputDir','RuntimeDir','StageOnlyDeck','LaunchDocument','Fixture','IncludeDisabled','NoDownload','TraceWindows')) {
+        if ($null -ne $request.$name) { Set-Variable -Name $name -Value $request.$name -Scope Script }
+    }
+}
 $fixedWineVdmUrl = "https://github.com/GregoryMorse/winevdm/tree/fix-filedlg-fileok-ofn16-sync"
 $defaultWineRoot = Join-Path $repoRoot ".tools\winevdm\pr"
 $defaultScenarioPath = Join-Path $PSScriptRoot "winevdm_buttonfile_oracle.scenarios.json"
 $defaultOutputDir = Join-Path $repoRoot "build\winevdm-oracle\fixtures"
-$defaultRuntimeDir = Join-Path $defaultOutputDir "runtime"
 $defaultManifestPath = Join-Path $PSScriptRoot "winevdm_legacy_manifest.json"
 
 if ([string]::IsNullOrWhiteSpace($WineVdmDir)) {
@@ -35,7 +47,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = $defaultOutputDir
 }
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
-    $RuntimeDir = $defaultRuntimeDir
+    $RuntimeDir = Join-Path (Join-Path $repoRoot 'docs\audit\wvdm') ([Guid]::NewGuid().ToString('N').Substring(0,8))
 }
 
 function Resolve-RepoRelativePath {
@@ -112,8 +124,11 @@ function Copy-LegacyRuntime {
         [string]$StageDir
     )
 
-    New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
     $sourceDir = Split-Path -Parent $ExePath
+    $sourceFull=[IO.Path]::GetFullPath($sourceDir).TrimEnd('\')+'\'
+    $stageFull=[IO.Path]::GetFullPath($StageDir).TrimEnd('\')+'\'
+    if ($sourceFull.StartsWith($stageFull,[StringComparison]::OrdinalIgnoreCase)) { throw 'The runtime scratch directory must not be the source directory or its ancestor.' }
+    New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
     $patterns = @("*.EXE", "*.DLL", "*.INI", "*.HLP", "*.BTN", "*.RPT", "*.BTR", "*.DAT")
     foreach ($pattern in $patterns) {
         Get-ChildItem -Path $sourceDir -Filter $pattern -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -200,42 +215,6 @@ public static extern bool SetWindowTextAnsi(IntPtr hWnd, string lpString);
 
 [DllImport("user32.dll")]
 public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-[DllImport("user32.dll")]
-public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-[DllImport("user32.dll")]
-public static extern bool BringWindowToTop(IntPtr hWnd);
-
-[DllImport("user32.dll")]
-public static extern IntPtr SetActiveWindow(IntPtr hWnd);
-
-[DllImport("user32.dll")]
-public static extern IntPtr SetFocus(IntPtr hWnd);
-
-[DllImport("kernel32.dll")]
-public static extern uint GetCurrentThreadId();
-
-[DllImport("user32.dll")]
-public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-
-[DllImport("user32.dll")]
-public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-[DllImport("user32.dll")]
-public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
-
-[DllImport("user32.dll")]
-public static extern bool SetCursorPos(int X, int Y);
-
-[DllImport("user32.dll")]
-public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
-
-[DllImport("user32.dll")]
-public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
-[DllImport("user32.dll", CharSet=CharSet.Ansi, EntryPoint="VkKeyScanA")]
-public static extern short VkKeyScan(byte ch);
 
 [DllImport("user32.dll", CharSet=CharSet.Ansi, EntryPoint="RegisterWindowMessageA")]
 public static extern uint RegisterWindowMessageAnsi(string lpString);
@@ -329,7 +308,7 @@ function Write-ControlItemDump {
 }
 
 function Get-LegacyErrorDialog {
-    param([int]$ProcessId)
+    param([int]$ProcessId, [string]$ExpectedMessage = "")
 
     $errorPatterns = @(
         "Invalid file extension",
@@ -392,7 +371,8 @@ function Get-LegacyErrorDialog {
             }
         }
         $looksLikeButtonFileMessageBox = ($title -like "buttonFile*" -and ($buttons -contains "OK" -or $buttons -contains "&OK"))
-        if ($hasErrorPattern -or $looksLikeButtonFileMessageBox) {
+        $matchesExpected = $ExpectedMessage -and $message -like "*$ExpectedMessage*"
+        if ($hasErrorPattern -or $looksLikeButtonFileMessageBox -or $matchesExpected) {
             $dialogs.Add([pscustomobject]@{
                 Handle = $hWnd
                 Title = $title
@@ -405,6 +385,23 @@ function Get-LegacyErrorDialog {
     }
     [void][CardStack.Win32Oracle]::EnumWindows($callback, [IntPtr]::Zero)
     return $dialogs | Select-Object -First 1
+}
+
+function Get-OracleDialogButton {
+    param([IntPtr]$Dialog, [int]$Id)
+    [CardStack.Oracle.Native]::RequireTarget($Dialog)
+    $control=[CardStack.Win32Oracle]::GetDlgItem($Dialog,$Id)
+    if ($control -ne [IntPtr]::Zero) { return $control }
+    try { Save-OracleCapture -Handle $Dialog -Key 'diagnostic.modal' -OutputDir $OutputDir } catch { Write-Warning $_.Exception.Message }
+    $caption=switch ($Id) { 1 {'OK'} 2 {'Cancel'} 6 {'Yes'} 7 {'No'} default {''} }
+    if (!$caption) { return [IntPtr]::Zero }
+    $matches=@([CardStack.Oracle.Native]::Controls($Dialog) | Where-Object {
+        $_.class -eq 'Button' -and $_.visible -and $_.enabled -and
+        ([string]$_.text).Replace('&','').Trim() -eq $caption -and
+        [CardStack.Oracle.Native]::GetParent([IntPtr][long]$_.handle) -eq $Dialog
+    })
+    if ($matches.Count -eq 1) { return [IntPtr][long]$matches[0].handle }
+    return [IntPtr]::Zero
 }
 
 function Assert-NoLegacyErrorDialog {
@@ -576,87 +573,100 @@ function Get-CommonDialogMessage {
     return $message
 }
 
-function Invoke-PhysicalClick {
+function Invoke-MessageClick {
     param([IntPtr]$Handle)
-
-    $rect = New-Object CardStack.RECT
-    if (-not [CardStack.Win32Oracle]::GetWindowRect($Handle, [ref]$rect)) {
-        throw "Could not read the target control rectangle for click."
-    }
-    $x = [int](($rect.Left + $rect.Right) / 2)
-    $y = [int](($rect.Top + $rect.Bottom) / 2)
-    Write-Step ("Physical click at {0},{1} rect=({2},{3})-({4},{5})" -f $x, $y, $rect.Left, $rect.Top, $rect.Right, $rect.Bottom)
-    [void][CardStack.Win32Oracle]::SetCursorPos($x, $y)
-    Start-Sleep -Milliseconds 100
-    [CardStack.Win32Oracle]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 75
-    [CardStack.Win32Oracle]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-}
-
-function Invoke-KeyDown {
-    param([byte]$Vk)
-    [CardStack.Win32Oracle]::keybd_event($Vk, 0, 0, [UIntPtr]::Zero)
-}
-
-function Invoke-KeyUp {
-    param([byte]$Vk)
-    [CardStack.Win32Oracle]::keybd_event($Vk, 0, 0x0002, [UIntPtr]::Zero)
-}
-
-function Invoke-KeyTap {
-    param([byte]$Vk)
-    Invoke-KeyDown -Vk $Vk
-    Start-Sleep -Milliseconds 80
-    Invoke-KeyUp -Vk $Vk
-}
-
-function Invoke-SelectAllKeys {
-    Invoke-KeyDown -Vk 0x11
-    Invoke-KeyTap -Vk 0x41
-    Invoke-KeyUp -Vk 0x11
-    Start-Sleep -Milliseconds 75
-}
-
-function Invoke-TextKeys {
-    param([string]$Text)
-
-    foreach ($ch in $Text.ToCharArray()) {
-        $scan = [CardStack.Win32Oracle]::VkKeyScan([byte][char]$ch)
-        if ($scan -lt 0) {
-            throw "Cannot synthesize keyboard input for character '$ch'."
-        }
-        $vk = [byte]($scan -band 0xff)
-        $shiftState = ($scan -shr 8) -band 0xff
-        if (($shiftState -band 1) -ne 0) { Invoke-KeyDown -Vk 0x10 }
-        if (($shiftState -band 2) -ne 0) { Invoke-KeyDown -Vk 0x11 }
-        if (($shiftState -band 4) -ne 0) { Invoke-KeyDown -Vk 0x12 }
-        Invoke-KeyTap -Vk $vk
-        if (($shiftState -band 4) -ne 0) { Invoke-KeyUp -Vk 0x12 }
-        if (($shiftState -band 2) -ne 0) { Invoke-KeyUp -Vk 0x11 }
-        if (($shiftState -band 1) -ne 0) { Invoke-KeyUp -Vk 0x10 }
-        Start-Sleep -Milliseconds 90
-    }
+    [CardStack.Oracle.Native]::Click($Handle, -1, -1, $false)
+    Start-Sleep -Milliseconds 150
 }
 
 function Set-OracleFocus {
-    param(
-        [IntPtr]$WindowHandle,
-        [IntPtr]$ControlHandle
-    )
-
-    $targetProcessId = 0
-    $targetThreadId = [CardStack.Win32Oracle]::GetWindowThreadProcessId($ControlHandle, [ref]$targetProcessId)
-    $currentThreadId = [CardStack.Win32Oracle]::GetCurrentThreadId()
-    if ($targetThreadId -ne 0 -and $targetThreadId -ne $currentThreadId) {
-        [void][CardStack.Win32Oracle]::AttachThreadInput($currentThreadId, $targetThreadId, $true)
+    param([IntPtr]$WindowHandle, [IntPtr]$ControlHandle)
+    [CardStack.Oracle.Native]::RequireTarget($ControlHandle)
+    [void][CardStack.Oracle.Native]::Send($WindowHandle, 0x0028, $ControlHandle, [IntPtr]1)
+    if ([CardStack.Oracle.Native]::FocusWindow($ControlHandle) -ne $ControlHandle) {
+        Invoke-MessageClick -Handle $ControlHandle
     }
-    [void][CardStack.Win32Oracle]::SetForegroundWindow($WindowHandle)
-    [void][CardStack.Win32Oracle]::BringWindowToTop($WindowHandle)
-    [void][CardStack.Win32Oracle]::SetActiveWindow($WindowHandle)
-    [void][CardStack.Win32Oracle]::SetFocus($ControlHandle)
-    Start-Sleep -Milliseconds 150
-    if ($targetThreadId -ne 0 -and $targetThreadId -ne $currentThreadId) {
-        [void][CardStack.Win32Oracle]::AttachThreadInput($currentThreadId, $targetThreadId, $false)
+}
+
+function Save-OracleCapture {
+    param([IntPtr]$Handle, [string]$Key, [string]$OutputDir)
+    if ($Key -notmatch '^[a-z0-9_]+[.][a-z0-9_]+$') { throw "Invalid semantic capture key: $Key" }
+    $directory=Join-Path $OutputDir 'captures'
+    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+    $path=Join-Path $directory ($Key+'.png')
+    $menus=@([CardStack.Oracle.Native]::Menus($Handle))
+    $controls=@([CardStack.Oracle.Native]::Controls($Handle))
+    $image=[CardStack.Oracle.Native]::Capture($Handle,$path)
+    $evidence=[ordered]@{key=$Key;image=($Key+'.png');desktop=[CardStack.Oracle.Native]::DesktopName();window=[CardStack.Oracle.Native]::Describe($Handle);controls=$controls;menus=$menus;capture=$image}
+    $mdi=@($evidence.controls | Where-Object { $_.class -eq 'MDIClient' })
+    if ($mdi.Count -and @($controls | Where-Object { $_.class -like '*tnMDIChild*' }).Count -and !@($mdi | Where-Object { $_.visible }).Count) {
+        $evidence.capture['partial']=$true
+        $evidence.capture['limitation']='The original MDI workspace is hidden; this image is toolbar evidence only.'
+        $diagnostics=New-Object 'System.Collections.Generic.List[object]'
+        $children=@($controls | Where-Object { $_.class -like '*tnMDIChild*' } | Select-Object -First 4)
+        for ($index=0;$index -lt $children.Count;$index++) {
+            $name=$Key+'_hidden_workspace_'+$index+'.png'
+            try {
+                $render=[CardStack.Oracle.Native]::Capture([IntPtr][long]$children[$index].handle,(Join-Path $directory $name))
+                $diagnostics.Add([ordered]@{image=$name;diagnosticOnly=$true;visible=$children[$index].visible;capture=$render})
+            } catch { Write-Warning ('Hidden workspace diagnostic: '+$_.Exception.Message) }
+        }
+        $evidence.capture['diagnostics']=$diagnostics.ToArray()
+    }
+    $evidence | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $directory ($Key+'.json')) -Encoding UTF8
+    $script:OracleCaptures.Add($evidence)
+    Write-Step ("Captured {0}" -f $Key)
+}
+
+function Test-OracleExpectation {
+    param([object]$Expected,[IntPtr]$Window)
+    if ($null -ne $Expected.focusId) {
+        $focus=[CardStack.Oracle.Native]::FocusWindow($Window)
+        return $focus -ne [IntPtr]::Zero -and [CardStack.Oracle.Native]::GetDlgCtrlID($focus) -eq [int]$Expected.focusId
+    }
+    if ($null -ne $Expected.menuChecked) {
+        return @([CardStack.Oracle.Native]::Menus($Window) | Where-Object { $_.id -eq [uint32]$Expected.menuChecked -and $_.checked }).Count -gt 0
+    }
+    if ($null -ne $Expected.menuPresent) {
+        return @([CardStack.Oracle.Native]::Menus($Window) | Where-Object { $_.id -eq [uint32]$Expected.menuPresent }).Count -gt 0
+    }
+    if ($null -ne $Expected.menuAbsent) {
+        $items=@([CardStack.Oracle.Native]::Menus($Window))
+        return $items.Count -gt 0 -and @($items | Where-Object { $_.id -eq [uint32]$Expected.menuAbsent }).Count -eq 0
+    }
+    if ($null -ne $Expected.controlId) {
+        $control=[CardStack.Oracle.Native]::GetDlgItem($Window,[int]$Expected.controlId)
+        if ($control -eq [IntPtr]::Zero) { return $false }
+        if ($null -ne $Expected.text) { return [CardStack.Oracle.Native]::ReadText($control) -eq [string]$Expected.text }
+        if ($null -ne $Expected.checked) { return [CardStack.Oracle.Native]::Send($control,0xF0,[IntPtr]::Zero,[IntPtr]::Zero).ToInt32() -eq [int]$Expected.checked }
+    }
+    throw 'Unknown expectation; an input action must have a specific observable postcondition.'
+}
+
+function Wait-OracleExpectation {
+    param([object]$Expected,[IntPtr]$Window,[int]$TimeoutMs=3000)
+    $clock=[Diagnostics.Stopwatch]::StartNew()
+    do {
+        if (Test-OracleExpectation $Expected $Window) { return }
+        Start-Sleep -Milliseconds 20
+    } while ($clock.ElapsedMilliseconds -lt $TimeoutMs)
+    throw ("Observable postcondition did not occur: {0}" -f ($Expected | ConvertTo-Json -Compress))
+}
+
+function Set-OracleInterestingState {
+    param([IntPtr]$Window)
+    foreach ($entry in @([CardStack.Oracle.Native]::Controls($Window))) {
+        if (!$entry.visible -or !$entry.enabled -or $entry.class -notin @('ComboBox','ListBox')) { continue }
+        $handle=[IntPtr][long]$entry.handle
+        $combo=$entry.class -eq 'ComboBox'
+        $count=[CardStack.Oracle.Native]::Send($handle,$(if($combo){0x146}else{0x18B}),[IntPtr]::Zero,[IntPtr]::Zero).ToInt32()
+        if ($count -lt 1 -or $count -gt 1024) { continue }
+        $measured=[CardStack.Oracle.Native]::WidestItem($handle)
+        $journal=$script:OracleSteps[$script:OracleSteps.Count-1]
+        if (!$journal.Contains('measuredItems')) { $journal['measuredItems']=@() }
+        $journal['measuredItems']+=@([ordered]@{controlId=[int]$entry.id;selection=$measured})
+        [void][CardStack.Oracle.Native]::Send($handle,$(if($combo){0x14E}else{0x186}),[IntPtr][int]$measured.index,[IntPtr]::Zero)
+        Send-ControlNotification -ParentHandle $Window -ControlHandle $handle -ControlId ([int]$entry.id) -NotificationCode 1
     }
 }
 
@@ -822,6 +832,7 @@ function Expand-Token {
     if ($FixtureSpec.password) {
         $result = $result.Replace("{password}", [string]$FixtureSpec.password)
     }
+    $result = $result.Replace("{iteration}", ([string]$script:OracleIteration))
     return $result
 }
 
@@ -836,6 +847,12 @@ function Remove-StaleFixtureOutputs {
     $names = New-Object System.Collections.Generic.List[string]
     $patterns = New-Object System.Collections.Generic.List[string]
 
+    $protectedInputPaths=@()
+    if (![string]::IsNullOrWhiteSpace($LaunchDocument)) {
+        $inputPath=if([IO.Path]::IsPathRooted($LaunchDocument)){$LaunchDocument}else{Join-Path $runtimeDir $LaunchDocument}
+        $inputPath=[IO.Path]::GetFullPath($inputPath)
+        $protectedInputPaths=@($inputPath,[IO.Path]::ChangeExtension($inputPath,'.RPT'))
+    }
     $fixtureFile = Split-Path -Leaf $FixturePath
     $fixtureBase = [System.IO.Path]::GetFileNameWithoutExtension($FixturePath)
     $names.Add($fixtureFile) | Out-Null
@@ -862,6 +879,10 @@ function Remove-StaleFixtureOutputs {
     foreach ($directory in $directories) {
         foreach ($name in ($names | Select-Object -Unique)) {
             $path = if ([System.IO.Path]::IsPathRooted($name)) { $name } else { Join-Path $directory $name }
+            if ($protectedInputPaths -icontains [IO.Path]::GetFullPath($path)) {
+                Write-Step ("Retained staged input document or sidecar: {0}" -f $path)
+                continue
+            }
             if (Test-Path -LiteralPath $path) {
                 try {
                     Remove-Item -LiteralPath $path -Force
@@ -875,6 +896,7 @@ function Remove-StaleFixtureOutputs {
 
         foreach ($pattern in ($patterns | Select-Object -Unique)) {
             Get-ChildItem -Path $directory -Filter $pattern -File -ErrorAction SilentlyContinue |
+                Where-Object { $protectedInputPaths -inotcontains [IO.Path]::GetFullPath($_.FullName) } |
                 ForEach-Object {
                     try {
                         Remove-Item -LiteralPath $_.FullName -Force
@@ -898,6 +920,8 @@ function Invoke-FixtureStep {
         [ref]$CurrentWindow
     )
 
+    $script:OracleSteps.Add([ordered]@{action=[string]$Step.action;controlId=$Step.controlId;commandId=$Step.id;route='private-desktop-window-messages'})
+    if ($CurrentWindow.Value -and [CardStack.Oracle.Native]::IsWindow($CurrentWindow.Value.Handle)) { [CardStack.Oracle.Native]::RequireTarget($CurrentWindow.Value.Handle) }
     if ($Step.comment) {
         Write-Step ([string]$Step.comment)
     }
@@ -945,7 +969,7 @@ function Invoke-FixtureStep {
             if (-not $CurrentWindow.Value) {
                 $CurrentWindow.Value = Wait-OracleWindow -TitleLike "buttonFile" -TimeoutMs 10000 -ProcessId $Process.Id
             }
-            [void][CardStack.Win32Oracle]::PostMessage($CurrentWindow.Value.Handle, 0x0111, [IntPtr]([int]$Step.id), [IntPtr]::Zero)
+            [void][CardStack.Oracle.Native]::Post($CurrentWindow.Value.Handle, 0x0111, [IntPtr]([int]$Step.id), [IntPtr]::Zero)
             $delay = if ($Step.delayMs) { [int]$Step.delayMs } else { 250 }
             Start-Sleep -Milliseconds $delay
         }
@@ -955,11 +979,165 @@ function Invoke-FixtureStep {
                 if (-not $CurrentWindow.Value) {
                     $CurrentWindow.Value = Wait-OracleWindow -TitleLike "buttonFile" -TimeoutMs 10000 -ProcessId $Process.Id
                 }
-                [void][CardStack.Win32Oracle]::PostMessage($CurrentWindow.Value.Handle, 0x0111, [IntPtr]2704, [IntPtr]::Zero)
+                [void][CardStack.Oracle.Native]::Post($CurrentWindow.Value.Handle, 0x0111, [IntPtr]2704, [IntPtr]::Zero)
                 Start-Sleep -Milliseconds 350
                 [void](Accept-LegacyOverwriteDialogIfPresent -ProcessId $Process.Id)
             }
             Start-Sleep -Milliseconds 500
+        }
+        "waitDeck" {
+            $deadline=[DateTime]::UtcNow.AddSeconds(10)
+            do {
+                $ready=$false
+                $mdis=@([CardStack.Oracle.Native]::Controls($CurrentWindow.Value.Handle) | Where-Object { $_.class -eq 'MDIClient' -and $_.visible })
+                if ($mdis.Count -eq 1 -and [CardStack.Oracle.Native]::IsWindowEnabled($CurrentWindow.Value.Handle)) {
+                    $active=[CardStack.Oracle.Native]::Send([IntPtr][long]$mdis[0].handle,0x229,[IntPtr]::Zero,[IntPtr]::Zero)
+                    $ready=[CardStack.Oracle.Native]::IsWindow($active) -and [CardStack.Oracle.Native]::IsWindowVisible($active)
+                    if ($ready -and $Step.titleLike) { $ready=[CardStack.Oracle.Native]::ReadText($active) -like ('*'+[string]$Step.titleLike+'*') }
+                }
+                if ($ready) { break }
+                Start-Sleep -Milliseconds 50
+            } while ([DateTime]::UtcNow -lt $deadline)
+            if (!$ready) { throw 'No visible active deck became ready; no forced-visibility fallback is allowed.' }
+        }
+        "nudgeFrame" {
+            $index=if($Step.grid){[int]$script:OracleIteration-1}else{[int]$Step.index}
+            $dx=[int]$Step.dx;$dy=[int]$Step.dy
+            if($Step.grid){
+                $columns=[int]$Step.grid.columns
+                if($columns -lt 1 -or $columns -gt 40){throw 'Invalid authoring grid.'}
+                $dx=[int]$Step.grid.offsetX+($index % $columns)*[int]$Step.grid.columnPitch
+                $dy=[int]$Step.grid.offsetY+[Math]::Floor($index/$columns)*[int]$Step.grid.rowPitch
+            }
+            if([Math]::Abs($dx)+[Math]::Abs($dy) -gt 2400 -or $dx % 3 -ne 0 -or $dy % 3 -ne 0){throw 'A bounded three-pixel keyboard nudge is required.'}
+            $controls=@([CardStack.Oracle.Native]::Controls($CurrentWindow.Value.Handle))
+            $frames=@($controls | Where-Object {$_.class -like '*TNcontrols' -and $_.visible -and $_.id -eq $index})
+            $mdi=@($controls | Where-Object {$_.class -eq 'MDIClient' -and $_.visible})
+            if($frames.Count -ne 1 -or $mdi.Count -ne 1){throw 'The newly added frame must be uniquely visible.'}
+            $frame=[IntPtr][long]$frames[0].handle
+            $target=[CardStack.Oracle.Native]::Send([IntPtr][long]$mdi[0].handle,0x229,[IntPtr]::Zero,[IntPtr]::Zero)
+            [CardStack.Oracle.Native]::FocusPrivateWindow($target)
+            $script:OracleSteps[$script:OracleSteps.Count-1]['focusSetup']='private-logical-focus-only'
+            $before=@($frames[0].rect)
+            $lease=[CardStack.Oracle.Native]::BeginKeys($target,@())
+            try{
+                foreach($axis in @(@{delta=$dx;positive=39;negative=37},@{delta=$dy;positive=40;negative=38})){
+                    $key=if($axis.delta -ge 0){$axis.positive}else{$axis.negative}
+                    for($pulse=0;$pulse -lt [Math]::Abs($axis.delta)/3;$pulse++){$lease.Down($key);$lease.Up($key)}
+                }
+                $deadline=[DateTime]::UtcNow.AddSeconds(15)
+                do{
+                    $after=@(([CardStack.Oracle.Native]::Describe($frame)).rect)
+                    $verified=$after[0]-$before[0] -eq $dx -and $after[1]-$before[1] -eq $dy -and $after[2] -eq $before[2] -and $after[3] -eq $before[3]
+                    if($verified){break};Start-Sleep -Milliseconds 20
+                }while([DateTime]::UtcNow -lt $deadline)
+                if(!$verified){throw 'The original arrow-key route did not produce the required frame displacement.'}
+                $journal=$script:OracleSteps[$script:OracleSteps.Count-1]
+                $journal['frameIndex']=$index;$journal['dx']=$dx;$journal['dy']=$dy;$journal['before']=$before;$journal['after']=$after;$journal['postconditionVerified']=$true
+            }finally{$lease.Dispose()}
+        }
+        "frameDoubleClick" {
+            $frames=@([CardStack.Oracle.Native]::Controls($CurrentWindow.Value.Handle) | Where-Object { $_.class -like '*TNcontrols' -and $_.visible -and $_.id -eq [int]$Step.controlId })
+            if($frames.Count -ne 1){throw 'Designer frame target is missing or ambiguous.'}
+            [CardStack.Oracle.Native]::Click([IntPtr][long]$frames[0].handle,-1,-1,$true)
+        }
+        "assertField" {
+            $mdi=@([CardStack.Oracle.Native]::Controls($CurrentWindow.Value.Handle) | Where-Object { $_.class -eq 'MDIClient' -and $_.visible })
+            if($mdi.Count -ne 1){throw 'A visible MDI client is required for field readback.'}
+            $active=[CardStack.Oracle.Native]::Send([IntPtr][long]$mdi[0].handle,0x229,[IntPtr]::Zero,[IntPtr]::Zero)
+            $field=@([CardStack.Oracle.Native]::Controls($active) | Where-Object { $_.id -eq (5200+[int]$Step.index) -and $_.class -like '*EntryField*' -and $_.visible })
+            if($field.Count -ne 1){throw 'Reopened field is missing or ambiguous.'}
+            $expected=Expand-Token -Value ([string]$Step.text) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
+            if([CardStack.Oracle.Native]::ReadText([IntPtr][long]$field[0].handle) -cne $expected){throw "Reopened field $($Step.index) differs from its authored value."}
+            $script:OracleSteps[$script:OracleSteps.Count-1]['readbackVerified']=$true
+        }
+        "assertDeckCount" {
+            $deadline=[DateTime]::UtcNow.AddSeconds(5)
+            do {
+                $counters=@([CardStack.Oracle.Native]::Controls($CurrentWindow.Value.Handle) | Where-Object { $_.id -eq 4010 -and $_.class -eq 'Static' -and $_.visible })
+                $matches=@($counters | Where-Object { $_.text -match ('\bof\s+'+[regex]::Escape([string]$Step.count)+'\s*$') })
+                if ($matches.Count) { break };Start-Sleep -Milliseconds 50
+            } while([DateTime]::UtcNow -lt $deadline)
+            if (!$matches.Count) { throw "Original card counter did not report $($Step.count) records." }
+        }
+        "repeat" {
+            $count=[int]$Step.count
+            if ($count -lt 1 -or $count -gt 100) { throw 'Repeat count must be between 1 and 100.' }
+            $previous=$script:OracleIteration
+            try { for ($iteration=1;$iteration -le $count;$iteration++) {
+                $script:OracleIteration=$iteration
+                foreach($childStep in $Step.steps) { Invoke-FixtureStep -Step $childStep -FixtureSpec $FixtureSpec -FixturePath $FixturePath -OutputDir $OutputDir -Process $Process -CurrentWindow $CurrentWindow }
+            }} finally { $script:OracleIteration=$previous }
+        }
+        "saveDeckAs" {
+            $main=Wait-OracleWindow -TitleLike 'buttonFile' -ExcludeTitleLike 'Evaluation Copy' -TimeoutMs 10000 -ProcessId $Process.Id
+            $deadline=[DateTime]::UtcNow.AddSeconds(10);$requested=$false;$fileDialog=$null
+            do {
+                $found=New-Object 'System.Collections.Generic.List[object]'
+                $callback=[CardStack.EnumWindowsProc]{ param([IntPtr]$window,[IntPtr]$parameter)
+                    $pidValue=0;[void][CardStack.Win32Oracle]::GetWindowThreadProcessId($window,[ref]$pidValue)
+                    if ($pidValue -eq $Process.Id -and [CardStack.Win32Oracle]::IsWindowVisible($window) -and [CardStack.Win32Oracle]::GetDlgItem($window,1152) -ne [IntPtr]::Zero) {
+                        $found.Add([pscustomobject]@{Handle=$window;Title=(Get-WindowTitle $window)})
+                    };return $true
+                }
+                [void][CardStack.Win32Oracle]::EnumWindows($callback,[IntPtr]::Zero)
+                if ($found.Count -eq 1) { $fileDialog=$found[0];break }
+                Assert-NoLegacyErrorDialog -ProcessId $Process.Id
+                if (!$requested -and [CardStack.Oracle.Native]::IsWindowEnabled($main.Handle)) {
+                    [CardStack.Oracle.Native]::Post($main.Handle,0x111,[IntPtr]2005,[IntPtr]::Zero);$requested=$true
+                }
+                Start-Sleep -Milliseconds 100
+            } while([DateTime]::UtcNow -lt $deadline)
+            if (!$fileDialog) { throw 'A file destination dialog did not become available.' }
+            $edit=[CardStack.Win32Oracle]::GetDlgItem($fileDialog.Handle,1152)
+            $name=if($Step.fileName){[string]$Step.fileName}else{Split-Path -Leaf $FixturePath}
+            if([IO.Path]::GetFileName($name) -ne $name -or $name -in @('','.','..')){throw 'Save destination must be a leaf filename.'}
+            [CardStack.Oracle.Native]::WriteText($edit,$name)
+            [CardStack.Oracle.Native]::Post($fileDialog.Handle,0x111,[IntPtr]1,[CardStack.Win32Oracle]::GetDlgItem($fileDialog.Handle,1))
+            do { Assert-NoLegacyErrorDialog -ProcessId $Process.Id;if(![CardStack.Oracle.Native]::IsWindow($fileDialog.Handle)){break};Start-Sleep -Milliseconds 50 } while([DateTime]::UtcNow -lt $deadline)
+            if ([CardStack.Oracle.Native]::IsWindow($fileDialog.Handle)) { throw 'The file destination dialog did not close.' }
+            $CurrentWindow.Value=$main
+        }
+        "editField" {
+            $index=[int]$Step.index
+            if ($index -lt 0 -or $index -ge 40) { throw 'Field index must be between 0 and 39.' }
+            $mdi=@([CardStack.Oracle.Native]::Controls($CurrentWindow.Value.Handle) | Where-Object { $_.class -eq 'MDIClient' })
+            if ($mdi.Count -ne 1) { throw 'A unique MDI client is required for field editing.' }
+            $active=[CardStack.Oracle.Native]::Send([IntPtr][long]$mdi[0].handle,0x229,[IntPtr]::Zero,[IntPtr]::Zero)
+            $fields=@([CardStack.Oracle.Native]::Controls($active) | Where-Object { $_.id -eq (5200+$index) -and $_.class -like '*EntryField*' -and $_.visible })
+            if ($fields.Count -ne 1) { throw "A unique visible field $index was not found in the active deck." }
+            $control=[IntPtr][long]$fields[0].handle
+            Invoke-MessageClick -Handle $control
+            [CardStack.Oracle.Native]::FocusPrivateWindow($control)
+            $text=Expand-Token -Value ([string]$Step.text) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
+            $expected=if ($null -ne $Step.expectedText) { [string]$Step.expectedText } else { $text }
+            [CardStack.Oracle.Native]::TypeText($control,$text)
+            $deadline=[DateTime]::UtcNow.AddSeconds([Math]::Min(45,5+[Math]::Ceiling($text.Length/500.0)))
+            do { $actual=[CardStack.Oracle.Native]::ReadText($control);if($actual -eq $expected){break};Start-Sleep -Milliseconds 20 } while([DateTime]::UtcNow -lt $deadline)
+            if ($actual -ne $expected) { throw "Field $index input readback differs: expected length $($expected.Length), got $($actual.Length)." }
+            $lease=[CardStack.Oracle.Native]::BeginKeys($control,@())
+            try {
+                $tabMoved=$null
+                if ($Step.testTab) {
+                    $lease.Down(9)
+                    $deadline=[DateTime]::UtcNow.AddSeconds(3)
+                    while ([CardStack.Oracle.Native]::FocusWindow($control) -eq $control -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 10 }
+                    $lease.Up(9)
+                    $tabMoved=[CardStack.Oracle.Native]::FocusWindow($control) -ne $control
+                }
+                if (!$tabMoved) {
+                    # Fixture authoring may change logical focus directly; this is NOT counted as a Tab pass.
+                    $nextFields=@([CardStack.Oracle.Native]::Controls($active) | Where-Object { $_.class -like '*EntryField*' -and $_.visible -and $_.enabled -and $_.id -gt (5200+$index) } | Sort-Object id)
+                    if (!$nextFields.Count) { $nextFields=@([CardStack.Oracle.Native]::Controls($active) | Where-Object { $_.class -like '*EntryField*' -and $_.visible -and $_.enabled -and $_.id -ne (5200+$index) } | Sort-Object id) }
+                    if (!$nextFields.Count) { throw 'No alternate entry field is available for a verified commit.' }
+                    $nextFocus=[IntPtr][long]$nextFields[0].handle
+                    [CardStack.Oracle.Native]::FocusPrivateWindow($nextFocus)
+                }
+                if ([CardStack.Oracle.Native]::FocusWindow($control) -eq $control) { throw 'Field edit did not leave its editor.' }
+            } finally { $lease.Dispose() }
+            $journal=$script:OracleSteps[$script:OracleSteps.Count-1]
+            $journal['fieldIndex']=$index;$journal['expectedText']=$expected;$journal['readbackVerified']=$true
+            $journal['tabMovedFocus']=$tabMoved;$journal['commitRoute']=if($tabMoved){'key-tab'}else{'private-logical-focus'}
         }
         "setText" {
             if (-not $CurrentWindow.Value) {
@@ -1052,11 +1230,7 @@ function Invoke-FixtureStep {
             }
             $text = Expand-Token -Value ([string]$Step.text) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
             Set-OracleFocus -WindowHandle $CurrentWindow.Value.Handle -ControlHandle $control
-            Invoke-PhysicalClick -Handle $control
-            Start-Sleep -Milliseconds 150
-            Set-OracleFocus -WindowHandle $CurrentWindow.Value.Handle -ControlHandle $control
-            Invoke-SelectAllKeys
-            Invoke-TextKeys -Text $text
+            [CardStack.Oracle.Native]::TypeText($control,$text)
             Start-Sleep -Milliseconds 250
         }
         "selectIndex" {
@@ -1145,61 +1319,26 @@ function Invoke-FixtureStep {
                 }
                 throw "Control ID $($Step.controlId) was not found in '$($CurrentWindow.Value.Title)'."
             }
-            Set-OracleFocus -WindowHandle $CurrentWindow.Value.Handle -ControlHandle $control
-            [void][CardStack.Win32Oracle]::SendMessage($control, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
-            Send-ControlNotification -ParentHandle $CurrentWindow.Value.Handle -ControlHandle $control -ControlId ([int]$Step.controlId) -NotificationCode 0
+            Invoke-MessageClick -Handle $control
             Start-Sleep -Milliseconds 500
         }
-        "physicalClick" {
-            if (-not $CurrentWindow.Value) {
-                throw "physicalClick requires a current window. Add waitWindow before this step."
-            }
-            $control = [CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle, [int]$Step.controlId)
+        { $_ -in @("mouseClick","physicalClick") } {
+            if (-not $CurrentWindow.Value) { throw 'mouseClick requires a current window.' }
+            $control=[CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle,[int]$Step.controlId)
             if ($control -eq [IntPtr]::Zero) {
-                if ($Step.optional) {
-                    Write-Step ("Optional physicalClick skipped; control {0} is no longer present in '{1}'." -f ([int]$Step.controlId), $CurrentWindow.Value.Title)
-                    break
-                }
-                throw "Control ID $($Step.controlId) was not found in '$($CurrentWindow.Value.Title)'."
+                if ($Step.optional) { break }
+                throw "Missing mouse target control $($Step.controlId)."
             }
-            Set-OracleFocus -WindowHandle $CurrentWindow.Value.Handle -ControlHandle $control
-            Invoke-PhysicalClick -Handle $control
-            Start-Sleep -Milliseconds 500
+            Invoke-MessageClick -Handle $control
         }
         "listDoubleClick" {
-            if (-not $CurrentWindow.Value) {
-                throw "listDoubleClick requires a current window. Add waitWindow before this step."
-            }
-            $control = [CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle, [int]$Step.controlId)
-            if ($control -eq [IntPtr]::Zero) {
-                throw "Control ID $($Step.controlId) was not found in '$($CurrentWindow.Value.Title)'."
-            }
-            $className = Get-WindowClass $control
-            if ($className -ne "ListBox") {
-                throw "Control ID $($Step.controlId) is '$className', not a ListBox."
-            }
-            $index = [int][CardStack.Win32Oracle]::SendMessage($control, 0x0188, [IntPtr]::Zero, [IntPtr]::Zero)
-            if ($index -lt 0) {
-                throw "ListBox control $($Step.controlId) does not have a current selection."
-            }
-            $rect = New-Object CardStack.RECT
-            [void][CardStack.Win32Oracle]::SendMessageRect($control, 0x0198, [IntPtr]$index, [ref]$rect)
-            $point = New-Object CardStack.POINT
-            $point.X = [int](($rect.Left + $rect.Right) / 2)
-            $point.Y = [int](($rect.Top + $rect.Bottom) / 2)
-            [void][CardStack.Win32Oracle]::ClientToScreen($control, [ref]$point)
-            Write-Step ("Physical double-click list item {0} at {1},{2} rect=({3},{4})-({5},{6})" -f $index, $point.X, $point.Y, $rect.Left, $rect.Top, $rect.Right, $rect.Bottom)
-            [void][CardStack.Win32Oracle]::SetForegroundWindow($CurrentWindow.Value.Handle)
-            [void][CardStack.Win32Oracle]::SetCursorPos($point.X, $point.Y)
-            Start-Sleep -Milliseconds 100
-            for ($i = 0; $i -lt 2; $i++) {
-                [CardStack.Win32Oracle]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-                Start-Sleep -Milliseconds 50
-                [CardStack.Win32Oracle]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-                Start-Sleep -Milliseconds 150
-            }
-            Send-ControlNotification -ParentHandle $CurrentWindow.Value.Handle -ControlHandle $control -ControlId ([int]$Step.controlId) -NotificationCode 2
-            Start-Sleep -Milliseconds 500
+            if (-not $CurrentWindow.Value) { throw 'listDoubleClick requires a current window.' }
+            $control=[CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle,[int]$Step.controlId)
+            $index=[int]$Step.index
+            $rect=New-Object CardStack.RECT
+            [void][CardStack.Win32Oracle]::SendMessageRect($control,0x198,[IntPtr]$index,[ref]$rect)
+            [CardStack.Oracle.Native]::Click($control,[int](($rect.Left+$rect.Right)/2),[int](($rect.Top+$rect.Bottom)/2),$true)
+            Start-Sleep -Milliseconds 300
         }
         "acceptLegacyDialog" {
             $messageLike = if ($Step.messageLike) { [string]$Step.messageLike } else { "" }
@@ -1208,7 +1347,7 @@ function Invoke-FixtureStep {
             $deadline = (Get-Date).AddMilliseconds($timeout)
             $dialog = $null
             do {
-                $candidate = Get-LegacyErrorDialog -ProcessId $Process.Id
+                $candidate = Get-LegacyErrorDialog -ProcessId $Process.Id -ExpectedMessage $messageLike
                 if ($candidate -and ([string]::IsNullOrWhiteSpace($messageLike) -or $candidate.Message -like "*$messageLike*")) {
                     $dialog = $candidate
                     break
@@ -1216,11 +1355,11 @@ function Invoke-FixtureStep {
                 Start-Sleep -Milliseconds 250
             } while ((Get-Date) -lt $deadline)
             if (-not $dialog) {
-                throw "Timed out waiting for expected legacy dialog matching '$messageLike'."
+                throw "Timed out waiting for expected legacy dialog matching '$messageLike'. Last observed message: $($candidate.Message)"
             }
             Write-Step ("Accept legacy dialog: {0}" -f $dialog.Message)
             $CurrentWindow.Value = $dialog
-            $control = [CardStack.Win32Oracle]::GetDlgItem($dialog.Handle, $buttonId)
+            $control = Get-OracleDialogButton -Dialog $dialog.Handle -Id $buttonId
             if ($control -eq [IntPtr]::Zero) {
                 throw "Button ID $buttonId was not found in expected legacy dialog '$($dialog.Title)'."
             }
@@ -1238,7 +1377,7 @@ function Invoke-FixtureStep {
                     break
                 }
                 Write-Step ("Accept legacy dialog: {0}" -f $dialog.Message)
-                $control = [CardStack.Win32Oracle]::GetDlgItem($dialog.Handle, $buttonId)
+                $control = Get-OracleDialogButton -Dialog $dialog.Handle -Id $buttonId
                 if ($control -eq [IntPtr]::Zero) {
                     throw "Button ID $buttonId was not found in expected legacy dialog '$($dialog.Title)'."
                 }
@@ -1263,10 +1402,7 @@ function Invoke-FixtureStep {
                 }
                 throw "Control ID $($Step.controlId) was not found in '$($CurrentWindow.Value.Title)'."
             }
-            Set-OracleFocus -WindowHandle $CurrentWindow.Value.Handle -ControlHandle $control
-            $messageResult = [IntPtr]::Zero
-            $sendResult = [CardStack.Win32Oracle]::SendMessageTimeout($control, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero, 0x0002, 5000, [ref]$messageResult)
-            Write-Step ("BM_CLICK SendMessageTimeout returned {0}, result {1}" -f $sendResult, $messageResult)
+            Invoke-MessageClick -Handle $control
             $timeout = if ($Step.timeoutMs) { [int]$Step.timeoutMs } else { 300 }
             if ($Step.allowLegacyError) {
                 Start-Sleep -Milliseconds $timeout
@@ -1283,8 +1419,7 @@ function Invoke-FixtureStep {
             if ($control -eq [IntPtr]::Zero) {
                 throw "Control ID 1 was not found in '$($CurrentWindow.Value.Title)'."
             }
-            [void][CardStack.Win32Oracle]::SetForegroundWindow($CurrentWindow.Value.Handle)
-            $wParam = [IntPtr]((0 -shl 16) -bor 1)
+                        $wParam = [IntPtr]((0 -shl 16) -bor 1)
             $messageResult = [IntPtr]::Zero
             $sendResult = [CardStack.Win32Oracle]::SendMessageTimeout($CurrentWindow.Value.Handle, 0x0111, $wParam, $control, 0x0002, 5000, [ref]$messageResult)
             Write-Step ("WM_COMMAND/IDOK SendMessageTimeout returned {0}, result {1}" -f $sendResult, $messageResult)
@@ -1295,9 +1430,9 @@ function Invoke-FixtureStep {
             if (-not $CurrentWindow.Value) {
                 throw "commonDialogFileOk requires a current window. Add waitWindow before this step."
             }
-            $fileOkMessage = Get-CommonDialogMessage -Name "commdlg_FileNameOK"
-            [void][CardStack.Win32Oracle]::PostMessage($CurrentWindow.Value.Handle, $fileOkMessage, [IntPtr]::Zero, [IntPtr]::Zero)
-            Write-Step "Posted commdlg_FileNameOK"
+            $button=[CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle,1)
+            [CardStack.Oracle.Native]::Post($CurrentWindow.Value.Handle,0x111,[IntPtr]1,$button)
+            Write-Step 'Submitted the actual common-dialog IDOK route (not a synthetic FILEOK hook).'
             $timeout = if ($Step.timeoutMs) { [int]$Step.timeoutMs } else { 5000 }
             Wait-OracleIdleOrError -ProcessId $Process.Id -TimeoutMs $timeout
         }
@@ -1312,17 +1447,46 @@ function Invoke-FixtureStep {
             Start-Sleep -Milliseconds 500
         }
         "sendKeys" {
-            if (-not $CurrentWindow.Value) {
-                $CurrentWindow.Value = Wait-OracleWindow -TitleLike "buttonFile" -TimeoutMs 10000 -ProcessId $Process.Id
+            $keys=Expand-Token -Value ([string]$Step.keys) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
+            if ($keys -match '[{+^%]') { throw 'SendKeys syntax is not accepted. Use a key action with virtualKey, modifiers and an observable expect condition.' }
+            $target=[CardStack.Oracle.Native]::FocusWindow($CurrentWindow.Value.Handle)
+            if ($target -eq [IntPtr]::Zero) { throw 'No logical focus target for literal text.' }
+            [CardStack.Oracle.Native]::TypeText($target,$keys)
+        }
+        "focus" {
+            $control=[CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle,[int]$Step.controlId)
+            Set-OracleFocus $CurrentWindow.Value.Handle $control
+        }
+        "key" {
+            if (!$Step.expect) { throw 'Key delivery requires an observable expect condition.' }
+            $target=if ($Step.controlId) { [CardStack.Win32Oracle]::GetDlgItem($CurrentWindow.Value.Handle,[int]$Step.controlId) } else { [CardStack.Oracle.Native]::FocusWindow($CurrentWindow.Value.Handle) }
+            $focusDeadline=[DateTime]::UtcNow.AddSeconds(3)
+            while ($target -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $focusDeadline) {
+                Start-Sleep -Milliseconds 10
+                $target=[CardStack.Oracle.Native]::FocusWindow($CurrentWindow.Value.Handle)
             }
-            [void][CardStack.Win32Oracle]::SetForegroundWindow($CurrentWindow.Value.Handle)
-            Start-Sleep -Milliseconds 150
-            $keys = Expand-Token -Value ([string]$Step.keys) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
-            $shell = New-Object -ComObject WScript.Shell
-            $shell.SendKeys($keys)
-            if ($Step.delayMs) {
-                Start-Sleep -Milliseconds ([int]$Step.delayMs)
-            }
+            if ($target -eq [IntPtr]::Zero) { throw 'No logical focus target for this keyboard probe.' }
+            $journal=$script:OracleSteps[$script:OracleSteps.Count-1]
+            $journal['targetHandle']=$target.ToInt64()
+            $journal['virtualKey']=[int]$Step.virtualKey
+            $journal['modifiers']=@($Step.modifiers)
+            $journal['expected']=$Step.expect
+            $lease=[CardStack.Oracle.Native]::BeginKeys($target,[string[]]@($Step.modifiers))
+            try {
+                $lease.Down([int]$Step.virtualKey)
+                Wait-OracleExpectation -Expected $Step.expect -Window $CurrentWindow.Value.Handle
+                $journal['postconditionVerified']=$true
+                $lease.Up([int]$Step.virtualKey)
+            } finally { $lease.Dispose() }
+        }
+        "assert" {
+            Wait-OracleExpectation -Expected $Step.expect -Window $CurrentWindow.Value.Handle
+        }
+        "capture" {
+            Save-OracleCapture -Handle $CurrentWindow.Value.Handle -Key ([string]$Step.key) -OutputDir $OutputDir
+        }
+        "interestingState" {
+            Set-OracleInterestingState -Window $CurrentWindow.Value.Handle
         }
         "dumpControls" {
             if (-not $CurrentWindow.Value) {
@@ -1346,30 +1510,27 @@ function Invoke-FixtureStep {
             Write-TopWindowDump -ProcessId $Process.Id
         }
         "snapshot" {
-            $label = if ($Step.label) { [string]$Step.label } else { [string]$FixtureSpec.name }
-            $snapshotDir = Join-Path $OutputDir ("snapshot-" + $label)
+            $label=if($Step.label){[string]$Step.label}else{[string]$FixtureSpec.name}
+            if ($label -notmatch '^[A-Za-z0-9_-]+$') { throw 'Unsafe snapshot label.' }
+            $snapshotDir=[IO.Path]::GetFullPath((Join-Path $OutputDir ('snapshot-'+$label)))
+            if (!$snapshotDir.StartsWith($OutputDir+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Snapshot escaped its output directory.' }
             New-Item -ItemType Directory -Force -Path $snapshotDir | Out-Null
-            Get-ChildItem -Path $snapshotDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
-            $runtimeDir = Split-Path -Parent $FixturePath
-            $snapshotFiles = @()
+            Get-ChildItem -LiteralPath $snapshotDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
+            $runtimeDir=Split-Path -Parent $FixturePath
+            $snapshotFiles=@()
             if ($Step.patterns) {
-                foreach ($pattern in $Step.patterns) {
-                    $expandedPattern = Expand-Token -Value ([string]$pattern) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
-                    $snapshotFiles += Get-ChildItem -Path $runtimeDir -Filter $expandedPattern -File -ErrorAction SilentlyContinue
+                foreach($pattern in $Step.patterns) {
+                    $expanded=Expand-Token -Value ([string]$pattern) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
+                    $snapshotFiles+=Get-ChildItem -LiteralPath $runtimeDir -Filter $expanded -File -ErrorAction SilentlyContinue
                 }
+            } else {
+                $snapshotFiles=@(Get-ChildItem -LiteralPath $runtimeDir -File | Where-Object { $_.Extension -match '^\.(BTN|RPT|BTR|DAT|DBF|DBT|CRD|WP|TN|CSV)$' })
             }
-            else {
-                $snapshotFiles = Get-ChildItem -Path $runtimeDir -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Extension -match '^\.(BTN|RPT|BTR|DAT|DBF|DBT|CRD|WP|TN|CSV)$' }
-            }
-            $snapshotFiles | Select-Object -Unique | ForEach-Object {
-                try {
-                    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $snapshotDir $_.Name) -Force
-                }
-                catch {
-                    Write-Step ("Snapshot skipped locked file: {0}" -f $_.FullName)
-                }
-            }
+            foreach($file in @($snapshotFiles | Sort-Object FullName -Unique)) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $snapshotDir $file.Name) -Force }
+            $retained=@(Get-ChildItem -LiteralPath $snapshotDir -File | Where-Object { $_.Length -gt 0 })
+            if (!$retained.Count -and !$Step.allowEmpty) { throw "Snapshot retained no nonempty artifacts: $label" }
+            $proof=@($retained | ForEach-Object { [ordered]@{name=$_.Name;size=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash} })
+            [ordered]@{label=$label;files=$proof} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $snapshotDir 'snapshot.json') -Encoding UTF8
             Write-Step "Snapshot copied to $snapshotDir"
         }
         "copyRuntimeFile" {
@@ -1388,7 +1549,8 @@ function Invoke-FixtureStep {
             $found = $false
             $matchedFile = $null
             foreach ($pattern in $Step.patterns) {
-                $candidate = Get-ChildItem -Path (Split-Path -Parent $FixturePath) -Filter ([string]$pattern) -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                $expandedPattern=Expand-Token -Value ([string]$pattern) -FixtureSpec $FixtureSpec -FixturePath $FixturePath
+                $candidate = Get-ChildItem -Path (Split-Path -Parent $FixturePath) -Filter $expandedPattern -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 0 } | Select-Object -First 1
                 if ($candidate) {
                     $found = $true
                     $matchedFile = $candidate
@@ -1421,9 +1583,43 @@ function Invoke-FixtureStep {
     }
 }
 
+# Isolation is the default and only automation mode. The desktop is never made visible.
+foreach ($path in @($OutputDir,$RuntimeDir)) {
+    $allowed = @((Join-Path $repoRoot 'build'), (Join-Path $repoRoot 'docs\audit')) | ForEach-Object { $_ + [IO.Path]::DirectorySeparatorChar }
+    if (-not @($allowed | Where-Object { $path.StartsWith($_,[StringComparison]::OrdinalIgnoreCase) }).Count) { throw "Oracle scratch paths must be below build or docs/audit: $path" }
+}
+if (-not $IsolatedWorker) {
+    if ($Interactive -or $KeepProcess) { throw 'Interactive foreground and persistent-process modes are not allowed. Use captures, assertions and trace output on the private desktop.' }
+    New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+    $lock=[IO.File]::Open((Join-Path $OutputDir '.oracle.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    try {
+        $definition=Get-Content -LiteralPath $ScenarioPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $chosen=@($definition.fixtures | Where-Object { ($IncludeDisabled -or $_.enabled) -and ($Fixture.Count -eq 0 -or $Fixture -contains $_.name) })
+        if ($chosen.Count -eq 0 -or $chosen.Count -gt 128) { throw 'Select between 1 and 128 explicit fixture cases.' }
+        $runs=New-Object 'System.Collections.Generic.List[object]'
+        foreach ($spec in $chosen) {
+            if ([string]$spec.name -notmatch '^[A-Za-z0-9_-]+$') { throw 'Unsafe fixture case name.' }
+            $runDir=Join-Path (Join-Path $OutputDir 'runs') ([string]$spec.name)
+            New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+            $packet=[ordered]@{LegacyExe=$LegacyExe;LegacyDir=$LegacyDir;WineVdmDir=$WineVdmDir;ScenarioPath=$ScenarioPath;OutputDir=$OutputDir;RuntimeDir=$RuntimeDir;StageOnlyDeck=$StageOnlyDeck;LaunchDocument=$LaunchDocument;Fixture=@([string]$spec.name);IncludeDisabled=[bool]$IncludeDisabled;NoDownload=[bool]$NoDownload;TraceWindows=[bool]$TraceWindows}
+            $packetPath=Join-Path $runDir 'run-request.json'
+            $packet | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $packetPath -Encoding UTF8
+            & (Join-Path $PSScriptRoot 'invoke_private_desktop.ps1') -Executable (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-IsolatedWorker','-RunRequest',$packetPath) -WorkingDirectory $repoRoot -OutputDir $runDir -TimeoutSeconds $TimeoutSeconds
+            $evidence=Join-Path $OutputDir 'run-evidence.json'
+            if (Test-Path -LiteralPath $evidence) { Copy-Item -LiteralPath $evidence -Destination (Join-Path $runDir 'run-evidence.json') -Force }
+            $runs.Add([ordered]@{fixture=[string]$spec.name;status='passed';evidence=(Join-Path $runDir 'run-evidence.json')})
+        }
+        $runs | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $OutputDir 'runs.json') -Encoding UTF8
+    } finally { $lock.Dispose() }
+    exit 0
+}
+[CardStack.Oracle.Native]::RequirePrivate()
+$script:OracleCaptures=New-Object 'System.Collections.Generic.List[object]'
+$script:OracleSteps=New-Object 'System.Collections.Generic.List[object]'
+$script:OracleOutcome='failed'
 $otvdmwPath = Ensure-WineVdm -Root $WineVdmDir
 $legacyExePath = Resolve-LegacyExe
-$scenario = Get-Content -Raw -LiteralPath $ScenarioPath | ConvertFrom-Json
+$scenario = Get-Content -Raw -LiteralPath $ScenarioPath -Encoding UTF8 | ConvertFrom-Json
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $stageDir = $RuntimeDir
@@ -1468,11 +1664,17 @@ if (-not [string]::IsNullOrWhiteSpace($LaunchDocument)) {
     Write-Step "Launch document: $LaunchDocument"
 }
 
-$launchArgs = "`"$stagedExe`""
-if (-not [string]::IsNullOrWhiteSpace($LaunchDocument)) {
-    $launchArgs = $launchArgs + " `"$LaunchDocument`""
+if ([string]::IsNullOrWhiteSpace($LaunchDocument) -and $selectedFixtures.Count -eq 1 -and $selectedFixtures[0].launchDocument) {
+    $leaf=[string]$selectedFixtures[0].launchDocument
+    if ([IO.Path]::GetFileName($leaf) -ne $leaf) { throw 'Scenario launchDocument must be a staged filename, not a path.' }
+    $LaunchDocument=Join-Path $stageDir $leaf
+    if (!(Test-Path -LiteralPath $LaunchDocument -PathType Leaf)) { throw "Missing staged launch document: $leaf" }
 }
-$process = Start-Process -FilePath $otvdmwPath -ArgumentList $launchArgs -WorkingDirectory $stageDir -PassThru
+$launchArgs = @($stagedExe)
+if (-not [string]::IsNullOrWhiteSpace($LaunchDocument)) {
+    $launchArgs += $LaunchDocument
+}
+$process = [CardStack.Oracle.Native]::StartChild($otvdmwPath,[string[]]$launchArgs,$stageDir)
 try {
     $currentWindow = $null
     foreach ($step in $scenario.startup) {
@@ -1507,8 +1709,18 @@ try {
             }
         }
     }
+    $script:OracleOutcome='passed'
+}
+catch {
+    Write-TopWindowDump -ProcessId $process.Id
+    if ($currentWindow -and [CardStack.Oracle.Native]::IsWindow($currentWindow.Handle)) {
+        try { Save-OracleCapture -Handle $currentWindow.Handle -Key 'failure.initial' -OutputDir $OutputDir } catch { Write-Warning $_.Exception.Message }
+    }
+    throw
 }
 finally {
+    [ordered]@{version=1;status=$script:OracleOutcome;desktop=[CardStack.Oracle.Native]::DesktopName();inputDesktop=[CardStack.Oracle.Native]::InputDesktopName();inputMode='window-messages-only';steps=($script:OracleSteps.ToArray());captures=($script:OracleCaptures.ToArray())} |
+        ConvertTo-Json -Depth 24 | Set-Content -LiteralPath (Join-Path $OutputDir 'run-evidence.json') -Encoding UTF8
     if (-not $KeepProcess -and $process -and -not $process.HasExited) {
         Write-Step "Closing legacy oracle process"
         $process.CloseMainWindow() | Out-Null

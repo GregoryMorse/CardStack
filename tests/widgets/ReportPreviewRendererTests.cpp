@@ -1,3 +1,5 @@
+#include "LegacyReportReader.h"
+#include <QFileInfo>
 #include "ReportPreviewRenderer.h"
 #include "FrameDrawingStyle.h"
 #include "ReportTextLayout.h"
@@ -18,12 +20,19 @@
 #include <QWheelEvent>
 
 #include "DeckTemplate.h"
+#include "DeckIndexOrder.h"
 #include "BuiltInReportTemplates.h"
+#include "ReportCoordinates.h"
 #include "LegacyReportReader.h"
+#include "LegacyDeckReader.h"
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "UiIds.h"
 #include "UiBuilder.h"
 #include "ReportPrintEngine.h"
 #include "ReportPreviewDialog.h"
+#include "../support/VisualTestSupport.h"
 
 using namespace CardStack;
 
@@ -255,6 +264,69 @@ class ReportPreviewRendererTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void writesLegacyOracleComparisonImagesWhenConfigured()
+    {
+        const QString output = qEnvironmentVariable("CARDSTACK_ORACLE_REPORT_GALLERY_DIR");
+        const QString source = qEnvironmentVariable("CARDSTACK_GALLERY_LEGACY_DECK");
+        if (output.isEmpty() || source.isEmpty()) QSKIP("Set oracle gallery output and input deck for matched-data report captures.");
+        auto imported = LegacyDeckReader{}.readDeck(source);
+        QVERIFY2(imported.ok(), qPrintable(imported.errorMessage));
+        const QString sidecar = QFileInfo(source).dir().filePath(QFileInfo(source).completeBaseName() + QStringLiteral(".RPT"));
+        if (QFileInfo::exists(sidecar)) {
+            QStringList fieldNames;
+            for (const auto& field : imported.deck.fields()) fieldNames.append(field.name());
+            const auto reports = LegacyReportReader{}.readFile(sidecar, fieldNames);
+            QVERIFY2(reports.ok(), qPrintable(reports.errorMessage));
+            for (const auto& report : reports.reports) imported.deck.addReport(report);
+        }
+        if (imported.deck.reportCount() == 0) QSKIP("The supplied deck has no available report definitions; this is not renderer coverage.");
+        const Deck& deck = imported.deck;
+        QDir directory(output);
+        QVERIFY(directory.exists() || directory.mkpath(QStringLiteral(".")));
+        QVector<ReportPreviewData> records;
+        const int count = std::min(deck.cardCount(), 1000);
+        QVector<int> order;
+        for (int card = 0; card < deck.cardCount(); ++card) order.append(card);
+        auto sortKeys = deck.sortKeys();
+        if (sortKeys.isEmpty() && deck.fieldCount() > 0) sortKeys.append({0, false});
+        std::stable_sort(order.begin(), order.end(), [&](int left, int right) {
+            return indexSortsBefore(deck.cardAt(left), deck.cardAt(right), sortKeys);
+        });
+        for (int position = 0; position < count; ++position) {
+            const int card = order.at(position);
+            ReportPreviewData data;
+            for (int field = 0; field < deck.fieldCount(); ++field)
+                data.fieldValues.insert(deck.fieldAt(field).name(), deck.cardAt(card).valueAt(field));
+            data.systemValues.insert(QStringLiteral("file"), deck.name());
+            data.systemValues.insert(QStringLiteral("record"), QString::number(position + 1));
+            records.append(data);
+        }
+        QJsonArray captures;
+        for (int index = 0; index < deck.reportCount(); ++index) {
+            const auto& report = deck.reportAt(index);
+            const auto pages = ReportPrintEngine::paginate(report, records);
+            if (pages.isEmpty()) continue;
+            const QSizeF fitted = ReportPrintEngine::pageSizeMils(report).scaled(QSizeF(960, 1600), Qt::KeepAspectRatio);
+            QImage image(QSize(std::max(1, qRound(fitted.width())), std::max(1, qRound(fitted.height()))), QImage::Format_RGB32);
+            image.fill(Qt::white);
+            QPainter painter(&image);
+            ReportPrintEngine::renderPage(&painter, report, records, pages.first(), image.rect());
+            painter.end();
+            QVERIFY2(hasInk(image), qPrintable(QStringLiteral("Blank report capture: %1").arg(report.name)));
+            const QString name = QStringLiteral("oracle_report_%1_page_1.png").arg(index);
+            QVERIFY(image.save(directory.filePath(name)));
+            captures.append(QJsonObject{{QStringLiteral("image"), name}, {QStringLiteral("report"), report.name},
+                {QStringLiteral("formWidth"), report.formWidth}, {QStringLiteral("formHeight"), report.formHeight},
+                {QStringLiteral("pageWidth"), report.pageWidth}, {QStringLiteral("pageHeight"), report.pageHeight}});
+        }
+        QFile manifest(directory.filePath(QStringLiteral("oracle-reports.json")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        const QJsonObject evidence{{QStringLiteral("source"), source}, {QStringLiteral("cardsUsed"), count},
+            {QStringLiteral("totalCards"), deck.cardCount()}, {QStringLiteral("captures"), captures}};
+        QVERIFY(manifest.write(QJsonDocument(evidence).toJson()) > 0);
+        QVERIFY(!captures.isEmpty());
+    }
+
     void invalidGridFontAndGeometryAreRejectedAtRenderBoundary()
     {
         const auto original = makeReport();
@@ -307,6 +379,196 @@ private slots:
         QCOMPARE(vertical.pixelColor(4, 0).alpha(), 0);
         QVERIFY(FrameDrawingStyle::fillBrush(ReportFillPatternDarkHorizontal).textureImage()
             != FrameDrawingStyle::fillBrush(ReportFillPatternLightHorizontal).textureImage());
+    }
+
+    void originalDescriptorsRepairOnlyAnUnchangedCoordinateSet()
+    {
+        ReportDefinition report = makeReport();
+        report.formatMagic = QStringLiteral("RPT@#$B");
+        report.frames.resize(1);
+        auto& frame = report.frames[0];
+        frame.signature = ReportCoordinates::DescriptorSignature;
+        frame.kind = ReportFrameKind::Data;
+        frame.legacyDescriptor = QByteArray(ReportCoordinates::DescriptorSize, char(0));
+        const auto word = [&](int at, quint16 value) {
+            frame.legacyDescriptor[at] = char(value & 0xff);
+            frame.legacyDescriptor[at + 1] = char(value >> 8);
+        };
+        word(0, ReportCoordinates::DescriptorSignature);
+        frame.legacyDescriptor[ReportCoordinates::DescriptorKindOffset] = 'D';
+        const QRect raw(24, 87, 123, 21);
+        word(8, raw.x()); word(10, raw.y());
+        word(12, raw.x() + raw.width()); word(14, raw.y() + raw.height());
+        frame.bounds = ReportCoordinates::previousUnadjusted(raw);
+        auto edited = report; edited.frames[0].bounds.translate(1, 0);
+        const auto editedBounds = edited.frames[0].bounds;
+        QVERIFY(!ReportCoordinates::repairPreviousCoordinates(&edited, {}));
+        QCOMPARE(edited.frames[0].bounds, editedBounds);
+        auto wrongKind = report; wrongKind.frames[0].legacyDescriptor[ReportCoordinates::DescriptorKindOffset] = 'L';
+        QVERIFY(!ReportCoordinates::repairPreviousCoordinates(&wrongKind, {}));
+        QVERIFY(ReportCoordinates::repairPreviousCoordinates(&report, {}));
+        QCOMPARE(report.frames[0].bounds, QRect(63, 719, 1281, 219));
+        QVERIFY(!ReportCoordinates::repairPreviousCoordinates(&report, {}));
+        QCOMPARE(report.frames[0].bounds, QRect(63, 719, 1281, 219));
+    }
+
+    void connectedFieldsUseMeasuredAdvanceAndCompactOnlyVacantRows()
+    {
+        ReportDefinition report = makeReport();
+        report.formWidth = report.formHeight = 2000;
+        report.dataFont.legacyHeight = -100;
+        report.frames.clear();
+        const auto add = [&](QRect bounds, QString text, quint8 flags = 0) {
+            ReportFrameDefinition frame; frame.kind = ReportFrameKind::Data;
+            frame.bounds = bounds; frame.text = text; frame.styleFlags = flags;
+            report.frames.append(frame);
+        };
+        add(QRect(100, 100, 500, 200), QStringLiteral("[First] "));
+        add(QRect(600, 100, 500, 200), QStringLiteral("[Last]"));
+        add(QRect(100, 300, 1000, 200), QStringLiteral("[Vacant]"));
+        add(QRect(100, 500, 1000, 200), QStringLiteral("[City]"));
+        ReportPreviewData data;
+        data.fieldValues = {{QStringLiteral("First"), QStringLiteral("Ada")},
+            {QStringLiteral("Last"), QStringLiteral("Lovelace")}, {QStringLiteral("City"), QStringLiteral("London")}};
+        const auto layout = ReportPreviewRenderer::layoutFrames(report, data);
+        const auto item = [&](int index) { for (const auto& placed : layout) if (placed.frameIndex == index) return placed; return ReportFrameLayout{}; };
+        const qreal advance = ReportTextLayout::extent(QStringLiteral("Ada "), report.dataFont, 0, QRectF(100, 100, 1000, 200)).width();
+        QVERIFY(advance > ReportTextLayout::extent(QStringLiteral("Ada"), report.dataFont, 0, QRectF(100, 100, 1000, 200)).width());
+        QVERIFY(qAbs(item(1).bounds.left() - (100 + advance)) < 0.01);
+        QCOMPARE(item(3).bounds.top(), 300.0);
+        data.fieldValues.insert(QStringLiteral("Vacant"), QStringLiteral("Occupied"));
+        const auto filled = ReportPreviewRenderer::layoutFrames(report, data);
+        for (const auto& placed : filled) if (placed.frameIndex == 3) QCOMPARE(placed.bounds.top(), 500.0);
+        report.frames[1].bounds.translate(1, 0);
+        const auto separated = ReportPreviewRenderer::layoutFrames(report, data);
+        for (const auto& placed : separated) if (placed.frameIndex == 1) QCOMPARE(placed.bounds.left(), 601.0);
+    }
+
+    void designerTextStaysInsideSavedFramesInsteadOfPrintFlow()
+    {
+        auto report = makeReport(); report.frames.clear();
+        report.formWidth = report.formHeight = 2000;
+        report.dataFont.legacyHeight = -60;
+        for (int i = 0; i < 2; ++i) {
+            ReportFrameDefinition frame; frame.kind = ReportFrameKind::Data;
+            frame.bounds = QRect(100 + 500 * i, 100, 500, 200);
+            frame.text = i == 0 ? QStringLiteral("[First]") : QStringLiteral("[Second]");
+            report.frames.append(frame);
+        }
+        ReportPreviewData data;
+        data.fieldValues = {{QStringLiteral("First"), QStringLiteral("A")}, {QStringLiteral("Second"), QStringLiteral("B")}};
+        const auto fixed = ReportPreviewRenderer::layoutFrames(report, data, {}, ReportFrameLayoutMode::DesignerFrames);
+        QCOMPARE(fixed.size(), 2);
+        QCOMPARE(fixed[1].bounds, QRectF(report.frames[1].bounds));
+        const auto printed = ReportPreviewRenderer::layoutFrames(report, data);
+        QVERIFY(printed[1].bounds.left() < fixed[1].bounds.left());
+        QImage design(1000, 1000, QImage::Format_RGB32), page(design.size(), design.format());
+        design.fill(Qt::white); page.fill(Qt::white);
+        { QPainter painter(&design); ReportPreviewRenderer::renderDesigner(&painter, report, design.rect(), data); }
+        { QPainter painter(&page); ReportPreviewRenderer::render(&painter, report, page.rect(), data); }
+        const QRect secondTextArea(300, 50, 100, 100);
+        QVERIFY(hasInk(design.copy(secondTextArea)));
+        QVERIFY(!hasInk(page.copy(secondTextArea)));
+    }
+
+    void connectedGroupsHonorCenterAndRightAnchors()
+    {
+        for (quint8 align : {ReportStyleFlagAlignCenter, ReportStyleFlagAlignRight}) {
+            ReportDefinition report = makeReport(); report.frames.clear(); report.dataFont.legacyHeight = -60;
+            for (int i = 0; i < 2; ++i) {
+                ReportFrameDefinition frame; frame.kind = ReportFrameKind::Data;
+                frame.bounds = QRect(100 + i * 400, 100, 400, 200);
+                frame.text = i == 0 ? QStringLiteral("[First] ") : QStringLiteral("[Last]");
+                frame.styleFlags = align; report.frames.append(frame);
+            }
+            ReportPreviewData data; data.fieldValues = {{QStringLiteral("First"), QStringLiteral("Ada")}, {QStringLiteral("Last"), QStringLiteral("Lovelace")}};
+            const auto layout = ReportPreviewRenderer::layoutFrames(report, data);
+            QVERIFY(layout.size() == 2);
+            const qreal first = ReportTextLayout::extent(QStringLiteral("Ada "), report.dataFont, 0, QRectF(0,0,800,200)).width();
+            const qreal last = ReportTextLayout::extent(QStringLiteral("Lovelace"), report.dataFont, 0, QRectF(0,0,800,200)).width();
+            if (align == ReportStyleFlagAlignCenter) {
+                QCOMPARE(layout.first().frameIndex, 0);
+                QVERIFY(qAbs(layout.first().bounds.left() - (100 + (800 - first - last) / 2)) < 0.01);
+            } else {
+                QCOMPARE(layout.first().frameIndex, 1);
+                QCOMPARE(layout.first().bounds.right(), 900.0);
+                QVERIFY(qAbs(layout.last().bounds.right() - (900 - last)) < 0.01);
+            }
+        }
+    }
+
+    void originalMailingLabelFitsWithoutChangingItsDimensions()
+    {
+        const auto source = findBuiltInDeckTemplate(QStringLiteral("Mailing List"));
+        QVERIFY(source.has_value());
+        const auto& report = source->reports.first();
+        QCOMPARE(report.formWidth, 4188); QCOMPARE(report.formHeight, 1000);
+        const auto data = previewDataForTemplate(*source, 1);
+        const auto layout = ReportPreviewRenderer::layoutFrames(report, data);
+        bool city = false;
+        for (const auto& placed : layout) {
+            if (report.frames.at(placed.frameIndex).fieldPlaceholders.contains(QStringLiteral("City"))) {
+                city = true; QVERIFY(!placed.text.isEmpty());
+                QCOMPARE(placed.bounds.top(), 719.0);
+                QVERIFY(placed.bounds.bottom() <= report.formHeight);
+            }
+        }
+        QVERIFY(city);
+        QCOMPARE(ReportCoordinates::fromDesigner(QRect(24, 87, 123, 21)), QRect(63, 719, 1281, 219));
+    }
+
+    void physicalGridPitchUsesPrintableHeightAndDownCount()
+    {
+        auto report = makeCardGridReport();
+        report.pageWidth = 5000; report.pageHeight = 7000;
+        report.marginLeft = report.marginRight = 100;
+        report.marginTop = report.marginBottom = 500;
+        report.verticalGutter = 200;
+        const auto pages = ReportPrintEngine::paginate(report, 4);
+        QCOMPARE(pages.size(), 1);
+        QVERIFY(qAbs(pages.first().cells.at(2).target.top() - 3100.0 / 6000.0) < 0.000001);
+        QVERIFY(qAbs(pages.first().cells.at(2).target.height() - 1000.0 / 6000.0) < 0.000001);
+    }
+
+    void reportCaptureSharesTheDeckIndexComparator()
+    {
+        QVector<CardRecord> cards;
+        for (const QString& text : {QStringLiteral("9"), QStringLiteral("Zeta"), QStringLiteral("beta"), QStringLiteral(""), QStringLiteral("0"), QStringLiteral("Alpha")}) {
+            CardRecord card; card.appendValue(text); cards.append(card);
+        }
+        const QVector<DeckSortKey> keys{{0, false}};
+        std::stable_sort(cards.begin(), cards.end(), [&](const auto& left, const auto& right) {
+            return indexSortsBefore(left, right, keys);
+        });
+        QStringList values;
+        for (const auto& card : cards) values.append(card.valueAt(0));
+        QCOMPARE(values, QStringList({QStringLiteral(""), QStringLiteral("Alpha"), QStringLiteral("beta"), QStringLiteral("Zeta"), QStringLiteral("0"), QStringLiteral("9")}));
+    }
+
+    void blankPrimaryDataSuppressesItsCaptionButLiteralTextRemains()
+    {
+        auto frame = makeReport().frames.first();
+        frame.text = QStringLiteral("Project: [Project]");
+        ReportPreviewData data;
+        QVERIFY(ReportPreviewRenderer::resolveFrameText(frame, data).isEmpty());
+        data.fieldValues.insert(QStringLiteral("Project"), QStringLiteral("   "));
+        QVERIFY(ReportPreviewRenderer::resolveFrameText(frame, data).isEmpty());
+        frame.kind = ReportFrameKind::Text;
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Project: [Project]"));
+        frame.kind = ReportFrameKind::Data;
+        data.fieldValues.insert(QStringLiteral("Project"), QStringLiteral("  Named  "));
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Project:   Named  "));
+    }
+
+    void literalTextKeepsSquareBracketsWhileDataFramesExpandFields()
+    {
+        auto frame = makeReport().frames.first();
+        ReportPreviewData data;
+        data.fieldValues.insert(QStringLiteral("Project"), QStringLiteral("Mapped"));
+        data.systemValues.insert(QStringLiteral("page"), QStringLiteral("4"));
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Project: Mapped / 4"));
+        frame.kind = ReportFrameKind::Text;
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Project: [Project] / 4"));
     }
 
     void builtInReportsUseRealFontsPaperAndDerivedBands()
@@ -481,13 +743,14 @@ private slots:
     void resolvesAbbreviatedNamesAndOmitsMissingOptionalFields()
     {
         ReportFrameDefinition frame;
+        frame.kind = ReportFrameKind::Data;
         frame.text = QStringLiteral("Service: [Customer servic]; optional: [Title]; {MISSING}");
         ReportPreviewData data;
         data.fieldValues.insert(QStringLiteral("Customer service"), QStringLiteral("555-0100"));
         data.fieldValues.insert(QStringLiteral("CUSTOMER SERVICE"), QStringLiteral("555-0100"));
         QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Service: 555-0100; optional: ; "));
         data.fieldValues.insert(QStringLiteral("Customer services"), QStringLiteral("Other"));
-        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QStringLiteral("Service: ; optional: ; "));
+        QCOMPARE(ReportPreviewRenderer::resolveFrameText(frame, data), QString());
         for (const auto& deckTemplate : builtInDeckTemplates()) {
             auto sample = previewDataForTemplate(deckTemplate, 1);
             for (const auto& report : deckTemplate.reports) {
@@ -725,7 +988,7 @@ private slots:
                     QCoreApplication::processEvents();
                     const QString previewFile = QStringLiteral("preview_%1_%2.png")
                         .arg(safeFileStem(deckTemplate.name), safeFileStem(report.name));
-                    QVERIFY(preview->grab().save(outputDirectory.filePath(previewFile)));
+                    QVERIFY(Tests::saveWidgetImage(*preview, outputDirectory, previewFile));
                     preview->close();
                 }
                 ++written;

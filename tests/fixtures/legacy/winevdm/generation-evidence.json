@@ -1,0 +1,442 @@
+﻿{
+    "version":  1,
+    "sourceExeSha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d",
+    "scenarioSha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174",
+    "inputMode":  "window-messages-only",
+    "generatorFingerprint":  [
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\avifile.dll16",
+                                     "sha256":  "710f4467bfa016ddf3722bb9bb5844cf9ffcbca675be3d686151ded993a38fed"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\commctrl.dll16",
+                                     "sha256":  "c290d14d9b28a474ade409ff222e331a99d74349a580e6569c334101c48beb88"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\commdlg.dll16",
+                                     "sha256":  "a702292d515ae4e9bedd98ecd9933e7b883e9fc228f83ba9940a41b2389aa831"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\convertwinefile.exe",
+                                     "sha256":  "52463567694261f5d2741901924f4b618deabc3e54812b16066a4d5bbfcb90d3"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\convspec.exe",
+                                     "sha256":  "48785a166b3faff2cbe1b308d6c8582aa47bc63f7b01055946456973f52ec2a7"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\ctl3d.dll16",
+                                     "sha256":  "2ae8f621a8baae2d41d3ca82c666c36eb2ae97f48745a1f922e142e802c2736e"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\ctl3dv2.dll16",
+                                     "sha256":  "d46a6e2d65dc2e128fc940509294d808b21e949e19e76aec9df9afc3a20206ae"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\ddeml.dll16",
+                                     "sha256":  "4a688ad4c51dc095954be11b6745bd923cb17fb67bcdfc57106676f595eefc64"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\dispdib.dll16",
+                                     "sha256":  "8c7b685b50b98402f214145573ab6e250a790ea3a38ca14a2c7091b90f42aab4"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\gvm.dll",
+                                     "sha256":  "ac95d2a191081fdea93f98043d7153291395aa156029c8f2daae747714062adb"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\haxmvm.dll",
+                                     "sha256":  "d055adc2f94b542b2c24f1663da79c4969f2319c1a4cc09693f00254485d4c16"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\libwine.dll",
+                                     "sha256":  "74310290c3fcfce6a71669e6e1bb36d7179afc79afd04ae98ab508cfa1ec802d"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\lzexpand.dll16",
+                                     "sha256":  "f409b05a194d2d479be1efa3320efb2361facbea3219887257521742c3e69489"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\mmsystem.dll16",
+                                     "sha256":  "b09dabe00811dc1549e01ec328634d2192f333fb641bc17a113ea37821c81e04"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\msacm.dll16",
+                                     "sha256":  "cd40f977d4813b1317b1b09782437c9493173f6b1bf09ac660dae55e3d14fc6a"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\msvideo.dll16",
+                                     "sha256":  "535e1895fe349ee1b652583813c267c27b979115c21bace8903b93a23b798768"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\nddeapi.dll16",
+                                     "sha256":  "0e78c2a29a18989636034bad132c64c6a85bf71506b6c39f1d24e03480fbe3b6"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\netapi.dll16",
+                                     "sha256":  "3e4acccb3c7c01431e33df30300e9acc5712c78d8b5cd926811b4045cb3c5828"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\ntvdm.exe",
+                                     "sha256":  "a6d5dc6556b88e343afaa4b9465ae90112042b781dba2f4b3f7547dc53307bd0"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\olecli.dll16",
+                                     "sha256":  "8c68d26c45a84a98bc57313417f0f0f52b17d03a53885bd2bfe98fd29f237785"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\olesvr.dll16",
+                                     "sha256":  "8d2435a3c3d2b9930f0a40bd78d2eda36aa6e8b48c84174caae9dc6292cee45a"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\otvdm.exe",
+                                     "sha256":  "d74c9b0175b97c64b4ff4ff267d5820a8423fe8a71ed37c8752554e041fce12b"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\otvdmw.exe",
+                                     "sha256":  "ceb3cecb510b674b28daa38ee89fb29112a8b1ea93bacd74f3284f190bb6a095"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\rmpatch.dll16",
+                                     "sha256":  "99c8327ba4084fac51de2e16eebfb10c6ada241a85040a76d2420ad49bd43e66"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\shell.dll16",
+                                     "sha256":  "1f4a9ffadf72f18f75498eaaddddc71228924088d3512314292330fd556028e3"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\toolhelp.dll16",
+                                     "sha256":  "182f642531122e6ab18dacf5b3652a999a762e874d7fd710711819e44e45dd94"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\ver.dll16",
+                                     "sha256":  "adc3c836196b917d65737eb529b55dd75f324aa57e0ef6e9637b714b2de258b8"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\vm86.dll",
+                                     "sha256":  "a0f9987407979d0472d0627a700fcc9727fe9b84bfe6c63341803494789f1706"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\wifeman.dll16",
+                                     "sha256":  "1ca6ea3a22baf19ec047aa5b1c5d158a1ff84d194ac616c85401fa27afb3250f"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\win87em.dll16",
+                                     "sha256":  "748dba76d28d89b4138b99828dc7a5ede07670fb4c51cace430a557165a20825"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\wing.dll16",
+                                     "sha256":  "2550d0daf80d7205e401322f72f73916998e77e981846af9793b1a58760c4c59"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\winnls.dll16",
+                                     "sha256":  "6e9da550a8610efba8227e204eddbf9574421bc80c5abc251ba478ae9818778c"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\winsock.dll16",
+                                     "sha256":  "66c6b325f616a55b39491e4cdc2acf286f36980374abdc94ba865bbfc1c36803"
+                                 },
+                                 {
+                                     "name":  ".tools\\winevdm\\pr\\winevdm\\Release\\wow32.dll",
+                                     "sha256":  "57432371ef180ce84e5c657e8dac16608ec45d1ff4a1ba81aae4c6380a2e0e15"
+                                 },
+                                 {
+                                     "name":  "build\\vs2026-local-qt\\Release\\CardStackTests.exe",
+                                     "sha256":  "a0083469bab351188d4191f7670317d531ec5bb531151efba38df42f00dd131e"
+                                 },
+                                 {
+                                     "name":  "supplied-executable",
+                                     "sha256":  "7e827106bbca6fafc34483653812b7a429f67e46414b46f51c3af5caab9f0d3d"
+                                 },
+                                 {
+                                     "name":  "scripts\\collect_winevdm_corpus.ps1",
+                                     "sha256":  "739f6637908fe700e7fd818d8b92946a100c9342ae3fec1409efac46aa1f6e31"
+                                 },
+                                 {
+                                     "name":  "scripts\\invoke_private_desktop.ps1",
+                                     "sha256":  "4df1189025f86d5f2a15e21fccaf34363dd1bf345c6852894007994afa8f337a"
+                                 },
+                                 {
+                                     "name":  "scripts\\validate_winevdm_golden_fixtures.ps1",
+                                     "sha256":  "b8173f7db505d33f47e7f6999656677b1240df7189ce68cbf942865cb2ba0121"
+                                 },
+                                 {
+                                     "name":  "scripts\\winevdm_buttonfile_oracle.ps1",
+                                     "sha256":  "e73c205373d73ee3d9a3c681a123438e338294c080d65488e0404196712f864b"
+                                 },
+                                 {
+                                     "name":  "scripts\\winevdm_corpus.scenarios.json",
+                                     "sha256":  "dda512a739dafd935e5b83d57aa568de090e0c8f771acd54bd89091e5d841174"
+                                 },
+                                 {
+                                     "name":  "scripts\\WineVdmOracleNative.cs",
+                                     "sha256":  "8e694739ec998fa80f68e7a5ef7ca96525a67be8dc17f4b655ec20eb38a69303"
+                                 }
+                             ],
+    "runs":  [
+                 {
+                     "fixture":  "oracle-long-notes",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  28,
+                     "reopenedFieldChecks":  4
+                 },
+                 {
+                     "fixture":  "oracle-ansi-roundtrip",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  23,
+                     "reopenedFieldChecks":  1
+                 },
+                 {
+                     "fixture":  "oracle-security-cycle",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  50,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-01",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-02",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-03",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-04",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-05",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-06",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-07",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-08",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-09",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-10",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-11",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-12",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-13",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-stock-14",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  25,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-many-records",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  62,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-dbase",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  18,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-dbase-notes",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  23,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-cardfile",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  18,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-cardfile-notes",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  23,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-wordperfect",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  18,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-wordperfect-notes",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  23,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-takenote",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  14,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-takenote-notes",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  19,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-password-only",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  34,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-password-encrypted",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  35,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-long-notes-encrypted",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  46,
+                     "reopenedFieldChecks":  4
+                 },
+                 {
+                     "fixture":  "oracle-max-notes",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  28,
+                     "reopenedFieldChecks":  4
+                 },
+                 {
+                     "fixture":  "oracle-long-notes-encrypted-blocked",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  46,
+                     "reopenedFieldChecks":  4
+                 },
+                 {
+                     "fixture":  "oracle-custom-forty-fields",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  109,
+                     "reopenedFieldChecks":  0
+                 },
+                 {
+                     "fixture":  "oracle-export-takenote-mailing",
+                     "status":  "passed",
+                     "exitCode":  0,
+                     "inputMode":  "window-messages-only",
+                     "stepCount":  32,
+                     "reopenedFieldChecks":  3
+                 }
+             ]
+}

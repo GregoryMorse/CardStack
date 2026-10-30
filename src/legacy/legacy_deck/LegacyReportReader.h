@@ -5,6 +5,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace CardStack {
@@ -19,8 +20,8 @@ public:
         bool ok() const;
     };
 
-    Result readFile(const QString& filePath) const;
-    Result readBytes(const QByteArray& bytes, ImportBudget* sharedBudget = nullptr) const;
+    Result readFile(const QString& filePath, const QStringList& fieldNames = {}) const;
+    Result readBytes(const QByteArray& bytes, ImportBudget* sharedBudget = nullptr, const QStringList& fieldNames = {}) const;
 private:
     ImportLimits m_limits;
 };

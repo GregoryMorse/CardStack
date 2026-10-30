@@ -2,7 +2,7 @@
     "version":  1,
     "notes":  [
                   "These scenarios drive the legacy Win16 card database app through WineVDM.",
-                  "Run smoke-launch first. If dialog focus differs on a machine, tune only this JSON file.",
+                  "Run smoke-launch first. The runner uses a private non-input desktop and window messages only.",
                   "The runner supports command, waitWindow, setText, click, sendKeys, sleep, snapshot, assertAnyFile, and closeApp actions."
               ],
     "startup":  [
@@ -202,7 +202,7 @@
                                            "controlId":  510
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "optional":  true
                                        },
@@ -221,7 +221,7 @@
                                            "controlId":  510
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "allowLegacyError":  true
                                        },
@@ -265,7 +265,7 @@
                                            "timeoutMs":  1000
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "optional":  true
                                        },
@@ -380,12 +380,12 @@
                                            "controlId":  510
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  503,
                                            "comment":  "Data encryption on."
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "optional":  true
                                        },
@@ -404,7 +404,7 @@
                                            "controlId":  510
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "allowLegacyError":  true
                                        },
@@ -448,7 +448,7 @@
                                            "timeoutMs":  1000
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "optional":  true
                                        },
@@ -948,7 +948,7 @@
                      },
                      {
                          "name":  "calibrate-notes-heavy",
-                         "description":  "Calibration placeholder for the notes-heavy/redefine workflow. Use -Fixture calibrate-notes-heavy -Interactive and record stable dialog/control steps back into this JSON.",
+                         "description":  "Calibration placeholder for the notes-heavy/redefine workflow. Use -Fixture calibrate-notes-heavy and record stable dialog/control steps back into this JSON.",
                          "enabled":  false,
                          "outputStem":  "notes_heavy",
                          "steps":  [
@@ -969,7 +969,7 @@
                      },
                      {
                          "name":  "calibrate-many-fields",
-                         "description":  "Calibration placeholder for a near/max-field deck. Use -Fixture calibrate-many-fields -Interactive and record File \u003e Redefine field-grid steps here.",
+                         "description":  "Calibration placeholder for a near/max-field deck. Use -Fixture calibrate-many-fields and record File \u003e Redefine field-grid steps here.",
                          "enabled":  false,
                          "outputStem":  "many_fields",
                          "steps":  [
@@ -1117,7 +1117,7 @@
                                            "text":  "{password}"
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "optional":  true,
                                            "timeoutMs":  1000
@@ -1133,7 +1133,7 @@
                                            "text":  "{password}"
                                        },
                                        {
-                                           "action":  "physicalClick",
+                                           "action":  "mouseClick",
                                            "controlId":  1,
                                            "timeoutMs":  1000,
                                            "allowLegacyError":  true

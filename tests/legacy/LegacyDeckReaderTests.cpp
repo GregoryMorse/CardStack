@@ -1,14 +1,24 @@
 ﻿#include "LegacyDeckReader.h"
 
 #include <QByteArray>
+#include <QCryptographicHash>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include "LegacyInterchangeReader.h"
+#include "LegacyReportReader.h"
+#include "DeckTemplate.h"
 #include "LegacyTemplateLayoutParser.h"
+#include <QFont>
 #include "LegacyDeckAppearanceParser.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QTest>
+#include <algorithm>
 
 using namespace CardStack;
 
@@ -78,10 +88,11 @@ QByteArray makeDeclaredCountSchemaRecord()
 
 QByteArray makeCardRecord(const QByteArray& product, const QByteArray& version, const QByteArray& notes)
 {
-    QByteArray record(RecordPayloadOffset + 80, '\0');
+    const int notesBytes = std::max(40, int(notes.size()) + 1);
+    QByteArray record(RecordPayloadOffset + 40 + notesBytes, '\0');
     putCString(&record, RecordPayloadOffset, 30, product);
     putCString(&record, RecordPayloadOffset + 30, 10, version);
-    putCString(&record, RecordPayloadOffset + 40, 40, notes);
+    putCString(&record, RecordPayloadOffset + 40, notesBytes, notes);
     return record;
 }
 
@@ -91,6 +102,399 @@ class LegacyDeckReaderTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void decodesWin16TextAndPreservesCardWhitespace()
+    {
+        const QByteArray product = QByteArray("  Caf") + char(0xe9) + " " + char(0x99) + "  ";
+        const QByteArray note = QByteArray("\r\n") + char(0x93) + "Quoted" + char(0x94) + "\r\n  ";
+        const auto result = LegacyDeckReader{}.readRecords({makeSchemaRecord(), makeCardRecord(product, "1", note)});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        QCOMPARE(result.deck.cardAt(0).valueAt(0), QStringLiteral("  Caf") + QChar(0x00e9) + QLatin1Char(' ') + QChar(0x2122) + QStringLiteral("  "));
+        QCOMPARE(result.deck.cardAt(0).valueAt(2), QStringLiteral("\r\n") + QChar(0x201c) + QStringLiteral("Quoted") + QChar(0x201d) + QStringLiteral("\r\n  "));
+        const auto dos = LegacyDeckReader({}, LegacyTextEncoding::Dos437).readRecords({makeSchemaRecord(), makeCardRecord(QByteArray(1,char(0x82)), "1", "note")});
+        QVERIFY(dos.ok());
+        QCOMPARE(dos.deck.cardAt(0).valueAt(0), QString(QChar(0x00e9)));
+    }
+
+    void importsGroupedFieldsWithoutDroppingTheSchemaPrefix()
+    {
+        using namespace LegacyTemplateLayoutFormat;
+        QByteArray schema(FieldTableOffset + 2 * FieldDescriptorSize, '\0');
+        putCString(&schema, 5, 5, "TN20");
+        putCString(&schema, 11, 64, "Grouped Fields");
+        putU16(&schema, FieldCountOffset, 2);
+        for (int field = 0; field < 2; ++field) {
+            const int at = FieldTableOffset + field * FieldDescriptorSize;
+            putCString(&schema, at, LegacyTemplateLayoutFormat::FieldNameSize, field == 0 ? "First" : "Second");
+            putU16(&schema, at + FieldFlagsOffset, 0);
+            putU16(&schema, at + FieldControlRoleOffset, field);
+            putU16(&schema, at + FieldRecordOffsetOffset, field * 10);
+            putU16(&schema, at + FieldDataLengthOffset, 10);
+            putU16(&schema, at + FieldRightOffset, 200);
+            putU16(&schema, at + FieldBottomOffset, 20);
+        }
+        QByteArray card(RecordPayloadOffset + 20, '\0');
+        putCString(&card, RecordPayloadOffset, 10, "Alpha");
+        putCString(&card, RecordPayloadOffset + 10, 10, "Beta");
+        const auto result = LegacyDeckReader{}.readRecords({schema, card});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        QCOMPARE(result.deck.fieldCount(), 2);
+        QCOMPARE(result.deck.fieldAt(0).name(), QStringLiteral("First"));
+        QCOMPARE(result.deck.cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(result.deck.cardAt(0).valueAt(1), QStringLiteral("Beta"));
+        putU16(&schema, FieldCountOffset, 3);
+        QVERIFY(!LegacyDeckReader{}.readRecords({schema, card}).ok());
+    }
+
+    void importsVariableNotesBeforeLaterFixedFieldsInDesignerOrder()
+    {
+        using namespace LegacyTemplateLayoutFormat;
+        QByteArray schema(FieldTableOffset + 3 * FieldDescriptorSize, '\0');
+        putCString(&schema, 5, 5, "TN20");
+        putCString(&schema, 11, 64, "Unordered Fields");
+        putU16(&schema, FieldCountOffset, 3);
+        for (int field = 0; field < 3; ++field) {
+            const int at = FieldTableOffset + field * FieldDescriptorSize;
+            putCString(&schema, at, LegacyTemplateLayoutFormat::FieldNameSize, field == 0 ? "First" : field == 1 ? "Notes" : "Second");
+            putU16(&schema, at + FieldFlagsOffset, field == 1 ? VariableTextFlag : 0);
+            putU16(&schema, at + FieldControlRoleOffset, field == 0 ? 0 : 1);
+            putU16(&schema, at + FieldRecordOffsetOffset, field == 0 ? 0 : field == 1 ? 20 : 10);
+            putU16(&schema, at + FieldDataLengthOffset, field == 1 ? 40 : 10);
+            putU16(&schema, at + FieldRightOffset, 200);
+            putU16(&schema, at + FieldBottomOffset, 20);
+        }
+        const QByteArray note(500, 'N');
+        QByteArray card(RecordPayloadOffset + 20 + note.size() + 1, '\0');
+        putCString(&card, RecordPayloadOffset, 10, "Alpha");
+        putCString(&card, RecordPayloadOffset + 10, 10, "Beta");
+        putCString(&card, RecordPayloadOffset + 20, note.size() + 1, note);
+        const auto result = LegacyDeckReader{}.readRecords({schema, card});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        QCOMPARE(result.deck.fieldCount(), 3);
+        QCOMPARE(result.deck.cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+        QCOMPARE(result.deck.cardAt(0).valueAt(1), QString::fromLatin1(note));
+        QCOMPARE(result.deck.cardAt(0).valueAt(2), QStringLiteral("Beta"));
+        QVERIFY(result.deck.fieldAt(1).isNotes());
+    }
+
+    void importsFullVariableNotesRatherThanTheStorageReservation()
+    {
+        const QByteArray notes = QByteArray("  ") + QByteArray(6000, 'N') + "\r\n  ";
+        const auto result = LegacyDeckReader{}.readRecords({makeSchemaRecord(), makeCardRecord("Title", "1", notes)});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        QCOMPARE(result.deck.cardAt(0).valueAt(2), QString::fromLatin1(notes));
+        QCOMPARE(result.deck.fields().at(2).maxLength(), DefaultNotesMaximumLength);
+        const auto maximum = LegacyDeckReader{}.readRecords({makeSchemaRecord(), makeCardRecord("Title", "1", QByteArray(DefaultNotesMaximumLength, 'N'))});
+        QVERIFY(maximum.ok());
+        QCOMPARE(maximum.deck.cardAt(0).valueAt(2).size(), DefaultNotesMaximumLength);
+    }
+
+    void mapsWinIndexSavedLabelsBoundsFontsAndSortOrder()
+    {
+        QByteArray schema(0x842, '\0');
+        schema.replace(5, 6, "WINDEX");
+        schema.replace(11, 13, "Custom layout");
+        putU16(&schema, 0x49, 640); putU16(&schema, 0x4b, 480);
+        putU16(&schema, 0x4d, 2); putU16(&schema, 0x4f, 0x0040);
+        schema[0x59] = 2; putU16(&schema, 0x5c, 1);
+        putCString(&schema, 0x5e, 30, "Saved label");
+        putU16(&schema, 0x7c, 3); putU16(&schema, 0x7e, 3);
+        putU16(&schema, 0x80, 30); putU16(&schema, 0x82, 12);
+        putU16(&schema, 0x2ce, quint16(qint16(-10)));
+        putU16(&schema, 0x29c, quint16(qint16(-12)));
+        for (int i = 0; i < 2; ++i) {
+            const int at = 0x3cc + i * 0x39;
+            putCString(&schema, at, 30, i == 0 ? "Subject" : "Journal");
+            putU16(&schema, at + 0x1e, 1); putU16(&schema, at + 0x20, i == 0 ? 1 : 0);
+            putU16(&schema, at + 0x22, i * 20); putU16(&schema, at + 0x24, i == 0 ? 20 : 40);
+            putU16(&schema, at + 0x27, i == 0 ? 0 : 3);
+            putU16(&schema, at + 0x31, 33); putU16(&schema, at + 0x33, i == 0 ? 30 : 60);
+            putU16(&schema, at + 0x35, i == 0 ? 90 : 180); putU16(&schema, at + 0x37, i == 0 ? 18 : 60);
+        }
+        const auto result = LegacyDeckReader{}.readRecords({schema});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        const auto& layout = result.deck.cardTemplateLayout();
+        QCOMPARE(layout.canvasWidth, 6390); QCOMPARE(layout.canvasHeight, 4800);
+        QCOMPARE(layout.frames.size(), 3);
+        QCOMPARE(layout.frames[0].kind, CardTemplateFrameKind::Text);
+        QCOMPARE(layout.frames[0].text, QStringLiteral("Saved label"));
+        QCOMPARE(layout.frames[0].bounds, QRect(30, 210, 300, 120));
+        QCOMPARE(layout.frames[1].bounds, QRect(330, 480, 900, 180));
+        QCOMPARE(layout.frames[2].bounds, QRect(330, 780, 1800, 600));
+        QCOMPARE(layout.frames[2].kind, CardTemplateFrameKind::NotesBox);
+        QCOMPARE(result.deck.fieldAt(1).maxLength(), DefaultNotesMaximumLength);
+        QVERIFY(result.deck.fieldAt(0).isPhone());
+        QCOMPARE(result.deck.sortKeys().size(), 1);
+        QCOMPARE(result.deck.sortKeys().first().fieldIndex, 1);
+        QVERIFY(result.deck.sortKeys().first().descending);
+        QFont data, name;
+        QVERIFY(data.fromString(result.deck.appearance().dataFont));
+        QVERIFY(name.fromString(result.deck.appearance().nameFont));
+        QCOMPARE(data.family(), QStringLiteral("Arial")); QCOMPARE(data.pixelSize(), 10);
+        QCOMPARE(name.family(), QStringLiteral("Arial")); QCOMPARE(name.pixelSize(), 12);
+        QCOMPARE(result.deck.appearance().textFont, result.deck.appearance().dataFont);
+        QCOMPARE(result.deck.appearance().indexFont, result.deck.appearance().nameFont);
+        QVERIFY(result.deck.appearance().useSystemColors);
+        putU16(&schema, 0x3cc + 0x31, 4); putU16(&schema, 0x3cc + 0x33, 1);
+        putU16(&schema, 0x3cc + 0x35, 20); putU16(&schema, 0x3cc + 0x37, 11);
+        putU16(&schema, 0x405 + 0x33, 22); putU16(&schema, 0x405 + 0x37, 10);
+        const auto snapped = LegacyDeckReader{}.readRecords({schema});
+        QVERIFY2(snapped.ok(), qPrintable(snapped.errorMessage));
+        QCOMPARE(snapped.deck.cardTemplateLayout().frames[1].bounds, QRect(30, 180, 210, 120));
+        QCOMPARE(snapped.deck.cardTemplateLayout().frames[2].bounds.top(), 390);
+        QCOMPARE(snapped.deck.cardTemplateLayout().frames[2].bounds.height(), 90);
+        QCOMPARE(snapped.deck.cardTemplateLayout().canvasHeight, 4770);
+    }
+
+    void mapsWinIndexFieldsAndVariableNotesWithoutHardCodedNames()
+    {
+        constexpr int TableOffset = 0x3cc, DescriptorSize = 0x39;
+        QByteArray schema(0x842, '\0');
+        schema.replace(5, 6, "WINDEX");
+        schema.replace(11, 12, "Custom notes");
+        schema[89] = 3;
+        const QList<QByteArray> names = {"Subject", "Owner", "Journal"};
+        for (int i = 0; i < names.size(); ++i) {
+            const int offset = TableOffset + i * DescriptorSize;
+            schema.replace(offset, names.at(i).size(), names.at(i));
+            putU16(&schema, offset + 0x1e, 1);
+            putU16(&schema, offset + 0x22, i * 20);
+            putU16(&schema, offset + 0x24, i == 2 ? 40 : 20);
+            putU16(&schema, offset + 0x27, i == 2 ? 3 : 0);
+        }
+        const QByteArray notes(4096, 'N');
+        QByteArray card(5 + 40, '\0');
+        card.replace(5, 7, "Subject"); card.replace(25, 5, "Owner");
+        card += notes; card += '\0';
+        const auto result = LegacyDeckReader{}.readRecords({schema, card});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        QCOMPARE(result.deck.fieldCount(), 3);
+        QCOMPARE(result.deck.fields().at(2).name(), QStringLiteral("Journal"));
+        QCOMPARE(result.deck.fields().at(2).maxLength(), DefaultNotesMaximumLength);
+        QCOMPARE(result.deck.cardCount(), 1);
+        QCOMPARE(result.deck.cardAt(0).valueAt(2), QString::fromLatin1(notes));
+        schema[89] = 21;
+        QVERIFY(!LegacyDeckReader{}.readRecords({schema, card}).ok());
+    }
+
+    void validatesFixtureCorpusManifestWhenConfigured()
+    {
+        const QString root = qEnvironmentVariable("CARDSTACK_WINEVDM_GOLDEN_DIR");
+        if (root.isEmpty()) QSKIP("Set the fixture directory to validate the corpus contract.");
+        qInfo("Corpus directory: %s", qPrintable(QFileInfo(root).absoluteFilePath()));
+        QDir directory(root);
+        QFile manifest(directory.filePath(QStringLiteral("corpus-manifest.json")));
+        QVERIFY2(manifest.open(QIODevice::ReadOnly), qPrintable(manifest.fileName()));
+        const QJsonObject contract = QJsonDocument::fromJson(manifest.readAll()).object();
+        QCOMPARE(contract.value(QStringLiteral("version")).toInt(), 1);
+        const auto files = contract.value(QStringLiteral("files")).toArray();
+        QVERIFY(!files.isEmpty());
+        for (const QJsonValue& value : files) {
+            const QJsonObject spec = value.toObject();
+            const QString name = spec.value(QStringLiteral("name")).toString();
+            QVERIFY(!name.isEmpty() && QFileInfo(name).fileName() == name && name != QLatin1String(".."));
+            QFile file(directory.filePath(name));
+            QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(file.fileName()));
+            const QByteArray bytes = file.readAll();
+            QCOMPARE(bytes.size(), qsizetype(spec.value(QStringLiteral("size")).toInteger()));
+            QCOMPARE(QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex()), spec.value(QStringLiteral("sha256")).toString());
+            QVERIFY(!spec.value(QStringLiteral("origin")).toString().isEmpty());
+        }
+        QFile evidence(directory.filePath(QStringLiteral("generation-evidence.json")));
+        QVERIFY2(evidence.open(QIODevice::ReadOnly), qPrintable(evidence.fileName()));
+        const auto generated = QJsonDocument::fromJson(evidence.readAll()).object();
+        QCOMPARE(generated.value(QStringLiteral("version")).toInt(), 1);
+        QCOMPARE(generated.value(QStringLiteral("inputMode")).toString(), QStringLiteral("window-messages-only"));
+        const QRegularExpression sha256(QStringLiteral("^[0-9a-f]{64}$"));
+        QVERIFY(sha256.match(generated.value(QStringLiteral("sourceExeSha256")).toString()).hasMatch());
+        QVERIFY(sha256.match(generated.value(QStringLiteral("scenarioSha256")).toString()).hasMatch());
+        QSet<QString> authoredRecipes;
+        const auto runs = generated.value(QStringLiteral("runs")).toArray();
+        QVERIFY(!runs.isEmpty());
+        for (const auto& value : runs) {
+            const auto run = value.toObject();
+            const QString recipe = run.value(QStringLiteral("fixture")).toString();
+            QVERIFY(!recipe.isEmpty()); QVERIFY(!authoredRecipes.contains(recipe));
+            QCOMPARE(run.value(QStringLiteral("status")).toString(), QStringLiteral("passed"));
+            QCOMPARE(run.value(QStringLiteral("exitCode")).toInt(-1), 0);
+            QCOMPARE(run.value(QStringLiteral("inputMode")).toString(), QStringLiteral("window-messages-only"));
+            QVERIFY(run.value(QStringLiteral("stepCount")).toInt() > 0);
+            authoredRecipes.insert(recipe);
+        }
+        const auto gates = contract.value(QStringLiteral("coverage")).toArray();
+        const bool complete = !gates.isEmpty() && std::all_of(gates.cbegin(), gates.cend(), [](const QJsonValue& gate) {
+            return gate.toObject().value(QStringLiteral("status")).toString() == QLatin1String("verified");
+        });
+        if (complete) for (const auto& value : files) {
+            const auto file = value.toObject();
+            if (file.value(QStringLiteral("origin")).toString() != QLatin1String("original-ui")) continue;
+            QVERIFY(authoredRecipes.contains(file.value(QStringLiteral("recipe")).toString()));
+            QCOMPARE(file.value(QStringLiteral("sourceExeSha256")), generated.value(QStringLiteral("sourceExeSha256")));
+            QCOMPARE(file.value(QStringLiteral("scenarioSha256")), generated.value(QStringLiteral("scenarioSha256")));
+        }
+        const auto cases = contract.value(QStringLiteral("cases")).toArray();
+        QVERIFY(!cases.isEmpty());
+        for (const QJsonValue& value : cases) {
+            const QJsonObject spec = value.toObject();
+            const QString file = directory.filePath(spec.value(QStringLiteral("file")).toString());
+            qInfo("Corpus case: %s", qPrintable(spec.value(QStringLiteral("id")).toString()));
+            if (spec.value(QStringLiteral("format")).toString() == QLatin1String("reports")) {
+                const auto result = LegacyReportReader{}.readFile(file);
+                QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+                QCOMPARE(result.reports.size(), spec.value(QStringLiteral("reportCount")).toInt());
+                continue;
+            }
+            const auto encoding = spec.value(QStringLiteral("encoding")).toString() == QLatin1String("dos437")
+                ? LegacyTextEncoding::Dos437 : LegacyTextEncoding::Windows1252;
+            LegacyDeckReader::Result result;
+            if (spec.value(QStringLiteral("format")).toString() == QLatin1String("interchange")) {
+                const auto imported = LegacyInterchangeReader{}.readFile(file, spec.value(QStringLiteral("password")).toString());
+                result.deck = imported.deck;
+                result.errorMessage = imported.errorMessage;
+                result.legacyPasswordProtected = imported.legacyPasswordProtected;
+                result.legacyPasswordVerified = imported.legacyPasswordVerified;
+            } else {
+                QCOMPARE(spec.value(QStringLiteral("format")).toString(), QStringLiteral("deck"));
+                result = LegacyDeckReader({}, encoding).readDeck(file, spec.value(QStringLiteral("password")).toString());
+            }
+            if (spec.value(QStringLiteral("reject")).toBool()) { QVERIFY(!result.ok()); QVERIFY(!result.errorMessage.isEmpty()); continue; }
+            QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+            if (spec.contains(QStringLiteral("name"))) QCOMPARE(result.deck.name(), spec.value(QStringLiteral("name")).toString());
+            if (spec.contains(QStringLiteral("fieldCount"))) QCOMPARE(result.deck.fieldCount(), spec.value(QStringLiteral("fieldCount")).toInt());
+            if (spec.contains(QStringLiteral("cardCount"))) QCOMPARE(result.deck.cardCount(), spec.value(QStringLiteral("cardCount")).toInt());
+            const auto expectedNames = spec.value(QStringLiteral("fieldNames")).toArray();
+            if (!expectedNames.isEmpty()) {
+                QCOMPARE(result.deck.fieldCount(), expectedNames.size());
+                for (int field = 0; field < expectedNames.size(); ++field)
+                    QCOMPARE(result.deck.fields().at(field).name(), expectedNames.at(field).toString());
+            }
+            if (spec.contains(QStringLiteral("fieldMaxLength")))
+                for (const auto& field : result.deck.fields()) QCOMPARE(field.maxLength(), spec.value(QStringLiteral("fieldMaxLength")).toInt());
+            if (spec.contains(QStringLiteral("layoutFieldCount"))) {
+                QSet<int> linkedFields;
+                for (const auto& frame : result.deck.cardTemplateLayout().frames) {
+                    if (frame.fieldIndex < 0) continue;
+                    QVERIFY(frame.fieldIndex < result.deck.fieldCount());
+                    QVERIFY(frame.bounds.isValid());
+                    QVERIFY(!linkedFields.contains(frame.fieldIndex));
+                    linkedFields.insert(frame.fieldIndex);
+                }
+                QCOMPARE(linkedFields.size(), spec.value(QStringLiteral("layoutFieldCount")).toInt());
+            }
+            if (spec.contains(QStringLiteral("protected"))) QCOMPARE(result.legacyPasswordProtected, spec.value(QStringLiteral("protected")).toBool());
+            if (spec.contains(QStringLiteral("encrypted"))) QCOMPARE(result.legacyDataEncrypted, spec.value(QStringLiteral("encrypted")).toBool());
+            if (spec.contains(QStringLiteral("verified"))) QCOMPARE(result.legacyPasswordVerified, spec.value(QStringLiteral("verified")).toBool());
+            if (spec.contains(QStringLiteral("stockTemplate"))) {
+                const auto stock = findBuiltInDeckTemplate(spec.value(QStringLiteral("stockTemplate")).toString());
+                QVERIFY(stock.has_value());
+                (void)QTest::qCompare(result.deck.fieldCount(), stock->fields.size(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                for (int field = 0; field < std::min(result.deck.fieldCount(), int(stock->fields.size())); ++field) {
+                    const auto& actual = result.deck.fields().at(field);
+                    const auto& expected = stock->fields.at(field);
+                    (void)QTest::qCompare(actual.name(), expected.name(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.type(), expected.type(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.maxLength(), expected.maxLength(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.isPhone(), expected.isPhone(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.showName(), expected.showName(), "Imported label mode", "Built-in label mode", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.displayWidth(), expected.displayWidth(), "Imported display width", "Built-in display width", __FILE__, __LINE__);
+                }
+                (void)QTest::qCompare(result.deck.sortKeys(), stock->sortKeys, "Imported sort keys", "Built-in sort keys", __FILE__, __LINE__);
+                const auto& actualLayout = result.deck.cardTemplateLayout();
+                (void)QTest::qCompare(actualLayout.canvasWidth, stock->layout.canvasWidth, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                (void)QTest::qCompare(actualLayout.canvasHeight, stock->layout.canvasHeight, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                (void)QTest::qCompare(actualLayout.frames.size(), stock->layout.frames.size(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                for (int frame = 0; frame < std::min(actualLayout.frames.size(), stock->layout.frames.size()); ++frame) {
+                    const auto& actual = actualLayout.frames.at(frame);
+                    const auto& expected = stock->layout.frames.at(frame);
+                    (void)QTest::qCompare(actual.kind, expected.kind, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.bounds, expected.bounds, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.text, expected.text, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.fieldIndex, expected.fieldIndex, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    (void)QTest::qCompare(actual.styleFlags, expected.styleFlags, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                }
+                for (int row = 0; row < result.deck.cardCount(); ++row)
+                    for (int field = 0; field < result.deck.fieldCount(); ++field)
+                        QVERIFY(result.deck.cardAt(row).valueAt(field).isEmpty());
+                if (spec.contains(QStringLiteral("reportFile"))) {
+                    QStringList fieldNames;
+                    for (const auto& field : result.deck.fields()) fieldNames.append(field.name());
+                    const auto sidecar = LegacyReportReader{}.readFile(directory.filePath(spec.value(QStringLiteral("reportFile")).toString()), fieldNames);
+                    QVERIFY2(sidecar.ok(), qPrintable(sidecar.errorMessage));
+                    (void)QTest::qCompare(sidecar.reports.size(), stock->reports.size(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                    for (int report = 0; report < std::min(sidecar.reports.size(), stock->reports.size()); ++report) {
+                        const auto& actual = sidecar.reports.at(report);
+                        const auto& expected = stock->reports.at(report);
+                        (void)QTest::qCompare(actual.name, expected.name, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.formType, expected.formType, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.formWidth, expected.formWidth, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.formHeight, expected.formHeight, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.headerHeight, expected.headerHeight, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.footerHeight, expected.footerHeight, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.rows, expected.rows, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.columns, expected.columns, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.marginLeft, expected.marginLeft, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.marginTop, expected.marginTop, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.marginRight, expected.marginRight, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.marginBottom, expected.marginBottom, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.horizontalGutter, expected.horizontalGutter, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.verticalGutter, expected.verticalGutter, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.paperStyleId, expected.paperStyleId, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.pageWidth, expected.pageWidth, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.pageHeight, expected.pageHeight, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.orientation, expected.orientation, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.dataFont, expected.dataFont, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.textFont, expected.textFont, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        (void)QTest::qCompare(actual.frames.size(), expected.frames.size(), "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        for (int frame = 0; frame < std::min(actual.frames.size(), expected.frames.size()); ++frame) {
+                            const auto& actualFrame = actual.frames.at(frame);
+                            const auto& expectedFrame = expected.frames.at(frame);
+                            (void)QTest::qCompare(actualFrame.kind, expectedFrame.kind, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.fieldPlaceholders, expectedFrame.fieldPlaceholders, "Imported field bindings", "Built-in field bindings", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.bounds, expectedFrame.bounds, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.text, expectedFrame.text, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.styleFlags, expectedFrame.styleFlags, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.lineBoxShape, expectedFrame.lineBoxShape, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.lineStyle, expectedFrame.lineStyle, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.fillPattern, expectedFrame.fillPattern, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.cornerRadius, expectedFrame.cornerRadius, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.band, expectedFrame.band, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.printEntireContentsFlag, expectedFrame.printEntireContentsFlag, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                            (void)QTest::qCompare(actualFrame.validationFlags, expectedFrame.validationFlags, "Imported stock value", "Built-in stock value", __FILE__, __LINE__);
+                        }
+                    }
+                }
+            }
+            for (const QJsonValue& required : spec.value(QStringLiteral("requiredText")).toArray()) {
+                bool found = false;
+                for (int row = 0; row < result.deck.cardCount(); ++row)
+                    for (int field = 0; field < result.deck.fieldCount(); ++field)
+                        found = found || result.deck.cardAt(row).valueAt(field).contains(required.toString());
+                QVERIFY2(found, "A required authored value was not retained in the imported data.");
+            }
+            const auto expectedRows = spec.value(QStringLiteral("rows")).toArray();
+            if (!expectedRows.isEmpty()) {
+                QCOMPARE(result.deck.cardCount(), expectedRows.size());
+                if (spec.value(QStringLiteral("rowsUnordered")).toBool()) {
+                    QList<QByteArray> actualRows, contractRows;
+                    for (int row = 0; row < result.deck.cardCount(); ++row) {
+                        QJsonArray cells;
+                        for (int field = 0; field < result.deck.fieldCount(); ++field) cells.append(result.deck.cardAt(row).valueAt(field));
+                        actualRows.append(QJsonDocument(cells).toJson(QJsonDocument::Compact));
+                        contractRows.append(QJsonDocument(expectedRows.at(row).toArray()).toJson(QJsonDocument::Compact));
+                    }
+                    std::sort(actualRows.begin(), actualRows.end());
+                    std::sort(contractRows.begin(), contractRows.end());
+                    QCOMPARE(actualRows, contractRows);
+                    continue;
+                }
+                for (int row = 0; row < expectedRows.size(); ++row) {
+                    const auto cells = expectedRows.at(row).toArray();
+                    QCOMPARE(result.deck.fieldCount(), cells.size());
+                    for (int field = 0; field < cells.size(); ++field) QCOMPARE(result.deck.cardAt(row).valueAt(field), cells.at(field).toString());
+                }
+            }
+        }
+    }
+
     void recoveredTextStyleBitsUseTheirExactMeanings()
     {
         QCOMPARE(CardTemplateStyleFlagUnderline, quint8(0x01));
@@ -329,6 +733,7 @@ private slots:
         QCOMPARE(plain.deck.fieldCount(), 11);
         QCOMPARE(plain.deck.cardCount(), 3);
         QCOMPARE(plain.deck.fieldAt(10).name(), QStringLiteral("Notes"));
+        QCOMPARE(plain.deck.cardAt(1).valueAt(0), QStringLiteral("Windows") + QChar(0x2122));
         QVERIFY(!plain.deck.legacyControlRecord().isEmpty());
         const DeckAppearance& plainAppearance = plain.deck.appearance();
         QVERIFY(!plainAppearance.indexFont.isEmpty());
@@ -412,6 +817,13 @@ private slots:
         QCOMPARE(encrypted.deck.cardCount(), 3);
         QCOMPARE(encrypted.deck.cardAt(0).valueAt(0), QStringLiteral("button") + QStringLiteral("File"));
 
+        for (int card = 0; card < plain.deck.cardCount(); ++card) {
+            for (int field = 0; field < plain.deck.fieldCount(); ++field) {
+                QCOMPARE(passwordOnly.deck.cardAt(card).valueAt(field), plain.deck.cardAt(card).valueAt(field));
+                QCOMPARE(encrypted.deck.cardAt(card).valueAt(field), plain.deck.cardAt(card).valueAt(field));
+            }
+        }
+
         const LegacyDeckReader::Result encryptedWrong = reader.readDeck(encryptedPath, QStringLiteral("Wrong01"));
         QVERIFY(!encryptedWrong.ok());
         QVERIFY(encryptedWrong.legacyPasswordProtected);
@@ -449,7 +861,7 @@ private slots:
         expectedOemPrefix.append(QChar(0x00e4));
         expectedOemPrefix.append(QChar(0x00f6));
         expectedOemPrefix.append(QChar(0x00fc));
-        const LegacyDeckReader::Result oemText = reader.readDeck(oemTextPath);
+        const LegacyDeckReader::Result oemText = LegacyDeckReader({}, LegacyTextEncoding::Dos437).readDeck(oemTextPath);
         QVERIFY2(oemText.ok(), qPrintable(oemText.errorMessage));
         QVERIFY(oemText.deck.name().startsWith(expectedOemPrefix));
         QVERIFY(oemText.deck.cardAt(0).valueAt(0).startsWith(expectedOemPrefix));

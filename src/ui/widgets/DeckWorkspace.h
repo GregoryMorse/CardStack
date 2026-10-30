@@ -11,6 +11,7 @@ class QFormLayout;
 class QLineEdit;
 class QPlainTextEdit;
 class QScrollArea;
+class QShowEvent;
 class QSplitter;
 class QStackedWidget;
 class QTableView;
@@ -160,6 +161,9 @@ public:
 signals:
     void dirtyChanged(bool dirty);
     void cardPositionChanged(int currentCardIndex, int cardCount);
+
+protected:
+    void showEvent(QShowEvent* event) override;
 
 private:
     void applyStoredAppearance();

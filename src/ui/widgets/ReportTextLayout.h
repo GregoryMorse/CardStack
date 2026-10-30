@@ -108,6 +108,30 @@ inline QVector<QString> chunks(const QString& original, const ReportFontDefiniti
     return result;
 }
 
+inline QSizeF extent(const QString& original, const ReportFontDefinition& definition,
+                     quint8 flags, const QRectF& bounds)
+{
+    if (original.isEmpty() || bounds.isEmpty()) return {};
+    QString text = normalizedText(original);
+    text.replace(QLatin1Char('\n'), QChar::LineSeparator);
+    const QFont selectedFont = font(definition, flags);
+    const qreal scale = horizontalScale(definition, selectedFont);
+    QTextLayout layout(text, selectedFont);
+    configure(layout, flags, true);
+    qreal width = 0.0, height = 0.0;
+    layout.beginLayout();
+    while (true) {
+        QTextLine line = layout.createLine();
+        if (!line.isValid()) break;
+        line.setLineWidth(std::max<qreal>(1.0, bounds.width() / scale));
+        if (height > 0.0 && height + line.height() > bounds.height()) break;
+        width = std::max(width, line.horizontalAdvance() * scale);
+        height += line.height();
+    }
+    layout.endLayout();
+    return QSizeF(std::min(width, bounds.width()), std::min(height, bounds.height()));
+}
+
 inline void draw(QPainter& painter, const QString& original, const ReportFontDefinition& definition,
                  quint8 flags, bool wrap, const QRectF& bounds)
 {
@@ -120,12 +144,15 @@ inline void draw(QPainter& painter, const QString& original, const ReportFontDef
     QTextLayout layout(text, selectedFont);
     configure(layout, flags, wrap);
     qreal y = 0.0;
+    QVector<QTextLine> visibleLines;
     layout.beginLayout();
     while (true) {
         QTextLine line = layout.createLine();
         if (!line.isValid()) break;
         line.setLineWidth(area.width() / widthScale);
+        if (y > 0.0 && y + line.height() > area.height()) break;
         line.setPosition(QPointF(0, y));
+        visibleLines.append(line);
         y += line.height();
     }
     layout.endLayout();
@@ -135,7 +162,7 @@ inline void draw(QPainter& painter, const QString& original, const ReportFontDef
     const int rotation = definition.escapementTenths != 0 ? definition.escapementTenths : definition.orientationTenths;
     if (rotation != 0) painter.rotate(-rotation / 10.0);
     painter.scale(widthScale, 1.0);
-    layout.draw(&painter, QPointF());
+    for (const auto& line : visibleLines) line.draw(&painter, QPointF());
     painter.restore();
 }
 } // namespace CardStack::ReportTextLayout

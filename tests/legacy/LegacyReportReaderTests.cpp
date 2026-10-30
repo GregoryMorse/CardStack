@@ -36,6 +36,8 @@ void putFrame(QByteArray* bytes, int offset, quint16 sourceId, const QRect& boun
     putU16(bytes, offset + 0x0c, static_cast<quint16>(bounds.right() + 1));
     putU16(bytes, offset + 0x0e, static_cast<quint16>(bounds.bottom() + 1));
     putCString(bytes, offset + 0x10, 0x7a, text);
+    (*bytes)[offset + 0x8d] = text.isEmpty() ? 'L' : (text.contains('[') ? 'D' : 'T');
+    (*bytes)[offset + 0x8e] = 'l';
 }
 
 QByteArray makeSyntheticReportStore()
@@ -92,6 +94,28 @@ class LegacyReportReaderTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void preservesWindowsTextAlignmentAndExplicitFrameKinds()
+    {
+        QByteArray bytes = makeSyntheticReportStore();
+        putCString(&bytes, 0x0a, 64, QByteArray("Form 3") + char(0xbd));
+        putFrame(&bytes, HeaderSize, 0xffff, QRect(20, 30, 300, 40), QByteArray("  [Literal] Caf") + char(0xe9) + "  ");
+        bytes[HeaderSize + 0x8d] = 'T';
+        bytes[HeaderSize + 0x8e] = 'c';
+        bytes[HeaderSize + 0x97] = 1;
+        const auto result = LegacyReportReader{}.readBytes(bytes);
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        QCOMPARE(result.reports.first().name, QStringLiteral("Form 3") + QChar(0x00bd));
+        const auto& frame = result.reports.first().frames.first();
+        QCOMPARE(frame.kind, ReportFrameKind::Text);
+        QCOMPARE(frame.text, QStringLiteral("  [Literal] Caf") + QChar(0x00e9) + QStringLiteral("  "));
+        QCOMPARE(frame.styleFlags, quint8(ReportStyleFlagBold | ReportStyleFlagAlignCenter));
+        bytes[HeaderSize + 0x8d] = '?';
+        QVERIFY(!LegacyReportReader{}.readBytes(bytes).ok());
+        bytes[HeaderSize + 0x8d] = 'T';
+        bytes[HeaderSize] = 0;
+        QVERIFY(!LegacyReportReader{}.readBytes(bytes).ok());
+    }
+
     void parsesSyntheticCurrentFormatReportStore()
     {
         const LegacyReportReader reader;
@@ -118,7 +142,7 @@ private slots:
         QCOMPARE(report.frames.size(), 2);
         QCOMPARE(report.frames.at(0).signature, 0xabcd);
         QCOMPARE(report.frames.at(0).kind, ReportFrameKind::Data);
-        QCOMPARE(report.frames.at(0).bounds, QRect(208, 313, 3125, 416));
+        QCOMPARE(report.frames.at(0).bounds, QRect(21, 125, 3125, 417));
         QCOMPARE(report.frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
         QCOMPARE(report.frames.at(1).kind, ReportFrameKind::SystemText);
         QCOMPARE(report.frames.at(1).systemTokens, (QVector<QString>{QStringLiteral("reportname"), QStringLiteral("page")}));
@@ -161,7 +185,7 @@ private slots:
         QCOMPARE(result.reports.at(0).formWidth, 5000);
         QCOMPARE(result.reports.at(0).formHeight, 3000);
         QCOMPARE(result.reports.at(0).declaredFrameCount, 11);
-        QCOMPARE(result.reports.at(0).frames.at(0).text, QStringLiteral("[Product]"));
+        QCOMPARE(result.reports.at(0).frames.at(0).text, QStringLiteral("[Product] "));
         QCOMPARE(result.reports.at(0).frames.at(0).fieldPlaceholders, QVector<QString>{QStringLiteral("Product")});
         QCOMPARE(result.reports.at(0).frames.at(10).fieldPlaceholders, QVector<QString>{QStringLiteral("Notes")});
 
@@ -182,6 +206,24 @@ private slots:
         QCOMPARE(result.reports.at(2).frames.at(13).systemTokens, QVector<QString>{QStringLiteral("page")});
     }
 
+    void resolvesOldFormatIndexedDataFramesUsingTheTargetSchema()
+    {
+        QByteArray bytes = makeOldFormatLineReportStore();
+        bytes[OldHeaderSize + 0x8d] = 'D';
+        bytes[OldHeaderSize + 0x8e] = 'l';
+        putU16(&bytes, OldHeaderSize + 2, 1);
+        const auto result = LegacyReportReader{}.readBytes(bytes, nullptr,
+            {QStringLiteral("First Name"), QStringLiteral("Last Name")});
+        QVERIFY2(result.ok(), qPrintable(result.errorMessage));
+        const auto& frame = result.reports.first().frames.first();
+        QCOMPARE(frame.text, QStringLiteral("[Last Name] "));
+        QCOMPARE(frame.fieldPlaceholders, QVector<QString>{QStringLiteral("Last Name")});
+        QCOMPARE(frame.legacyDescriptor.at(0x10), '\0');
+        const auto unbound = LegacyReportReader{}.readBytes(bytes);
+        QVERIFY(unbound.ok());
+        QVERIFY(unbound.reports.first().frames.first().text.isEmpty());
+    }
+
     void normalizesOldFormatLineFrameFillWords()
     {
         const LegacyReportReader reader;
@@ -195,7 +237,7 @@ private slots:
         QCOMPARE(frame.lineStyle, ReportLineStyleDash);
         QCOMPARE(frame.order, 50);
         QCOMPARE(frame.fillPattern, ReportFillPatternClear);
-        QCOMPARE(frame.bounds, QRect(208, 313, 3125, 41));
+        QCOMPARE(frame.bounds, QRect(21, 125, 3125, 42));
     }
 };
 

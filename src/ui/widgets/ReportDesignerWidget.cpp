@@ -195,7 +195,7 @@ protected:
             }
         }
         painter.fillRect(page, Qt::white);
-        ReportPreviewRenderer::render(&painter, *m_report, designContentRect(*m_report, page), previewData);
+        ReportPreviewRenderer::renderDesigner(&painter, *m_report, designContentRect(*m_report, page), previewData);
 
         const QColor guideBlue(QStringLiteral("#0057b8"));
         const QColor selectionRed(QStringLiteral("#c51f1f"));

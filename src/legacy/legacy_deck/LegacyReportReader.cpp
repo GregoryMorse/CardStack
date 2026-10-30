@@ -1,6 +1,7 @@
 #include "LegacyReportReader.h"
 #include "ReportFontCodec.h"
-#include "LegacyOemCodec.h"
+#include "ReportCoordinates.h"
+#include "LegacyTextCodec.h"
 
 #include <QFile>
 
@@ -34,9 +35,11 @@ constexpr int FrameFillPatternOffset = 0x04;
 constexpr int FramePrintEntireContentsOffset = 0x8a;
 constexpr int FrameValidationFlagsOffset = 0x8c;
 constexpr int FrameLineBoxShapeOffset = 0x8e;
+constexpr int FrameKindOffset = 0x8d;
+constexpr int FrameAlignmentOffset = 0x8e;
 constexpr int FrameStyleFlagsOffset = 0x97;
+constexpr quint16 FrameSignature = 0xabcd;
 constexpr int FrameCornerRadiusOffset = 0x99;
-constexpr int LegacyFrameCoordinateScale = 10;
 
 quint16 readU16(const QByteArray& bytes, int offset)
 {
@@ -49,7 +52,7 @@ quint16 readU16(const QByteArray& bytes, int offset)
         (static_cast<quint8>(bytes.at(offset + 1)) << 8));
 }
 
-QString readNullTerminatedAscii(const QByteArray& bytes, int offset, int maxLength)
+QString readWindowsText(const QByteArray& bytes, int offset, int maxLength, bool trim = true)
 {
     if (offset < 0 || offset >= bytes.size() || maxLength <= 0) {
         return {};
@@ -61,7 +64,8 @@ QString readNullTerminatedAscii(const QByteArray& bytes, int offset, int maxLeng
         ++length;
     }
 
-    return LegacyOemCodec::decode(QByteArrayView(bytes).sliced(offset, length)).trimmed();
+    const QString text = LegacyTextCodec::decode(QByteArrayView(bytes).sliced(offset, length), LegacyTextEncoding::Windows1252);
+    return trim ? text.trimmed() : text;
 }
 
 bool remainingBytesAreZero(const QByteArray& bytes, int offset)
@@ -99,7 +103,7 @@ ReportFormType formTypeFromLegacyValue(int value)
 ReportFontDefinition readFontDefinition(const QByteArray& bytes, int offset)
 {
     ReportFontDefinition font = decodeReportFont(bytes, offset);
-    font.faceName = readNullTerminatedAscii(bytes, offset + 18, 32);
+    font.faceName = readWindowsText(bytes, offset + 18, 32);
     return font;
 }
 
@@ -126,18 +130,15 @@ QVector<QString> extractDelimitedTokens(const QString& text, QChar open, QChar c
     return tokens;
 }
 
-ReportFrameKind classifyFrame(const QString& text, const QVector<QString>& fieldPlaceholders, const QVector<QString>& systemTokens)
+ReportFrameKind classifyFrame(quint8 storedKind, const QVector<QString>& fieldPlaceholders, const QVector<QString>& systemTokens)
 {
-    if (text.isEmpty()) {
-        return ReportFrameKind::LineOrBox;
+    switch (storedKind) {
+    case 'T': return systemTokens.isEmpty() ? ReportFrameKind::Text : ReportFrameKind::SystemText;
+    case 'D': return ReportFrameKind::Data;
+    case 'S': return ReportFrameKind::SystemText;
+    case 'L': return ReportFrameKind::LineOrBox;
+    default: return ReportFrameKind::Unknown;
     }
-    if (!fieldPlaceholders.isEmpty()) {
-        return ReportFrameKind::Data;
-    }
-    if (!systemTokens.isEmpty()) {
-        return ReportFrameKind::SystemText;
-    }
-    return ReportFrameKind::Text;
 }
 
 int normalizedLineStyle(int value)
@@ -150,7 +151,7 @@ int normalizedFillPattern(int value)
     return value >= 0 && value < ReportFillPatternCount ? value : ReportFillPatternClear;
 }
 
-ReportFrameDefinition readFrame(const QByteArray& bytes, int offset, int coordinateScale)
+ReportFrameDefinition readFrame(const QByteArray& bytes, int offset)
 {
     ReportFrameDefinition frame;
     frame.legacyOffset = offset;
@@ -160,21 +161,22 @@ ReportFrameDefinition readFrame(const QByteArray& bytes, int offset, int coordin
     frame.order = readU16(bytes, offset + 0x04);
     frame.band = readU16(bytes, offset + 0x06);
 
-    Q_UNUSED(coordinateScale);
-    constexpr qreal MilsPerSourcePixel = 1000.0 / 96.0;
-    const int left = qRound(readU16(bytes, offset + 0x08) * MilsPerSourcePixel);
-    const int top = qRound(readU16(bytes, offset + 0x0a) * MilsPerSourcePixel);
-    const int right = qRound(readU16(bytes, offset + 0x0c) * MilsPerSourcePixel);
-    const int bottom = qRound(readU16(bytes, offset + 0x0e) * MilsPerSourcePixel);
-    frame.bounds = QRect(left, top, std::max(0, right - left), std::max(0, bottom - top));
+    const int left = qint16(readU16(bytes, offset + 0x08)), top = qint16(readU16(bytes, offset + 0x0a));
+    const int right = qint16(readU16(bytes, offset + 0x0c)), bottom = qint16(readU16(bytes, offset + 0x0e));
+    frame.bounds = ReportCoordinates::fromDesigner(QRect(left, top, std::max(0, right - left), std::max(0, bottom - top)));
 
-    frame.text = readNullTerminatedAscii(bytes, offset + FrameTextOffset, FrameTextLength);
+    frame.text = readWindowsText(bytes, offset + FrameTextOffset, FrameTextLength, false);
     frame.fieldPlaceholders = extractDelimitedTokens(frame.text, '[', ']');
     frame.systemTokens = extractDelimitedTokens(frame.text, '{', '}');
-    frame.kind = classifyFrame(frame.text, frame.fieldPlaceholders, frame.systemTokens);
+    frame.kind = classifyFrame(quint8(bytes.at(offset + FrameKindOffset)), frame.fieldPlaceholders, frame.systemTokens);
     frame.printEntireContentsFlag = static_cast<quint8>(bytes.at(offset + FramePrintEntireContentsOffset));
     frame.validationFlags = static_cast<quint8>(bytes.at(offset + FrameValidationFlagsOffset));
     frame.styleFlags = decodeReportStyleFlags(static_cast<quint8>(bytes.at(offset + FrameStyleFlagsOffset)));
+    if (frame.kind != ReportFrameKind::LineOrBox) {
+        const char alignment = bytes.at(offset + FrameAlignmentOffset);
+        if (alignment == 'c') frame.styleFlags |= ReportStyleFlagAlignCenter;
+        else if (alignment == 'r') frame.styleFlags |= ReportStyleFlagAlignRight;
+    }
     if (frame.kind == ReportFrameKind::LineOrBox) {
         frame.lineBoxShape = static_cast<quint8>(bytes.at(offset + FrameLineBoxShapeOffset));
         frame.lineStyle = normalizedLineStyle(readU16(bytes, offset + FrameLineStyleOffset));
@@ -191,16 +193,16 @@ bool LegacyReportReader::Result::ok() const
     return errorMessage.isEmpty();
 }
 
-LegacyReportReader::Result LegacyReportReader::readFile(const QString& filePath) const
+LegacyReportReader::Result LegacyReportReader::readFile(const QString& filePath, const QStringList& fieldNames) const
 {
     ImportBudget budget(m_limits);
     QByteArray bytes;
     QString error;
     if (!readBoundedFile(filePath, &bytes, budget, &error)) return {{}, error};
-    return readBytes(bytes, &budget);
+    return readBytes(bytes, &budget, fieldNames);
 }
 
-LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes, ImportBudget* sharedBudget) const
+LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes, ImportBudget* sharedBudget, const QStringList& fieldNames) const
 {
     constexpr int PaperStyleIdOffset = 0x00bf;
     constexpr int MarginBottomOffset = 0x00c1;
@@ -232,7 +234,6 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         }
 
         const int headerSize = currentFormat ? CurrentHeaderSize : OldHeaderSize;
-        const int coordinateScale = LegacyFrameCoordinateScale;
         if (!containsByteRange(bytes.size(), quint64(offset), quint64(headerSize))) {
             result.errorMessage = QStringLiteral("Truncated LegacyDeck report header at offset 0x%1.")
                                       .arg(offset, 0, 16);
@@ -256,7 +257,7 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         report.headerSize = headerSize;
         report.legacyHeader = bytes.mid(offset, headerSize);
         report.declaredFrameCount = frameCount;
-        report.name = readNullTerminatedAscii(bytes, offset + ReportNameOffset, ReportNameLength);
+        report.name = readWindowsText(bytes, offset + ReportNameOffset, ReportNameLength);
         report.formWidth = readU16(bytes, offset + FormWidthOffset);
         report.formHeight = readU16(bytes, offset + FormHeightOffset);
         report.headerHeight = qRound(readU16(bytes, offset + HeaderHeightOffset) * (1000.0 / 96.0));
@@ -283,7 +284,20 @@ LegacyReportReader::Result LegacyReportReader::readBytes(const QByteArray& bytes
         report.frames.reserve(frameCount);
         for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
             if (!budget.checkpoint(FrameRecordSize)) return abort();
-            report.frames.append(readFrame(bytes, frameBase + frameIndex * FrameRecordSize, coordinateScale));
+            auto frame = readFrame(bytes, frameBase + frameIndex * FrameRecordSize);
+            if (frame.signature != FrameSignature || frame.kind == ReportFrameKind::Unknown) {
+                result.reports.clear();
+                result.errorMessage = QStringLiteral("Invalid report frame descriptor at offset 0x%1.").arg(frameBase + frameIndex * FrameRecordSize, 0, 16);
+                return result;
+            }
+            // Older reports bind an empty data-frame caption by its saved field index.
+            if (oldFormat && frame.kind == ReportFrameKind::Data && frame.text.isEmpty()
+                && frame.sourceId < fieldNames.size()) {
+                const QString& name = fieldNames.at(frame.sourceId);
+                frame.text = QStringLiteral("[%1] ").arg(name);
+                frame.fieldPlaceholders = {name};
+            }
+            report.frames.append(frame);
         }
 
         if (!validateReportDefinition(report, &result.errorMessage)) {

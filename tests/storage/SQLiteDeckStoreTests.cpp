@@ -3,6 +3,8 @@
 #include <QSqlError>
 
 #include "DeckTemplate.h"
+#include "BuiltInReportTemplates.h"
+#include "ReportCoordinates.h"
 #include "DeckSecurity.h"
 #include "DocumentFile.h"
 #include "SQLitePackageStore.h"
@@ -160,6 +162,34 @@ private:
     }
 
 private slots:
+    void previousReportCoordinatesRepairOnceAndPreserveEditedDesigns()
+    {
+        QTemporaryDir directory;
+        QString error;
+        Deck source = createDeckFromTemplateName(QStringLiteral("Software Library"));
+        const auto current = source.reportAt(0);
+        auto previous = current;
+        for (auto& frame : previous.frames)
+            frame.bounds = ReportCoordinates::previousUnadjusted(ReportCoordinates::sourceFromPage(frame.bounds));
+        QVERIFY(previous.frames != current.frames);
+        source.setReport(0, previous);
+        const QString path = directory.filePath(QStringLiteral("previous.cardstack"));
+        { SQLiteDeckStore store; QVERIFY2(store.create(path, &error), qPrintable(error)); QVERIFY2(store.saveDeck(source, &error), qPrintable(error)); }
+        Deck loaded;
+        { SQLiteDeckStore store; QVERIFY2(store.open(path, &error), qPrintable(error)); QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error)); }
+        QCOMPARE(loaded.reportAt(0).frames, current.frames);
+        const QString next = directory.filePath(QStringLiteral("normalized.cardstack"));
+        { SQLiteDeckStore store; QVERIFY2(store.create(next, &error), qPrintable(error)); QVERIFY2(store.saveDeck(loaded, &error), qPrintable(error)); }
+        { SQLiteDeckStore store; QVERIFY2(store.open(next, &error), qPrintable(error)); QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error)); }
+        QCOMPARE(loaded.reportAt(0).frames, current.frames);
+        previous.frames[0].bounds.translate(37, 19);
+        source.setReport(0, previous);
+        const QString edited = directory.filePath(QStringLiteral("edited.cardstack"));
+        { SQLiteDeckStore store; QVERIFY2(store.create(edited, &error), qPrintable(error)); QVERIFY2(store.saveDeck(source, &error), qPrintable(error)); }
+        { SQLiteDeckStore store; QVERIFY2(store.open(edited, &error), qPrintable(error)); QVERIFY2(store.loadDeck(&loaded, &error), qPrintable(error)); }
+        QCOMPARE(loaded.reportAt(0).frames, previous.frames);
+    }
+
     void sparseCardsCannotBypassModelBudgets()
     {
         QTemporaryDir dir;

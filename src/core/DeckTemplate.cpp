@@ -10,7 +10,7 @@ namespace CardStack {
 namespace {
 
 constexpr int DefaultTextLength = 255;
-constexpr int NotesLength = 40;
+
 constexpr int LegacyTemplateScale = 10;
 constexpr int LegacyTemplateCanvasWidth = 640;
 constexpr int LegacyTemplateCanvasHeight = 480;
@@ -47,7 +47,7 @@ FieldDefinition textField(const QString& name, int maxLength = DefaultTextLength
     return FieldDefinition(name, FieldType::Text, maxLength);
 }
 
-FieldDefinition notesField(const QString& name = QStringLiteral("Notes"), int maxLength = NotesLength)
+FieldDefinition notesField(const QString& name = QStringLiteral("Notes"), int maxLength = DefaultNotesMaximumLength)
 {
     return FieldDefinition(name, FieldType::Notes, maxLength);
 }
@@ -126,7 +126,7 @@ QVector<FieldDefinition> fieldDefinitionsFromLegacyFields(const QVector<LegacyTe
         fields.append(FieldDefinition(
             legacyField.name,
             legacyField.fieldType,
-            legacyField.dataLength,
+            legacyField.fieldType == FieldType::Notes ? DefaultNotesMaximumLength : legacyField.dataLength,
             legacyField.controlRole == LegacyTemplateControlRole::Standalone,
             legacyField.dialableMarker != 0,
             {},

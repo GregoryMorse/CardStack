@@ -1,6 +1,7 @@
 #include "LegacyInterchangeReader.h"
 
 #include "LegacyDeckReader.h"
+#include "LegacyTextCodec.h"
 
 #include "CardRecord.h"
 #include "FieldDefinition.h"
@@ -21,6 +22,11 @@ constexpr int DBaseFieldNameSize = 11;
 constexpr int DBaseFieldLengthOffset = 16;
 constexpr int DBaseRecordDeletedFlagSize = 1;
 constexpr int DBaseMemoBlockSize = 512;
+constexpr int DBaseLanguageDriverOffset = 29;
+constexpr quint8 DBaseLanguageUnspecified = 0;
+constexpr quint8 DBaseLanguageDos437 = 1;
+constexpr quint8 DBaseLanguageWindows1252 = 3;
+constexpr quint8 DBaseLanguageWindowsAnsi = 0x57;
 constexpr char DBaseFieldDescriptorTerminator = '\x0d';
 
 constexpr int CardfileCountOffset = 3;
@@ -33,12 +39,6 @@ constexpr int CardfileTextLengthOffset = 2;
 constexpr int CardfileTextOffset = 4;
 
 constexpr char WordPerfectFieldSeparator = '\xde';
-
-struct TakeNoteField {
-    QString name;
-    FieldType type = FieldType::Text;
-    int length = 0;
-};
 
 struct DBaseField {
     QString name;
@@ -105,6 +105,16 @@ bool readAllBytes(const QString& path, QByteArray* bytes, QString* error, Import
     return readBoundedFile(path, bytes, budget, error);
 }
 
+QString decodeDBaseString(const QByteArray& bytes, LegacyTextEncoding encoding, bool stopAtNul = true)
+{
+    QByteArrayView view(bytes);
+    if (stopAtNul) {
+        const qsizetype end = bytes.indexOf('\0');
+        if (end >= 0) view = view.first(end);
+    }
+    return LegacyTextCodec::decode(view, encoding);
+}
+
 QString memoPathForDBasePath(const QString& filePath)
 {
     QFileInfo info(filePath);
@@ -118,7 +128,7 @@ QString memoPathForDBasePath(const QString& filePath)
 }
 
 bool readDBaseMemoValue(const QString& dbfPath, const QString& token, QByteArray* cache, bool* loaded,
-                        QString* value, QString* error, ImportBudget& budget)
+                        QString* value, QString* error, ImportBudget& budget, LegacyTextEncoding encoding)
 {
     *value = {};
     if (token.trimmed().isEmpty()) return true;
@@ -150,11 +160,11 @@ bool readDBaseMemoValue(const QString& dbfPath, const QString& token, QByteArray
         }
         ++end;
     }
-    *value = decodeWindows1252(cache->mid(qsizetype(offset), end - qsizetype(offset))).trimmed();
+    *value = decodeDBaseString(cache->mid(qsizetype(offset), end - qsizetype(offset)), encoding, false);
     return true;
 }
 
-QVector<DBaseField> readDBaseFields(const QByteArray& bytes, int headerLength)
+QVector<DBaseField> readDBaseFields(const QByteArray& bytes, int headerLength, LegacyTextEncoding encoding)
 {
     QVector<DBaseField> fields;
     for (int offset = DBaseHeaderSize; offset + DBaseFieldDescriptorSize <= headerLength; offset += DBaseFieldDescriptorSize) {
@@ -162,7 +172,7 @@ QVector<DBaseField> readDBaseFields(const QByteArray& bytes, int headerLength)
             break;
         }
 
-        const QString name = decodeFixedString(bytes, offset, DBaseFieldNameSize);
+        const QString name = decodeDBaseString(bytes.mid(offset, DBaseFieldNameSize), encoding).trimmed();
         const char type = offset + 11 < bytes.size() ? bytes.at(offset + 11) : '\0';
         const int length = offset + DBaseFieldLengthOffset < bytes.size()
             ? static_cast<quint8>(bytes.at(offset + DBaseFieldLengthOffset))
@@ -248,76 +258,6 @@ void addRowsToDeck(Deck* deck, const QVector<QVector<QString>>& rows)
     }
 }
 
-QVector<TakeNoteField> takeNoteSoftwareLibraryFields()
-{
-    return {
-        {QStringLiteral("Product"), FieldType::Text, 30},
-        {QStringLiteral("Version"), FieldType::Text, 10},
-        {QStringLiteral("Company"), FieldType::Text, 50},
-        {QStringLiteral("Serial #"), FieldType::Text, 25},
-        {QStringLiteral("Registered to"), FieldType::Text, 50},
-        {QStringLiteral("Purchased"), FieldType::Text, 20},
-        {QStringLiteral("From"), FieldType::Text, 30},
-        {QStringLiteral("Tech support"), FieldType::Text, 20},
-        {QStringLiteral("Support plan"), FieldType::Text, 20},
-        {QStringLiteral("Customer service"), FieldType::Text, 20},
-        {QStringLiteral("Notes"), FieldType::Notes, 40},
-    };
-}
-
-LegacyInterchangeReader::Result readTakeNoteSoftwareLibraryFallback(
-    const QString& filePath,
-    const QVector<QByteArray>& records,
-    const QString& originalError, ImportBudget& budget)
-{
-    LegacyInterchangeReader::Result result;
-    result.format = LegacyInterchangeReader::Format::TakeNote;
-
-    const QVector<TakeNoteField> fields = takeNoteSoftwareLibraryFields();
-    const auto abort = [&]() { result.processingAborted = true; result.errorMessage = budget.error(); return result; };
-    if (!budget.fields(quint64(fields.size()))) return abort();
-    Deck deck(QStringLiteral("Software Library"));
-    deck.setDescription(QStringLiteral("Imported from a legacy TakeNote-compatible deck file."));
-    for (const TakeNoteField& field : fields) {
-        deck.addField(FieldDefinition(field.name, field.type, field.length));
-    }
-
-    for (const QByteArray& record : records) {
-        if (!budget.row() || !budget.checkpoint(quint64(record.size()))) return abort();
-        int offset = 5;
-        QVector<QString> values;
-        values.reserve(fields.size());
-        for (const TakeNoteField& field : fields) {
-            if (!budget.value(quint64(field.length) * sizeof(QChar))) return abort();
-            values.append(decodeWindows1252(record.mid(offset, field.length), true).trimmed());
-            offset += field.length;
-        }
-
-        const QString product = values.value(0);
-        if (product.isEmpty() ||
-            product == QStringLiteral("Product") ||
-            product == QStringLiteral("Serial #") ||
-            product == QStringLiteral("WINDEX") ||
-            product.contains(QStringLiteral("Software Library"))) {
-            continue;
-        }
-
-        CardRecord card;
-        for (const QString& value : values) {
-            card.appendValue(value);
-        }
-        deck.addCard(std::move(card));
-    }
-
-    if (deck.cardCount() == 0) {
-        result.errorMessage = QStringLiteral("Could not import legacy TakeNote-compatible file %1: %2")
-            .arg(filePath, originalError);
-        return result;
-    }
-
-    result.deck = std::move(deck);
-    return result;
-}
 
 } // namespace
 
@@ -379,7 +319,18 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readDBaseFile(const QSt
         return result;
     }
     if (!budget.rowsFit(count)) return aborted();
-    const auto fields = readDBaseFields(bytes, int(header));
+    const auto languageDriver = quint8(bytes.at(DBaseLanguageDriverOffset));
+    LegacyTextEncoding encoding;
+    switch (languageDriver) {
+    case DBaseLanguageUnspecified: // The original unmarked DOS exports use OEM text, unlike .BTN data.
+    case DBaseLanguageDos437: encoding = LegacyTextEncoding::Dos437; break;
+    case DBaseLanguageWindows1252:
+    case DBaseLanguageWindowsAnsi: encoding = LegacyTextEncoding::Windows1252; break;
+    default:
+        result.errorMessage = QStringLiteral("Unsupported dBase language driver: 0x%1.").arg(languageDriver, 2, 16, QLatin1Char('0'));
+        return result;
+    }
+    const auto fields = readDBaseFields(bytes, int(header), encoding);
     if (fields.isEmpty() || !budget.fields(quint64(fields.size()))) {
         result.errorMessage = budget.failed() ? budget.error() : QStringLiteral("The dBase field table is invalid.");
         result.processingAborted = budget.failed();
@@ -404,10 +355,11 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readDBaseFile(const QSt
         quint64 fieldOffset = offset + DBaseRecordDeletedFlagSize;
         for (const auto& field : fields) {
             const quint64 length = field.type == FieldType::Notes ? 10 : quint64(field.length);
-            const QString raw = decodeWindows1252(bytes.mid(qsizetype(fieldOffset), qsizetype(length)), true).trimmed();
+            QString raw = decodeDBaseString(bytes.mid(qsizetype(fieldOffset), qsizetype(length)), encoding);
+            while (raw.endsWith(QLatin1Char(' '))) raw.chop(1);
             QString value = raw;
             if (field.type == FieldType::Notes
-                && !readDBaseMemoValue(filePath, raw, &memo, &memoLoaded, &value, &result.errorMessage, budget)) {
+                && !readDBaseMemoValue(filePath, raw, &memo, &memoLoaded, &value, &result.errorMessage, budget, encoding)) {
                 result.processingAborted = budget.failed();
                 return result;
             }
@@ -491,15 +443,9 @@ LegacyInterchangeReader::Result LegacyInterchangeReader::readTakeNoteFile(const 
         return result;
     }
     if (!deckResult.ok()) {
-        Result fallback = readTakeNoteSoftwareLibraryFallback(filePath, deckResult.rawRecords, deckResult.errorMessage, budget);
-        fallback.legacyPasswordProtected = deckResult.legacyPasswordProtected;
-        fallback.legacyDataEncrypted = deckResult.legacyDataEncrypted;
-        fallback.legacyPasswordVerificationUnavailable = deckResult.legacyPasswordVerificationUnavailable;
-        fallback.passwordRequired = deckResult.passwordRequired;
-        fallback.passwordRejected = deckResult.passwordRejected;
-        fallback.legacyPasswordVerified = deckResult.legacyPasswordVerified ||
-            (deckResult.legacyPasswordProtected && !password.isEmpty());
-        return fallback;
+        result.errorMessage = QStringLiteral("Could not import legacy TakeNote-compatible file %1: %2")
+            .arg(filePath, deckResult.errorMessage);
+        return result;
     }
 
     result.deck = deckResult.deck;

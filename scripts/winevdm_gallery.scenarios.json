@@ -1,0 +1,2441 @@
+{
+  "version": 1,
+  "notes": [
+    "This is a sanitized migration-testing contract, not a decoded binary resource bundle.",
+    "Configured routes must be empirically validated; pending routes are explicit coverage gaps, not passes.",
+    "Document launches prepare visual baselines without the original Close All path, which hides the MDI client."
+  ],
+  "startup": [
+    {
+      "action": "waitWindow",
+      "titleLike": "Evaluation Copy",
+      "timeoutMs": 10000,
+      "optional": true
+    },
+    {
+      "action": "click",
+      "controlId": 1,
+      "comment": "Dismiss the legacy evaluation-copy modal.",
+      "allowLegacyError": true,
+      "optional": true
+    },
+    {
+      "action": "acceptLegacyDialogs",
+      "messageLike": "File not found",
+      "buttonId": 1,
+      "repeat": 12,
+      "allowLegacyError": true
+    },
+    {
+      "action": "waitWindow",
+      "titleLike": "buttonFile",
+      "excludeTitleLike": "Evaluation Copy",
+      "timeoutMs": 10000
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "gallery-newfile",
+      "enabled": true,
+      "outputStem": "gallery-newfile",
+      "steps": [
+        {
+          "action": "closeDecks",
+          "repeat": 2,
+          "allowLegacyError": true
+        },
+        {
+          "action": "command",
+          "id": 2000
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "New Card Deck",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "newfile.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "newfile.wide"
+        }
+      ]
+    },
+    {
+      "name": "gallery-search",
+      "enabled": true,
+      "outputStem": "gallery-search",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2400
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Find",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "search.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "search.wide"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 311
+        },
+        {
+          "action": "assert",
+          "expect": {
+            "controlId": 311,
+            "checked": 1
+          }
+        },
+        {
+          "action": "capture",
+          "key": "search.and_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 312
+        },
+        {
+          "action": "assert",
+          "expect": {
+            "controlId": 312,
+            "checked": 1
+          }
+        },
+        {
+          "action": "capture",
+          "key": "search.or_variant"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-replace",
+      "enabled": true,
+      "outputStem": "gallery-replace",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2402
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Replace",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "replace.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "replace.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-sort",
+      "enabled": true,
+      "outputStem": "gallery-sort",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2506
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Change Deck Index",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "sort.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "sort.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-choosecolor",
+      "enabled": true,
+      "outputStem": "gallery-choosecolor",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2504
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Deck Colors",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "choosecolor.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "choosecolor.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-changedesc",
+      "enabled": true,
+      "outputStem": "gallery-changedesc",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2508
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Change Deck Description",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "changedesc.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "changedesc.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-phndef",
+      "enabled": true,
+      "outputStem": "gallery-phndef",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2505
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Phone  Dialer  Configuration",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "phndef.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "phndef.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-addsecurity",
+      "enabled": true,
+      "outputStem": "gallery-addsecurity",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2507
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Add Security To File",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "addsecurity.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "addsecurity.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-about",
+      "enabled": true,
+      "outputStem": "gallery-about",
+      "steps": [
+        {
+          "action": "closeDecks",
+          "repeat": 2,
+          "allowLegacyError": true
+        },
+        {
+          "action": "command",
+          "id": 2905,
+          "allowLegacyError": true
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "About buttonFile",
+          "timeoutMs": 5000,
+          "allowLegacyError": true
+        },
+        {
+          "action": "capture",
+          "key": "about.initial",
+          "allowLegacyError": true
+        },
+        {
+          "action": "interestingState",
+          "allowLegacyError": true
+        },
+        {
+          "action": "capture",
+          "key": "about.wide",
+          "allowLegacyError": true
+        }
+      ]
+    },
+    {
+      "name": "gallery-quickdial",
+      "enabled": true,
+      "outputStem": "gallery-quickdial",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2505
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Phone  Dialer",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 1423
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Add Quick Dial",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "quickdial.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "quickdial.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-designreports",
+      "enabled": true,
+      "outputStem": "gallery-designreports",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "designreports.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "designreports.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-reportform",
+      "enabled": true,
+      "outputStem": "gallery-reportform",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 404
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Forms",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "reportform.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "reportform.wide"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 300
+        },
+        {
+          "action": "capture",
+          "key": "reportform.card_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 301
+        },
+        {
+          "action": "capture",
+          "key": "reportform.label_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 302
+        },
+        {
+          "action": "capture",
+          "key": "reportform.report_variant"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-defineform",
+      "enabled": true,
+      "outputStem": "gallery-defineform",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 404
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Forms",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 701
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Define Custom Form",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "defineform.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "defineform.wide"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 300
+        },
+        {
+          "action": "capture",
+          "key": "defineform.card_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 301
+        },
+        {
+          "action": "capture",
+          "key": "defineform.label_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 302
+        },
+        {
+          "action": "capture",
+          "key": "defineform.report_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 325
+        },
+        {
+          "action": "capture",
+          "key": "defineform.portrait_variant"
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 326
+        },
+        {
+          "action": "capture",
+          "key": "defineform.landscape_variant"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-print",
+      "enabled": true,
+      "outputStem": "gallery-print",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 1
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Print",
+          "excludeTitleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "print.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "print.wide"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-preview",
+      "enabled": true,
+      "outputStem": "gallery-preview",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 1
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Print",
+          "excludeTitleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 2005,
+          "comment": "Explicitly select All cards to match the modern report comparison records."
+        },
+        {
+          "action": "assert",
+          "expect": {
+            "controlId": 2005,
+            "checked": 1
+          }
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 2007
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Print Preview",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "printpreview.initial"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-startup",
+      "enabled": true,
+      "outputStem": "gallery-startup",
+      "steps": [
+        {
+          "action": "closeDecks",
+          "repeat": 2,
+          "allowLegacyError": true
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "app_startup_toolbar.initial"
+        }
+      ]
+    },
+    {
+      "name": "gallery-deck",
+      "enabled": true,
+      "outputStem": "gallery-deck",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "capture",
+          "key": "app_deck_toolbar.initial"
+        },
+        {
+          "action": "command",
+          "id": 2301,
+          "comment": "Visual state via the original menu command, not a keyboard-equivalence claim."
+        },
+        {
+          "action": "capture",
+          "key": "app_deck_table.initial"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-template",
+      "enabled": true,
+      "outputStem": "gallery-template",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2002
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "assert",
+          "expect": {
+            "menuPresent": 4108
+          }
+        },
+        {
+          "action": "capture",
+          "key": "app_template_toolbar.initial"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "gallery-report",
+      "enabled": true,
+      "outputStem": "gallery-report",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 403
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "assert",
+          "expect": {
+            "menuPresent": 4151
+          }
+        },
+        {
+          "action": "capture",
+          "key": "app_report_toolbar.initial"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN"
+    },
+    {
+      "name": "keyboard-dialog-navigation",
+      "enabled": true,
+      "outputStem": "keyboard-dialog-navigation",
+      "steps": [
+        {
+          "action": "closeDecks",
+          "repeat": 2,
+          "allowLegacyError": true
+        },
+        {
+          "action": "command",
+          "id": 2000
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "New Card Deck",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "focus",
+          "controlId": 500
+        },
+        {
+          "action": "key",
+          "virtualKey": 9,
+          "expect": {
+            "focusId": 501
+          }
+        },
+        {
+          "action": "key",
+          "virtualKey": 9,
+          "modifiers": [
+            "Shift"
+          ],
+          "expect": {
+            "focusId": 500
+          }
+        },
+        {
+          "action": "capture",
+          "key": "newfile.keyboard_navigation"
+        }
+      ]
+    },
+    {
+      "name": "keyboard-mdi-close",
+      "enabled": true,
+      "outputStem": "keyboard-mdi-close",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "key",
+          "virtualKey": 115,
+          "modifiers": [
+            "Control"
+          ],
+          "expect": {
+            "menuAbsent": 2301
+          }
+        },
+        {
+          "action": "capture",
+          "key": "app_startup_toolbar.keyboard_close"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN",
+      "diagnosticOnly": true,
+      "unverifiedReason": "The message-only Ctrl+F4 route from a live entry field has not passed. No activation or global input fallback is allowed."
+    },
+    {
+      "name": "gallery-template-text",
+      "enabled": true,
+      "launchDocument": "SOFTWARE.BTN",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2002
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "command",
+          "id": 4106
+        },
+        {
+          "action": "command",
+          "id": 4109
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Text Attributes",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "tpltextframe.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "tpltextframe.wide"
+        }
+      ]
+    },
+    {
+      "name": "gallery-template-data",
+      "enabled": true,
+      "launchDocument": "SOFTWARE.BTN",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2002
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "frameDoubleClick",
+          "controlId": 0
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Data Box Attributes",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "tpldataframe.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "tpldataframe.wide"
+        }
+      ]
+    },
+    {
+      "name": "gallery-report-text",
+      "enabled": true,
+      "launchDocument": "SOFTWARE.BTN",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 403
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "command",
+          "id": 4106
+        },
+        {
+          "action": "command",
+          "id": 4109
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Text Attributes",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "textframe.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "textframe.wide"
+        }
+      ]
+    },
+    {
+      "name": "gallery-report-data",
+      "enabled": true,
+      "launchDocument": "SOFTWARE.BTN",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 403
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "command",
+          "id": 4107
+        },
+        {
+          "action": "command",
+          "id": 4109
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Data Box Attributes",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "dataframe.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "dataframe.wide"
+        }
+      ]
+    },
+    {
+      "name": "gallery-report-system",
+      "enabled": true,
+      "launchDocument": "SOFTWARE.BTN",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 403
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "command",
+          "id": 4151
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Add System Box",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "addsystembox.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "addsystembox.wide"
+        }
+      ]
+    },
+    {
+      "name": "gallery-report-line",
+      "enabled": true,
+      "launchDocument": "SOFTWARE.BTN",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "command",
+          "id": 2008
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Available Reports",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "selectIndex",
+          "controlId": 402,
+          "index": 0
+        },
+        {
+          "action": "mouseClick",
+          "controlId": 403
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "command",
+          "id": 4152
+        },
+        {
+          "action": "command",
+          "id": 4109
+        },
+        {
+          "action": "waitWindow",
+          "titleLike": "Line/Box Attributes",
+          "timeoutMs": 5000
+        },
+        {
+          "action": "capture",
+          "key": "lineframe.initial"
+        },
+        {
+          "action": "interestingState"
+        },
+        {
+          "action": "capture",
+          "key": "lineframe.wide"
+        }
+      ]
+    },
+    {
+      "name": "keyboard-card-toggle",
+      "enabled": true,
+      "outputStem": "gallery-deck",
+      "steps": [
+        {
+          "action": "waitWindow",
+          "titleLike": "buttonFile",
+          "excludeTitleLike": "Evaluation Copy",
+          "timeoutMs": 10000
+        },
+        {
+          "action": "waitDeck"
+        },
+        {
+          "action": "capture",
+          "key": "keyboard_card_toggle.initial"
+        },
+        {
+          "action": "key",
+          "virtualKey": 120,
+          "expect": {
+            "menuChecked": 2301
+          }
+        },
+        {
+          "action": "capture",
+          "key": "app_deck_table.initial"
+        }
+      ],
+      "launchDocument": "SOFTWARE.BTN",
+      "diagnosticOnly": true,
+      "unverifiedReason": "The message-only F9 route from a live entry field has not passed. Menu-state captures are separate command evidence."
+    }
+  ],
+  "inventory": [
+    {
+      "key": "addsecurity.initial",
+      "dialog": "ADDSECURITY",
+      "variant": "initial",
+      "legacyTitle": "Add Security To File",
+      "modernMatch": "*addsecurity_initial.png",
+      "routing": "configured",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation."
+      ],
+      "fixture": "gallery-addsecurity"
+    },
+    {
+      "key": "addsecurity.wide",
+      "dialog": "ADDSECURITY",
+      "variant": "wide",
+      "legacyTitle": "Add Security To File",
+      "modernMatch": "*addsecurity_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation.",
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-addsecurity"
+    },
+    {
+      "key": "getpassword.initial",
+      "dialog": "GETPASSWORD",
+      "variant": "initial",
+      "legacyTitle": "File Requires Password",
+      "modernMatch": "*getpassword_initial.png",
+      "routing": "pending",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation."
+      ]
+    },
+    {
+      "key": "getpassword.wide",
+      "dialog": "GETPASSWORD",
+      "variant": "wide",
+      "legacyTitle": "File Requires Password",
+      "modernMatch": "*getpassword_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation.",
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "removesecurity.initial",
+      "dialog": "REMOVESECURITY",
+      "variant": "initial",
+      "legacyTitle": "Remove Security From File",
+      "modernMatch": "*removesecurity_initial.png",
+      "routing": "pending",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation."
+      ]
+    },
+    {
+      "key": "removesecurity.wide",
+      "dialog": "REMOVESECURITY",
+      "variant": "wide",
+      "legacyTitle": "Remove Security From File",
+      "modernMatch": "*removesecurity_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation.",
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "verifypassword.initial",
+      "dialog": "VERIFYPASSWORD",
+      "variant": "initial",
+      "legacyTitle": "Verify Password",
+      "modernMatch": "*verifypassword_initial.png",
+      "routing": "pending",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation."
+      ]
+    },
+    {
+      "key": "verifypassword.wide",
+      "dialog": "VERIFYPASSWORD",
+      "variant": "wide",
+      "legacyTitle": "Verify Password",
+      "modernMatch": "*verifypassword_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Modern security and password rules intentionally differ; do not equate this with migration-password validation.",
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "changedesc.initial",
+      "dialog": "CHANGEDESC",
+      "variant": "initial",
+      "legacyTitle": "Change Deck Description",
+      "modernMatch": "*changedesc_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-changedesc"
+    },
+    {
+      "key": "changedesc.wide",
+      "dialog": "CHANGEDESC",
+      "variant": "wide",
+      "legacyTitle": "Change Deck Description",
+      "modernMatch": "*changedesc_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-changedesc"
+    },
+    {
+      "key": "sort.initial",
+      "dialog": "SORT",
+      "variant": "initial",
+      "legacyTitle": "Change Deck Index",
+      "modernMatch": "*sort_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-sort"
+    },
+    {
+      "key": "sort.wide",
+      "dialog": "SORT",
+      "variant": "wide",
+      "legacyTitle": "Change Deck Index",
+      "modernMatch": "*sort_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-sort"
+    },
+    {
+      "key": "search.initial",
+      "dialog": "SEARCH",
+      "variant": "initial",
+      "legacyTitle": "Find",
+      "modernMatch": "*search_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-search"
+    },
+    {
+      "key": "search.wide",
+      "dialog": "SEARCH",
+      "variant": "wide",
+      "legacyTitle": "Find",
+      "modernMatch": "*search_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-search"
+    },
+    {
+      "key": "mergedlg.initial",
+      "dialog": "MERGEDLG",
+      "variant": "initial",
+      "legacyTitle": "Merge Mapping",
+      "modernMatch": "*mergedlg_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "mergedlg.wide",
+      "dialog": "MERGEDLG",
+      "variant": "wide",
+      "legacyTitle": "Merge Mapping",
+      "modernMatch": "*mergedlg_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "export.initial",
+      "dialog": "EXPORT",
+      "variant": "initial",
+      "legacyTitle": "Export",
+      "modernMatch": "*export_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "export.wide",
+      "dialog": "EXPORT",
+      "variant": "wide",
+      "legacyTitle": "Export",
+      "modernMatch": "*export_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "newfile.initial",
+      "dialog": "NEWFILE",
+      "variant": "initial",
+      "legacyTitle": "New Card Deck",
+      "modernMatch": "*newfile_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-newfile"
+    },
+    {
+      "key": "newfile.wide",
+      "dialog": "NEWFILE",
+      "variant": "wide",
+      "legacyTitle": "New Card Deck",
+      "modernMatch": "*newfile_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-newfile"
+    },
+    {
+      "key": "tpldataframe.initial",
+      "dialog": "TPLDATAFRAME",
+      "variant": "initial",
+      "legacyTitle": "Data Box Attributes",
+      "modernMatch": "*tpldataframe_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-template-data"
+    },
+    {
+      "key": "tpldataframe.wide",
+      "dialog": "TPLDATAFRAME",
+      "variant": "wide",
+      "legacyTitle": "Data Box Attributes",
+      "modernMatch": "*tpldataframe_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-template-data"
+    },
+    {
+      "key": "textframe.initial",
+      "dialog": "TEXTFRAME",
+      "variant": "initial",
+      "legacyTitle": "Text Attributes",
+      "modernMatch": "*_textframe_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-report-text"
+    },
+    {
+      "key": "textframe.wide",
+      "dialog": "TEXTFRAME",
+      "variant": "wide",
+      "legacyTitle": "Text Attributes",
+      "modernMatch": "*_textframe_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-report-text"
+    },
+    {
+      "key": "print.initial",
+      "dialog": "PRINT",
+      "variant": "initial",
+      "legacyTitle": "Print",
+      "modernMatch": "*print_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-print"
+    },
+    {
+      "key": "print.wide",
+      "dialog": "PRINT",
+      "variant": "wide",
+      "legacyTitle": "Print",
+      "modernMatch": "*print_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-print"
+    },
+    {
+      "key": "call.initial",
+      "dialog": "CALL",
+      "variant": "initial",
+      "legacyTitle": "Phone Dialer",
+      "modernMatch": "*call_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "call.wide",
+      "dialog": "CALL",
+      "variant": "wide",
+      "legacyTitle": "Phone Dialer",
+      "modernMatch": "*call_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "dial.initial",
+      "dialog": "DIAL",
+      "variant": "initial",
+      "legacyTitle": "",
+      "modernMatch": "*_dial_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "dial.wide",
+      "dialog": "DIAL",
+      "variant": "wide",
+      "legacyTitle": "",
+      "modernMatch": "*_dial_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "phndef.initial",
+      "dialog": "PHNDEF",
+      "variant": "initial",
+      "legacyTitle": "Phone  Dialer  Configuration",
+      "modernMatch": "*phndef_initial.png",
+      "routing": "configured",
+      "notes": [
+        "Serial-port, modem initialization and pulse/tone controls are intentionally absent from the modern application."
+      ],
+      "fixture": "gallery-phndef"
+    },
+    {
+      "key": "phndef.wide",
+      "dialog": "PHNDEF",
+      "variant": "wide",
+      "legacyTitle": "Phone  Dialer  Configuration",
+      "modernMatch": "*phndef_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Serial-port, modem initialization and pulse/tone controls are intentionally absent from the modern application.",
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-phndef"
+    },
+    {
+      "key": "abortimpexp.initial",
+      "dialog": "ABORTIMPEXP",
+      "variant": "initial",
+      "legacyTitle": "",
+      "modernMatch": "*abortimpexp_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "abortimpexp.wide",
+      "dialog": "ABORTIMPEXP",
+      "variant": "wide",
+      "legacyTitle": "",
+      "modernMatch": "*abortimpexp_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "about.initial",
+      "dialog": "ABOUT",
+      "variant": "initial",
+      "legacyTitle": "About buttonFile",
+      "modernMatch": "*about_initial.png",
+      "routing": "configured",
+      "notes": [
+        "Product branding/artwork is intentionally different."
+      ],
+      "fixture": "gallery-about"
+    },
+    {
+      "key": "about.wide",
+      "dialog": "ABOUT",
+      "variant": "wide",
+      "legacyTitle": "About buttonFile",
+      "modernMatch": "*about_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Product branding/artwork is intentionally different.",
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-about"
+    },
+    {
+      "key": "quickdial.initial",
+      "dialog": "QUICKDIAL",
+      "variant": "initial",
+      "legacyTitle": "Add Quick Dial",
+      "modernMatch": "*quickdial_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-quickdial"
+    },
+    {
+      "key": "quickdial.wide",
+      "dialog": "QUICKDIAL",
+      "variant": "wide",
+      "legacyTitle": "Add Quick Dial",
+      "modernMatch": "*quickdial_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-quickdial"
+    },
+    {
+      "key": "impexamine.initial",
+      "dialog": "IMPEXAMINE",
+      "variant": "initial",
+      "legacyTitle": "Import - Examine",
+      "modernMatch": "*impexamine_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "impexamine.wide",
+      "dialog": "IMPEXAMINE",
+      "variant": "wide",
+      "legacyTitle": "Import - Examine",
+      "modernMatch": "*impexamine_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "impedit.initial",
+      "dialog": "IMPEDIT",
+      "variant": "initial",
+      "legacyTitle": "Edit Data Box Structure",
+      "modernMatch": "*impedit_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "impedit.wide",
+      "dialog": "IMPEDIT",
+      "variant": "wide",
+      "legacyTitle": "Edit Data Box Structure",
+      "modernMatch": "*impedit_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "editnote.initial",
+      "dialog": "EDITNOTE",
+      "variant": "initial",
+      "legacyTitle": "Edit Notes",
+      "modernMatch": "*editnote_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "editnote.wide",
+      "dialog": "EDITNOTE",
+      "variant": "wide",
+      "legacyTitle": "Edit Notes",
+      "modernMatch": "*editnote_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "choosecolor.initial",
+      "dialog": "CHOOSECOLOR",
+      "variant": "initial",
+      "legacyTitle": "Deck Colors",
+      "modernMatch": "*choosecolor_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-choosecolor"
+    },
+    {
+      "key": "choosecolor.wide",
+      "dialog": "CHOOSECOLOR",
+      "variant": "wide",
+      "legacyTitle": "Deck Colors",
+      "modernMatch": "*choosecolor_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-choosecolor"
+    },
+    {
+      "key": "tn_fileopen.initial",
+      "dialog": "TN_FILEOPEN",
+      "variant": "initial",
+      "legacyTitle": "Open",
+      "modernMatch": "*tn_fileopen_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "tn_fileopen.wide",
+      "dialog": "TN_FILEOPEN",
+      "variant": "wide",
+      "legacyTitle": "Open",
+      "modernMatch": "*tn_fileopen_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "printpreview.initial",
+      "dialog": "PRINTPREVIEW",
+      "variant": "initial",
+      "legacyTitle": "Print Preview",
+      "modernMatch": "*printpreview_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-preview"
+    },
+    {
+      "key": "printpreview.wide",
+      "dialog": "PRINTPREVIEW",
+      "variant": "wide",
+      "legacyTitle": "Print Preview",
+      "modernMatch": "*printpreview_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "designreports.initial",
+      "dialog": "DESIGNREPORTS",
+      "variant": "initial",
+      "legacyTitle": "Available Reports",
+      "modernMatch": "*designreports_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-designreports"
+    },
+    {
+      "key": "designreports.wide",
+      "dialog": "DESIGNREPORTS",
+      "variant": "wide",
+      "legacyTitle": "Available Reports",
+      "modernMatch": "*designreports_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-designreports"
+    },
+    {
+      "key": "savedesign.initial",
+      "dialog": "SAVEDESIGN",
+      "variant": "initial",
+      "legacyTitle": "Save Report Design",
+      "modernMatch": "*savedesign_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "savedesign.wide",
+      "dialog": "SAVEDESIGN",
+      "variant": "wide",
+      "legacyTitle": "Save Report Design",
+      "modernMatch": "*savedesign_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "dataframe.initial",
+      "dialog": "DATAFRAME",
+      "variant": "initial",
+      "legacyTitle": "Data Box Attributes",
+      "modernMatch": "*_dataframe_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-report-data"
+    },
+    {
+      "key": "dataframe.wide",
+      "dialog": "DATAFRAME",
+      "variant": "wide",
+      "legacyTitle": "Data Box Attributes",
+      "modernMatch": "*_dataframe_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-report-data"
+    },
+    {
+      "key": "reportform.initial",
+      "dialog": "REPORTFORM",
+      "variant": "initial",
+      "legacyTitle": "Forms",
+      "modernMatch": "runtime_reportform_initial.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-reportform"
+    },
+    {
+      "key": "reportform.wide",
+      "dialog": "REPORTFORM",
+      "variant": "wide",
+      "legacyTitle": "Forms",
+      "modernMatch": "runtime_reportform_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values.",
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-reportform"
+    },
+    {
+      "key": "defineform.initial",
+      "dialog": "DEFINEFORM",
+      "variant": "initial",
+      "legacyTitle": "Define Custom Form",
+      "modernMatch": "runtime_defineform_initial.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "defineform.wide",
+      "dialog": "DEFINEFORM",
+      "variant": "wide",
+      "legacyTitle": "Define Custom Form",
+      "modernMatch": "runtime_defineform_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values.",
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "addsystembox.initial",
+      "dialog": "ADDSYSTEMBOX",
+      "variant": "initial",
+      "legacyTitle": "Add System Box",
+      "modernMatch": "*addsystembox_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-report-system"
+    },
+    {
+      "key": "addsystembox.wide",
+      "dialog": "ADDSYSTEMBOX",
+      "variant": "wide",
+      "legacyTitle": "Add System Box",
+      "modernMatch": "*addsystembox_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-report-system"
+    },
+    {
+      "key": "tpltextframe.initial",
+      "dialog": "TPLTEXTFRAME",
+      "variant": "initial",
+      "legacyTitle": "Text Attributes",
+      "modernMatch": "*tpltextframe_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-template-text"
+    },
+    {
+      "key": "tpltextframe.wide",
+      "dialog": "TPLTEXTFRAME",
+      "variant": "wide",
+      "legacyTitle": "Text Attributes",
+      "modernMatch": "*tpltextframe_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-template-text"
+    },
+    {
+      "key": "replace.initial",
+      "dialog": "REPLACE",
+      "variant": "initial",
+      "legacyTitle": "Replace",
+      "modernMatch": "*replace_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-replace"
+    },
+    {
+      "key": "replace.wide",
+      "dialog": "REPLACE",
+      "variant": "wide",
+      "legacyTitle": "Replace",
+      "modernMatch": "*replace_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-replace"
+    },
+    {
+      "key": "lineframe.initial",
+      "dialog": "LINEFRAME",
+      "variant": "initial",
+      "legacyTitle": "Line/Box Attributes",
+      "modernMatch": "*lineframe_initial.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-report-line"
+    },
+    {
+      "key": "lineframe.wide",
+      "dialog": "LINEFRAME",
+      "variant": "wide",
+      "legacyTitle": "Line/Box Attributes",
+      "modernMatch": "*lineframe_wide.png",
+      "routing": "configured",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ],
+      "fixture": "gallery-report-line"
+    },
+    {
+      "key": "groupframe.initial",
+      "dialog": "GROUPFRAME",
+      "variant": "initial",
+      "legacyTitle": "Group Attributes",
+      "modernMatch": "*groupframe_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "groupframe.wide",
+      "dialog": "GROUPFRAME",
+      "variant": "wide",
+      "legacyTitle": "Group Attributes",
+      "modernMatch": "*groupframe_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "startup.initial",
+      "dialog": "STARTUP",
+      "variant": "initial",
+      "legacyTitle": "",
+      "modernMatch": "*startup_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "startup.wide",
+      "dialog": "STARTUP",
+      "variant": "wide",
+      "legacyTitle": "",
+      "modernMatch": "*startup_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "removelocks.initial",
+      "dialog": "REMOVELOCKS",
+      "variant": "initial",
+      "legacyTitle": "Current Locks And Users",
+      "modernMatch": "*removelocks_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "removelocks.wide",
+      "dialog": "REMOVELOCKS",
+      "variant": "wide",
+      "legacyTitle": "Current Locks And Users",
+      "modernMatch": "*removelocks_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "getusername.initial",
+      "dialog": "GETUSERNAME",
+      "variant": "initial",
+      "legacyTitle": "Enter Your User Name",
+      "modernMatch": "*getusername_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "getusername.wide",
+      "dialog": "GETUSERNAME",
+      "variant": "wide",
+      "legacyTitle": "Enter Your User Name",
+      "modernMatch": "*getusername_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "setadminpass.initial",
+      "dialog": "SETADMINPASS",
+      "variant": "initial",
+      "legacyTitle": "Set Administration Password",
+      "modernMatch": "*setadminpass_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "setadminpass.wide",
+      "dialog": "SETADMINPASS",
+      "variant": "wide",
+      "legacyTitle": "Set Administration Password",
+      "modernMatch": "*setadminpass_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "verifyadminpass.initial",
+      "dialog": "VERIFYADMINPASS",
+      "variant": "initial",
+      "legacyTitle": "Verify Administration Password",
+      "modernMatch": "*verifyadminpass_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "verifyadminpass.wide",
+      "dialog": "VERIFYADMINPASS",
+      "variant": "wide",
+      "legacyTitle": "Verify Administration Password",
+      "modernMatch": "*verifyadminpass_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "getadminpass.initial",
+      "dialog": "GETADMINPASS",
+      "variant": "initial",
+      "legacyTitle": "Enter Administration Password",
+      "modernMatch": "*getadminpass_initial.png",
+      "routing": "pending",
+      "notes": []
+    },
+    {
+      "key": "getadminpass.wide",
+      "dialog": "GETADMINPASS",
+      "variant": "wide",
+      "legacyTitle": "Enter Administration Password",
+      "modernMatch": "*getadminpass_wide.png",
+      "routing": "pending",
+      "notes": [
+        "Legacy wide state chooses widest existing list choices; it does not force invalid numeric field values."
+      ]
+    },
+    {
+      "key": "search.and_variant",
+      "modernMatch": "*search_and_variant.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-search"
+    },
+    {
+      "key": "search.or_variant",
+      "modernMatch": "*search_or_variant.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "gallery-search"
+    },
+    {
+      "key": "reportform.card_variant",
+      "modernMatch": "runtime_reportform_card_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-reportform"
+    },
+    {
+      "key": "reportform.label_variant",
+      "modernMatch": "runtime_reportform_label_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-reportform"
+    },
+    {
+      "key": "reportform.report_variant",
+      "modernMatch": "runtime_reportform_report_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-reportform"
+    },
+    {
+      "key": "defineform.card_variant",
+      "modernMatch": "runtime_defineform_card_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "defineform.label_variant",
+      "modernMatch": "runtime_defineform_label_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "defineform.report_variant",
+      "modernMatch": "runtime_defineform_report_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "defineform.portrait_variant",
+      "modernMatch": "runtime_defineform_portrait_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "defineform.landscape_variant",
+      "modernMatch": "runtime_defineform_landscape_variant.png",
+      "routing": "configured",
+      "notes": [
+        "Modern counterpart is captured through the initialized application workflow; raw UiBuilder construction samples are supplemental only."
+      ],
+      "fixture": "gallery-defineform"
+    },
+    {
+      "key": "app_startup_toolbar.initial",
+      "modernMatch": "app_startup_toolbar.png",
+      "routing": "configured",
+      "notes": [
+        "Both applications use the staged SOFTWARE.BTN sample and report sidecar. Isolated modern tool examples remain supplemental; paired images require human review, not pixel-equivalence assertions."
+      ],
+      "fixture": "gallery-startup"
+    },
+    {
+      "key": "app_deck_toolbar.initial",
+      "modernMatch": "app_deck_toolbar.png",
+      "routing": "configured",
+      "notes": [
+        "Both applications use the staged SOFTWARE.BTN sample and report sidecar. Isolated modern tool examples remain supplemental; paired images require human review, not pixel-equivalence assertions."
+      ],
+      "fixture": "gallery-deck"
+    },
+    {
+      "key": "app_deck_table.initial",
+      "modernMatch": "app_deck_table_toolbar.png",
+      "routing": "configured",
+      "notes": [
+        "Both applications use the staged SOFTWARE.BTN sample and report sidecar. Isolated modern tool examples remain supplemental; paired images require human review, not pixel-equivalence assertions."
+      ],
+      "fixture": "gallery-deck"
+    },
+    {
+      "key": "app_template_toolbar.initial",
+      "modernMatch": "app_template_source_toolbar.png",
+      "routing": "configured",
+      "notes": [
+        "Both applications use the staged SOFTWARE.BTN sample and report sidecar. Isolated modern tool examples remain supplemental; paired images require human review, not pixel-equivalence assertions."
+      ],
+      "fixture": "gallery-template"
+    },
+    {
+      "key": "app_report_toolbar.initial",
+      "modernMatch": "app_report_source_toolbar.png",
+      "routing": "configured",
+      "notes": [
+        "Both applications use the staged SOFTWARE.BTN sample and report sidecar. Isolated modern tool examples remain supplemental; paired images require human review, not pixel-equivalence assertions."
+      ],
+      "fixture": "gallery-report"
+    },
+    {
+      "key": "newfile.keyboard_navigation",
+      "modernMatch": "*newfile_keyboard_navigation.png",
+      "routing": "configured",
+      "notes": [],
+      "fixture": "keyboard-dialog-navigation"
+    },
+    {
+      "key": "app_startup_toolbar.keyboard_close",
+      "modernMatch": "*app_startup_toolbar_keyboard_close.png",
+      "routing": "configured",
+      "notes": [
+        "Both applications use the staged SOFTWARE.BTN sample and report sidecar. Isolated modern tool examples remain supplemental; paired images require human review, not pixel-equivalence assertions."
+      ],
+      "fixture": "keyboard-mdi-close"
+    }
+  ],
+  "modernSuites": [
+    {
+      "suite": "UiBuilderTests",
+      "function": "writesManualDialogInspectionImagesWhenConfigured",
+      "variable": "CARDSTACK_DIALOG_GALLERY_DIR",
+      "directory": "dialogs"
+    },
+    {
+      "suite": "ReportDesignerWidgetTests",
+      "function": "writesManualDesignerInspectionImagesWhenConfigured",
+      "variable": "CARDSTACK_DESIGNER_GALLERY_DIR",
+      "directory": "designers"
+    },
+    {
+      "suite": "TemplateDesignerWidgetTests",
+      "function": "writesManualDesignerInspectionImagesWhenConfigured",
+      "variable": "CARDSTACK_DESIGNER_GALLERY_DIR",
+      "directory": "designers"
+    },
+    {
+      "suite": "MainWindowActionTests",
+      "function": "writesManualAppInspectionImagesWhenConfigured",
+      "variable": "CARDSTACK_APP_GALLERY_DIR",
+      "directory": "workspaces"
+    },
+    {
+      "suite": "ReportPreviewRendererTests",
+      "function": "writesLegacyOracleComparisonImagesWhenConfigured",
+      "variable": "CARDSTACK_ORACLE_REPORT_GALLERY_DIR",
+      "directory": "reports"
+    },
+    {
+      "suite": "MainWindowActionTests",
+      "function": "customReportBandMeasurementsUseInchesAndMilsConsistently",
+      "variable": "CARDSTACK_RUNTIME_DIALOG_GALLERY_DIR",
+      "directory": "dialogs"
+    },
+    {
+      "suite": "MainWindowActionTests",
+      "function": "newReportCustomFormUpdatesDefineFormPreviewState",
+      "variable": "CARDSTACK_RUNTIME_DIALOG_GALLERY_DIR",
+      "directory": "dialogs"
+    }
+  ]
+}

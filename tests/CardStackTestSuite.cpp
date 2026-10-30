@@ -107,6 +107,28 @@ void cleanupTopLevelWidgets()
 int main(int argc, char** argv)
 {
     qputenv("QT_LOGGING_RULES", "qt.qpa.*=false");
+    QByteArray requestedPlatform = qgetenv("QT_QPA_PLATFORM");
+    if (requestedPlatform.isEmpty()) {
+        requestedPlatform = "offscreen";
+        qputenv("QT_QPA_PLATFORM", requestedPlatform);
+    }
+    for (int index = 1; index < argc; ++index) {
+        if (QByteArray(argv[index]) == "-platform" && index + 1 < argc) requestedPlatform = argv[index + 1];
+        else if (QByteArray(argv[index]).startsWith("-platform=")) requestedPlatform = QByteArray(argv[index]).mid(10);
+    }
+#ifdef Q_OS_WIN
+    if (requestedPlatform != "offscreen" && requestedPlatform != "minimal") {
+        wchar_t name[512] = {};
+        DWORD needed = 0;
+        const auto desktop = GetThreadDesktop(GetCurrentThreadId());
+        const QString expected = qEnvironmentVariable("CARDSTACK_TEST_ISOLATED_DESKTOP");
+        const bool named = GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &needed);
+        if (!named || !expected.startsWith(QStringLiteral("CardStackOracle_")) || QString::fromWCharArray(name) != expected) {
+            std::fputs("Native GUI tests require the private-desktop runner. Default test launches use the offscreen platform.\n", stderr);
+            return 2;
+        }
+    }
+#endif
     if (argc == 3 && (QString::fromLocal8Bit(argv[1]) == QLatin1String("--security-interchange")
                      || QString::fromLocal8Bit(argv[1]) == QLatin1String("--security-native"))) {
 #ifdef Q_OS_WIN

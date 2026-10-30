@@ -23,12 +23,24 @@ constexpr int SchemaDeckNameOffset = 11;
 constexpr int SchemaDeckNameLength = 64;
 constexpr int SchemaFieldCountOffset = 87;
 constexpr int FieldDefinitionSize = 37;
+constexpr int WinIndexFieldCountOffset = 0x59;
+constexpr int WinIndexFieldTableOffset = 0x3cc;
+constexpr int WinIndexFieldDescriptorSize = 0x39;
+constexpr int WinIndexFieldNameSize = 30;
+constexpr int WinIndexFieldRoleOffset = 0x1e;
+constexpr int WinIndexFieldRecordOffset = 0x22;
+constexpr int WinIndexFieldLengthOffset = 0x24;
+constexpr int WinIndexFieldFlagsOffset = 0x27;
+constexpr int WinIndexMaximumFields = 20;
 constexpr int FieldNameSize = 16;
 constexpr int MaxLegacyFields = 40;
 constexpr int OldFormatOwnerEncryptionKeyOffset = 0x2e;
 constexpr int OldFormatOwnerVerificationLength = 9;
 constexpr int OldFormatOwnerEncryptionKeyCount = 4;
-constexpr int OldFormatOwnerEncryptionSectorSize = 1024;
+constexpr int OldFormatOwnerEncryptionWordSize = 2;
+constexpr int OldFormatOwnerEncryptionModeOffset = OldFormatOwnerEncryptionKeyOffset
+    + OldFormatOwnerEncryptionKeyCount * OldFormatOwnerEncryptionWordSize;
+constexpr quint8 OldFormatOwnerBlockedKeyMode = 0x01;
 constexpr quint8 OldFormatOwnerReadAccessFlag = 0x01;
 constexpr int OldFormatDataPageHeaderSize = 6;
 constexpr int OldFormatEmptyRecordScanOffset = 8;
@@ -58,22 +70,7 @@ quint16 readU16(const QByteArray& bytes, int offset)
     return static_cast<quint16>(low | (high << 8));
 }
 
-QChar decodeWindows1252Byte(quint8 byte)
-{
-    static constexpr ushort cp1252Controls[32] = {
-        0x20ac, 0x0081, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
-        0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008d, 0x017d, 0x008f,
-        0x0090, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
-        0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x009d, 0x017e, 0x0178,
-    };
-
-    if (byte >= 0x80 && byte <= 0x9f) {
-        return QChar(cp1252Controls[byte - 0x80]);
-    }
-    return QChar(static_cast<ushort>(byte));
-}
-
-QString readNullTerminatedOem(const QByteArray& bytes, int offset, int maxLength)
+QString readNullTerminatedText(const QByteArray& bytes, int offset, int maxLength, LegacyTextEncoding encoding, bool trim = true)
 {
     if (offset < 0 || offset >= bytes.size() || maxLength <= 0) {
         return {};
@@ -85,7 +82,8 @@ QString readNullTerminatedOem(const QByteArray& bytes, int offset, int maxLength
         ++length;
     }
 
-    return LegacyOemCodec::decode(QByteArrayView(bytes).sliced(offset, length)).trimmed();
+    const QString text = LegacyTextCodec::decode(QByteArrayView(bytes).sliced(offset, length), encoding);
+    return trim ? text.trimmed() : text;
 }
 
 bool isLikelyFieldName(const QString& value)
@@ -102,10 +100,43 @@ bool isLikelyFieldName(const QString& value)
     return true;
 }
 
-bool parseLegacyFieldAt(const QByteArray& schemaRecord, int offset, LegacyField* field)
+bool parseLegacyFieldAt(const QByteArray& schemaRecord, int offset, LegacyField* field, LegacyTextEncoding encoding)
 {
     if (field == nullptr || offset < 0 || offset + FieldDefinitionSize > schemaRecord.size()) {
         return false;
+    }
+
+    using namespace LegacyTemplateLayoutFormat;
+    if (schemaRecord.mid(SchemaMagicOffset, 6) == QByteArrayLiteral("WINDEX")) {
+        if (offset < WinIndexFieldTableOffset
+            || (offset - WinIndexFieldTableOffset) % WinIndexFieldDescriptorSize != 0
+            || !containsByteRange(schemaRecord.size(), quint64(offset), WinIndexFieldDescriptorSize)) return false;
+        const QString name = readNullTerminatedText(schemaRecord, offset, WinIndexFieldNameSize, encoding);
+        const quint16 flags = readU16(schemaRecord, offset + WinIndexFieldFlagsOffset);
+        const quint16 role = readU16(schemaRecord, offset + WinIndexFieldRoleOffset);
+        const int length = readU16(schemaRecord, offset + WinIndexFieldLengthOffset);
+        const FieldType type = (flags & VariableTextFlag) != 0 ? FieldType::Notes : FieldType::Text;
+        if (!isLikelyFieldName(name) || role > StandaloneControlRole || length <= 0
+            || (type == FieldType::Text && length > 256) || length > DefaultNotesMaximumLength) return false;
+        *field = {name, type, readU16(schemaRecord, offset + WinIndexFieldRecordOffset), length};
+        return true;
+    }
+    const int count = schemaRecord.size() > SchemaFieldCountOffset ? quint8(schemaRecord.at(SchemaFieldCountOffset)) : 0;
+    const bool currentDescriptor = schemaRecord.mid(SchemaMagicOffset, 4) == QByteArrayLiteral("TN20")
+        && count > 0 && count <= MaxLegacyFields && offset >= FieldTableOffset
+        && (offset - FieldTableOffset) % FieldDescriptorSize == 0
+        && (offset - FieldTableOffset) / FieldDescriptorSize < count;
+    if (currentDescriptor) {
+        const QString name = readNullTerminatedText(schemaRecord, offset, LegacyTemplateLayoutFormat::FieldNameSize, encoding);
+        const quint16 flags = readU16(schemaRecord, offset + FieldFlagsOffset);
+        const quint16 role = readU16(schemaRecord, offset + FieldControlRoleOffset);
+        const int recordOffset = readU16(schemaRecord, offset + FieldRecordOffsetOffset);
+        const int length = readU16(schemaRecord, offset + FieldDataLengthOffset);
+        const FieldType type = (flags & VariableTextFlag) != 0 ? FieldType::Notes : FieldType::Text;
+        if (!isLikelyFieldName(name) || role > StandaloneControlRole || length <= 0
+            || (type == FieldType::Text && length > 256) || (type == FieldType::Notes && length > 8192)) return false;
+        *field = {name, type, recordOffset, length};
+        return true;
     }
 
     const FieldDefinitionLayout layouts[] = {
@@ -120,7 +151,7 @@ bool parseLegacyFieldAt(const QByteArray& schemaRecord, int offset, LegacyField*
             continue;
         }
 
-        const QString name = readNullTerminatedOem(schemaRecord, offset + layout.nameOffset, FieldNameSize);
+        const QString name = readNullTerminatedText(schemaRecord, offset + layout.nameOffset, FieldNameSize, encoding);
         const int typeByte = static_cast<quint8>(schemaRecord.at(offset + layout.typeOffset));
         const int recordOffset = readU16(schemaRecord, offset + layout.recordOffsetOffset);
         const int length = readU16(schemaRecord, offset + layout.lengthOffset);
@@ -149,6 +180,8 @@ bool parseLegacyFieldAt(const QByteArray& schemaRecord, int offset, LegacyField*
 
 int declaredFieldCount(const QByteArray& schemaRecord)
 {
+    if (schemaRecord.mid(SchemaMagicOffset, 6) == QByteArrayLiteral("WINDEX"))
+        return readU16(schemaRecord, WinIndexFieldCountOffset);
     if (schemaRecord.size() <= SchemaFieldCountOffset) {
         return 0;
     }
@@ -157,10 +190,10 @@ int declaredFieldCount(const QByteArray& schemaRecord)
     return count > 0 && count <= MaxLegacyFields ? count : 0;
 }
 
-QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord, ImportBudget& budget)
+QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord, ImportBudget& budget, LegacyTextEncoding encoding)
 {
     const int expectedFieldCount = declaredFieldCount(schemaRecord);
-    const auto parseSequence = [&schemaRecord, &budget](int offset, int expectedCount = 0) {
+    const auto parseSequence = [&schemaRecord, &budget, encoding](int offset, int expectedCount = 0, bool allowUnorderedOffsets = false, int descriptorSize = FieldDefinitionSize) {
         QVector<LegacyField> candidate;
         int previousRecordOffset = -1;
         for (int fieldIndex = 0; fieldIndex < MaxLegacyFields; ++fieldIndex) {
@@ -169,11 +202,11 @@ QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord, Import
             }
             if (!budget.checkpoint(FieldDefinitionSize)) return QVector<LegacyField>{};
             LegacyField field;
-            const int fieldOffset = offset + fieldIndex * FieldDefinitionSize;
-            if (!parseLegacyFieldAt(schemaRecord, fieldOffset, &field)) {
+            const int fieldOffset = offset + fieldIndex * descriptorSize;
+            if (!parseLegacyFieldAt(schemaRecord, fieldOffset, &field, encoding)) {
                 break;
             }
-            if (field.recordOffset < previousRecordOffset) {
+            if (!allowUnorderedOffsets && field.recordOffset < previousRecordOffset) {
                 break;
             }
             previousRecordOffset = field.recordOffset;
@@ -181,6 +214,20 @@ QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord, Import
         }
         return candidate;
     };
+
+    if (schemaRecord.mid(SchemaMagicOffset, 6) == QByteArrayLiteral("WINDEX")) {
+        if (expectedFieldCount <= 0 || expectedFieldCount > WinIndexMaximumFields) return {};
+        const auto fields = parseSequence(WinIndexFieldTableOffset, expectedFieldCount, true, WinIndexFieldDescriptorSize);
+        return fields.size() == expectedFieldCount ? fields : QVector<LegacyField>{};
+    }
+
+    // Current templates have an explicit descriptor table. Never scan past an invalid field
+    // and quietly import only a trailing suffix of a declared schema.
+    if (schemaRecord.mid(SchemaMagicOffset, 4) == QByteArrayLiteral("TN20")
+        && schemaRecord.size() >= LegacyTemplateLayoutFormat::FieldTableOffset) {
+        const auto fields = parseSequence(LegacyTemplateLayoutFormat::FieldTableOffset, expectedFieldCount, true);
+        return expectedFieldCount > 0 && fields.size() == expectedFieldCount ? fields : QVector<LegacyField>{};
+    }
 
     const auto matchesDeclaredCount = [expectedFieldCount](const QVector<LegacyField>& fields) {
         return expectedFieldCount > 0 && fields.size() == expectedFieldCount;
@@ -230,13 +277,13 @@ QVector<LegacyField> findFieldDefinitions(const QByteArray& schemaRecord, Import
     return bestFields;
 }
 
-const QByteArray* findSchemaRecord(const QVector<QByteArray>& records, ImportBudget& budget)
+const QByteArray* findSchemaRecord(const QVector<QByteArray>& records, ImportBudget& budget, LegacyTextEncoding encoding)
 {
     const QByteArray* best = nullptr;
     int bestFieldCount = 0;
     for (const QByteArray& record : records) {
         if (!budget.checkpoint()) return nullptr;
-        const QVector<LegacyField> fields = findFieldDefinitions(record, budget);
+        const QVector<LegacyField> fields = findFieldDefinitions(record, budget, encoding);
         const int declaredCount = declaredFieldCount(record);
         const int score = fields.size() + (declaredCount > 0 && declaredCount == fields.size() ? MaxLegacyFields : 0);
         if (score > bestFieldCount) {
@@ -252,9 +299,17 @@ bool isControlRecord(const QByteArray& record)
     return record.left(32).contains(QByteArrayLiteral("~BT"));
 }
 
-QString fieldValueFromRecord(const QByteArray& record, const LegacyField& field)
+int fieldValueByteLimit(const QByteArray& record, const LegacyField& field)
 {
-    return readNullTerminatedOem(record, RecordPayloadOffset + field.recordOffset, field.length);
+    if (field.type != FieldType::Notes) return field.length;
+    // The descriptor reserves 40 bytes for notes; the final, NUL-terminated field grows with the record.
+    return int(std::max<qsizetype>(0, std::min<qsizetype>(DefaultNotesMaximumLength,
+        record.size() - RecordPayloadOffset - field.recordOffset)));
+}
+
+QString fieldValueFromRecord(const QByteArray& record, const LegacyField& field, LegacyTextEncoding encoding)
+{
+    return readNullTerminatedText(record, RecordPayloadOffset + field.recordOffset, fieldValueByteLimit(record, field), encoding, false);
 }
 
 int minimumRecordSize(const QVector<LegacyField>& fields)
@@ -358,10 +413,14 @@ bool decryptOldFormatOwnerEncryptedBtrieveBytes(
         if (error) *error = QStringLiteral("Encrypted Btrieve file has no usable owner encryption key.");
         return false;
     }
+    // WBTRCALL 1080:593e selects quarter-page blocks when verifier byte 8 is odd,
+    // otherwise cycling four 16-bit keys after every word (not after each sector).
+    const bool blockedKeys = (quint8(bytes->at(OldFormatOwnerEncryptionModeOffset)) & OldFormatOwnerBlockedKeyMode) != 0;
+    const int keySpan = blockedKeys ? audit.pageSize / OldFormatOwnerEncryptionKeyCount : OldFormatOwnerEncryptionWordSize;
     for (qsizetype page = audit.pageSize; page < bytes->size(); page += audit.pageSize) {
         if (!budget.checkpoint(quint64(audit.pageSize))) { if (error) *error = budget.error(); return false; }
         for (int offset = 0; offset < audit.pageSize; ++offset) {
-            const quint16 key = keys[(offset / OldFormatOwnerEncryptionSectorSize) % OldFormatOwnerEncryptionKeyCount];
+            const quint16 key = keys[(offset / keySpan) % OldFormatOwnerEncryptionKeyCount];
             (*bytes)[page + offset] = char(quint8(bytes->at(page + offset)) ^ quint8(key >> ((offset & 1) * 8)));
         }
     }
@@ -562,24 +621,24 @@ LegacyDeckReader::Result LegacyDeckReader::readRecords(
         return result;
     }
 
-    const QByteArray* schemaRecord = findSchemaRecord(records, budget);
+    const QByteArray* schemaRecord = findSchemaRecord(records, budget, m_encoding);
     if (budget.failed()) return abort();
     if (schemaRecord == nullptr) {
         result.errorMessage = QStringLiteral("Could not locate Legacy field definitions.");
         return result;
     }
 
-    const QVector<LegacyField> fields = findFieldDefinitions(*schemaRecord, budget);
+    const QVector<LegacyField> fields = findFieldDefinitions(*schemaRecord, budget, m_encoding);
     if (budget.failed() || !budget.fields(quint64(fields.size()))) return abort();
     if (fields.isEmpty()) {
         result.errorMessage = QStringLiteral("Legacy field definition table is empty.");
         return result;
     }
 
-    const auto visualTemplate = LegacyTemplateLayoutFormat::find(records, fields.size());
+    const auto visualTemplate = LegacyTemplateLayoutFormat::find(records, fields.size(), m_encoding);
     if (!budget.checkpoint()) return abort();
     if (visualTemplate.has_value() && !budget.frames(quint64(visualTemplate->layout.frames.size()))) return abort();
-    const QString deckName = readNullTerminatedOem(*schemaRecord, SchemaDeckNameOffset, SchemaDeckNameLength);
+    const QString deckName = readNullTerminatedText(*schemaRecord, SchemaDeckNameOffset, SchemaDeckNameLength, m_encoding);
     Deck deck(deckName.isEmpty() ? fallbackDeckName : deckName);
     deck.setLegacyControlRecord(*schemaRecord);
     deck.setAppearance(LegacyDeckAppearanceFormat::parse(*schemaRecord));
@@ -592,7 +651,7 @@ LegacyDeckReader::Result LegacyDeckReader::readRecords(
         deck.setCardTemplateLayout(visualTemplate->layout);
     } else {
         for (const LegacyField& field : fields) {
-            deck.addField(FieldDefinition(field.name, field.type, field.length));
+            deck.addField(FieldDefinition(field.name, field.type, field.type == FieldType::Notes ? DefaultNotesMaximumLength : field.length));
         }
     }
 
@@ -608,8 +667,8 @@ LegacyDeckReader::Result LegacyDeckReader::readRecords(
         if (!budget.row() || !budget.checkpoint(quint64(record.size()))) return abort();
         CardRecord card;
         for (const LegacyField& field : fields) {
-            if (!budget.value(quint64(field.length) * sizeof(QChar))) return abort();
-            card.appendValue(fieldValueFromRecord(record, field));
+            if (!budget.value(quint64(fieldValueByteLimit(record, field)) * sizeof(QChar))) return abort();
+            card.appendValue(fieldValueFromRecord(record, field, m_encoding));
         }
         deck.addCard(std::move(card));
     }

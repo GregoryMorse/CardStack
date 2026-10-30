@@ -2,6 +2,7 @@
 
 #include "BtrieveFileSaverReader.h"
 #include "Deck.h"
+#include "LegacyTextCodec.h"
 
 #include <QByteArray>
 #include <QString>
@@ -12,7 +13,8 @@ namespace CardStack {
 
 class LegacyDeckReader {
 public:
-    explicit LegacyDeckReader(ImportLimits limits = {}) : m_limits(limits) {}
+    explicit LegacyDeckReader(ImportLimits limits = {}, LegacyTextEncoding encoding = LegacyTextEncoding::Windows1252)
+        : m_limits(limits), m_encoding(encoding) {}
     struct Result {
         Deck deck;
         BtrieveFileSaverReader::Metadata btrieveMetadata;
@@ -37,6 +39,7 @@ public:
         const QString& password = {}, ImportBudget* sharedBudget = nullptr) const;
 private:
     ImportLimits m_limits;
+    LegacyTextEncoding m_encoding;
 };
 
 } // namespace CardStack

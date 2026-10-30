@@ -562,6 +562,11 @@ private slots:
         QVERIFY(tableView != nullptr);
         QVERIFY(cardPanel != nullptr);
 
+        const QRect savedEditorBounds = dataEditor->geometry();
+        workspace.resize(1000, 700);
+        workspace.show();
+        QCoreApplication::processEvents();
+        QCOMPARE(dataEditor->geometry(), savedEditorBounds);
         QCOMPARE(dataEditor->font(), dataFont);
         QCOMPARE(nameLabel->font(), nameFont);
         QCOMPARE(textLabel->font(), textFont);

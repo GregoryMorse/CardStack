@@ -5,6 +5,8 @@
 
 namespace CardStack {
 
+inline constexpr int DefaultNotesMaximumLength = 8191;
+
 enum class FieldType {
     Text,
     Notes

@@ -318,8 +318,6 @@ constexpr int DefaultLabelFormWidthMils = 2625;
 constexpr int DefaultLabelFormHeightMils = 1000;
 constexpr int DefaultLabelRows = 10;
 constexpr int DefaultLabelColumns = 3;
-constexpr int DefineFormMeasureEditWidthPx = 48;
-constexpr int DefineFormCountEditWidthPx = 36;
 constexpr int MainToolbarIconSizePx = 24;
 constexpr int IndexBarButtonMinHeightPx = 22;
 constexpr int IndexBarButtonMaxHeightPx = 24;
@@ -5416,29 +5414,6 @@ bool MainWindow::configureReportForm(ReportDefinition* report)
             paperSize->addItem(tr("Custom"), QSize());
             paperSize->setCurrentIndex(index);
         }
-        const auto setDefineEditWidth = [defineDialog = defineDialog.get()](int controlId, int width) {
-            if (auto* edit = uiControl<QLineEdit>(*defineDialog, controlId)) {
-                QRect geometry = edit->geometry();
-                geometry.setWidth(width);
-                edit->setGeometry(geometry);
-                edit->setMinimumWidth(width);
-                edit->setMaximumWidth(width);
-            }
-        };
-        for (int controlId : {
-                 Control::DefineFormHeight,
-                 Control::DefineFormWidth,
-                 Control::DefineFormMarginTop,
-                 Control::DefineFormMarginLeft,
-                 Control::DefineFormMarginBottom,
-                 Control::DefineFormMarginRight,
-                 Control::DefineFormHorizontalGutter,
-                 Control::DefineFormVerticalGutter,
-             }) {
-            setDefineEditWidth(controlId, DefineFormMeasureEditWidthPx);
-        }
-        setDefineEditWidth(Control::DefineFormRows, DefineFormMeasureEditWidthPx);
-        setDefineEditWidth(Control::DefineFormColumns, DefineFormMeasureEditWidthPx);
         for (int controlId : {
                  Control::DefineFormComputedWidth,
                  Control::DefineFormComputedHeight,
@@ -6254,7 +6229,7 @@ bool MainWindow::importLegacyReportStoreFromPath(const QString& filePath)
     }
 
     const LegacyReportReader reader;
-    const LegacyReportReader::Result result = reader.readFile(filePath);
+    const LegacyReportReader::Result result = reader.readFile(filePath, workspace->fieldNames());
     if (!result.ok()) {
         QMessageBox::critical(
             this,
@@ -6377,7 +6352,7 @@ bool MainWindow::loadDeckFromPath(const QString& filePath, Deck* deck, QString* 
     const QString reportPath = legacyReportSidecarPath(filePath);
     if (!reportPath.isEmpty()) {
         const LegacyReportReader reportReader;
-        const LegacyReportReader::Result reportResult = reportReader.readFile(reportPath);
+        const LegacyReportReader::Result reportResult = reportReader.readFile(reportPath, fieldNamesFromDeck(result.deck));
         if (reportResult.ok()) {
             for (const ReportDefinition& report : reportResult.reports) {
                 result.deck.addReport(report);
@@ -6453,7 +6428,7 @@ bool MainWindow::probeLegacyDeckFromPath(const QString& filePath)
     const QString reportPath = legacyReportSidecarPath(filePath);
     if (!reportPath.isEmpty()) {
         const LegacyReportReader reportReader;
-        const LegacyReportReader::Result reportResult = reportReader.readFile(reportPath);
+        const LegacyReportReader::Result reportResult = reportReader.readFile(reportPath, fieldNamesFromDeck(result.deck));
         if (reportResult.ok()) {
             for (const ReportDefinition& report : reportResult.reports) {
                 result.deck.addReport(report);

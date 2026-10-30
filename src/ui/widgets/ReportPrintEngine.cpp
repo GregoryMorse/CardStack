@@ -201,7 +201,7 @@ QVector<ReportPrintPage> ReportPrintEngine::paginate(const ReportDefinition& rep
                 recordIndex,
                 QRectF(
                     column * (cellWidth + horizontalGutter),
-                    row * (cellHeight + verticalGutter),
+                    physicalGrid ? row * (1.0 + verticalGutter) / rows : row * (cellHeight + verticalGutter),
                     cellWidth,
                     cellHeight),
             });

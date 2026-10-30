@@ -4,6 +4,8 @@
 #include "SQLiteSnapshot.h"
 #include "SQLiteModelBudget.h"
 #include "ReportFontCodec.h"
+#include "ReportCoordinates.h"
+#include "BuiltInReportTemplates.h"
 #include "DocumentFile.h"
 
 #include <QDir>
@@ -1499,6 +1501,14 @@ bool SQLiteDeckStore::loadReports(Deck* deck, ImportBudget& budget, QString* err
             classifyReportBands(&report);
         }
 
+        static const QVector<ReportDefinition> canonicalReports = [] {
+            QVector<ReportDefinition> reports;
+            constexpr int FirstTemplateId = 101, LastTemplateId = 114;
+            for (int id = FirstTemplateId; id <= LastTemplateId; ++id)
+                reports += builtInReportTemplatesForLegacyResource(id);
+            return reports;
+        }();
+        ReportCoordinates::repairPreviousCoordinates(&report, canonicalReports);
         if (!validateReportDefinition(report, errorMessage)) return false;
         deck->addReport(std::move(report));
     }

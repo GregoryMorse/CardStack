@@ -1907,7 +1907,8 @@ void refineDefineFormDialog(QDialog* dialog)
     }
 
     constexpr int NumericFieldWidthPx = 48;
-    constexpr int CountFieldWidthPx = 36;
+    constexpr int DimensionFieldWidthPx = 56;
+    constexpr int CountFieldWidthPx = 48;
     const int numericControls[] = {
         Control::DefineFormHeight,
         Control::DefineFormWidth,
@@ -1949,6 +1950,9 @@ void refineDefineFormDialog(QDialog* dialog)
 
     for (int controlId : numericControls) {
         setControlWidth(controlId, NumericFieldWidthPx);
+    }
+    for (int controlId : {Control::DefineFormWidth, Control::DefineFormHeight}) {
+        setControlWidth(controlId, DimensionFieldWidthPx);
     }
     for (int controlId : countControls) {
         setControlWidth(controlId, CountFieldWidthPx);
@@ -2003,17 +2007,49 @@ void refineDefineFormDialog(QDialog* dialog)
     placeNumericRowAfterLabel(QStringLiteral("Bottom:"), Control::DefineFormMarginBottom, Control::DefineFormMarginBottomSpin);
 
     if (QWidget* landscape = directControlById(dialog, Control::DefineFormLandscape)) {
+        QWidget* portrait = directControlById(dialog, Control::DefineFormPortrait);
+        QWidget* heightSpin = directControlById(dialog, Control::DefineFormHeightSpin);
+        QGroupBox* orientationFrame = nullptr;
+        if (portrait != nullptr && heightSpin != nullptr) {
+            for (QWidget* widget : controls) {
+                auto* groupBox = qobject_cast<QGroupBox*>(widget);
+                if (groupBox == nullptr || !groupBox->geometry().intersects(landscape->geometry())
+                    || !groupBox->geometry().intersects(portrait->geometry())) continue;
+                if (orientationFrame == nullptr
+                    || groupBox->width() * groupBox->height() < orientationFrame->width() * orientationFrame->height())
+                    orientationFrame = groupBox;
+            }
+            if (orientationFrame != nullptr) {
+                const int shift = std::max(0, heightSpin->geometry().right() + DialogControlGapPx
+                                             - orientationFrame->geometry().left());
+                orientationFrame->move(orientationFrame->x() + shift, orientationFrame->y());
+                portrait->move(portrait->x() + shift, portrait->y());
+                landscape->move(landscape->x() + shift, landscape->y());
+            }
+        }
         QRect landscapeRect = landscape->geometry();
         landscapeRect.setWidth(std::max(landscapeRect.width(), landscape->sizeHint().width()));
         landscape->setGeometry(landscapeRect);
-        for (QWidget* widget : controls) {
-            auto* groupBox = qobject_cast<QGroupBox*>(widget);
-            if (groupBox == nullptr || !groupBox->geometry().intersects(landscapeRect)) {
-                continue;
+        if (orientationFrame != nullptr) {
+            QRect orientationRect = orientationFrame->geometry();
+            orientationRect.setRight(std::max(orientationRect.right(), landscapeRect.right() + GroupBoxInnerMarginPx));
+            orientationRect.setBottom(std::max(orientationRect.bottom(), landscapeRect.bottom() + GroupBoxInnerMarginPx));
+            orientationFrame->setGeometry(orientationRect);
+            for (QWidget* widget : controls) {
+                auto* pageFrame = qobject_cast<QGroupBox*>(widget);
+                if (pageFrame == nullptr || pageFrame == orientationFrame
+                    || !pageFrame->geometry().intersects(orientationRect)
+                    || !pageFrame->geometry().contains(heightSpin->geometry().center())) continue;
+                QRect pageRect = pageFrame->geometry();
+                pageRect.setRight(std::max(pageRect.right(), orientationRect.right() + GroupBoxInnerMarginPx));
+                pageRect.setBottom(std::max(pageRect.bottom(), orientationRect.bottom() + GroupBoxInnerMarginPx));
+                pageFrame->setGeometry(pageRect);
+                for (int id : {Control::DefineFormComputedWidth, Control::DefineFormComputedHeight}) {
+                    if (QWidget* label = directControlById(dialog, id))
+                        label->move(std::max(label->x(), pageRect.right() + DialogControlGapPx), label->y());
+                }
+                break;
             }
-            QRect groupRect = groupBox->geometry();
-            groupRect.setRight(std::max(groupRect.right(), landscapeRect.right() + 4));
-            groupBox->setGeometry(groupRect);
         }
     }
 

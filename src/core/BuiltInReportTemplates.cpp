@@ -1,6 +1,7 @@
 #include "BuiltInReportTemplates.h"
 
 #include "Deck.h"
+#include "ReportCoordinates.h"
 
 #include <initializer_list>
 #include <QString>
@@ -12,7 +13,6 @@ namespace {
 constexpr int LegacyReportHeaderSize = 0x3f5;
 constexpr int LegacyReportFrameSize = 0x9b;
 constexpr quint16 LegacyReportFrameSignature = 0xabcd;
-constexpr int BuiltInReportFrameCoordinateScale = 10;
 constexpr int StandardReportPageWidthMils = 8500;
 constexpr int StandardReportPageHeightMils = 11000;
 constexpr int StandardReportPaperStyleId = 10551;
@@ -44,9 +44,11 @@ constexpr quint8 PrintNormal = 0;
 constexpr quint8 PrintEntireContents = 1;
 constexpr quint8 NoValidationFlags = 0;
 constexpr quint8 TextPlain = 0;
+constexpr quint8 TextCentered = ReportStyleFlagAlignCenter;
+constexpr quint8 TextRightAligned = ReportStyleFlagAlignRight;
+constexpr quint8 TextBold = ReportStyleFlagBold;
 constexpr quint8 TextItalic = ReportStyleFlagItalic;
-constexpr quint8 TextUnderline = ReportStyleFlagUnderline;
-constexpr quint8 TextBoldItalic = ReportStyleFlagBold | ReportStyleFlagItalic;
+constexpr quint8 TextBoldUnderline = ReportStyleFlagBold | ReportStyleFlagUnderline;
 constexpr int NoLineBoxShape = ReportLineShapeNone;
 constexpr int LegacyBoxShape = ReportLineShapeBox;
 constexpr int LegacyLineShape = ReportLineShapeLegacyAuto;
@@ -213,15 +215,6 @@ QVector<QString> texts(std::initializer_list<const char*> values)
     return result;
 }
 
-QRect scaledReportFrameBounds(QRect bounds, int)
-{
-    constexpr qreal MilsPerSourcePixel = 1000.0 / 96.0;
-    const int left = qRound(bounds.left() * MilsPerSourcePixel);
-    const int top = qRound(bounds.top() * MilsPerSourcePixel);
-    return QRect(left, top, qRound((bounds.left() + bounds.width()) * MilsPerSourcePixel) - left,
-                 qRound((bounds.top() + bounds.height()) * MilsPerSourcePixel) - top);
-}
-
 ReportFontDefinition font(const char* faceName, int legacyHeight)
 {
     ReportFontDefinition result;
@@ -357,13 +350,13 @@ ReportDefinition report(
     result.dataFont = std::move(dataFont);
     result.textFont = std::move(textFont);
     for (ReportFrameDefinition& frame : frames) {
-        frame.bounds = scaledReportFrameBounds(frame.bounds, BuiltInReportFrameCoordinateScale);
+        frame.bounds = ReportCoordinates::fromDesigner(frame.bounds);
     }
     result.frames = std::move(frames);
     for (const auto& details : BuiltInFormDetails) {
         if (details.templateId != templateId || details.offset != legacyOffset) continue;
-        result.headerHeight = formType == ReportFormType::Report ? details.headerHeight : 0;
-        result.footerHeight = formType == ReportFormType::Report ? details.footerHeight : 0;
+        result.headerHeight = details.headerHeight;
+        result.footerHeight = details.footerHeight;
         result.paperStyleId = details.paperStyleId;
         result.marginBottom = details.marginBottom;
         result.marginTop = details.marginTop;
@@ -402,7 +395,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
                     QRect(93, 123, 672, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -410,7 +403,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     1168, 0xabcd, 0x0002, 50, 1,
                     QRect(141, 144, 624, 21),
-                    "[Author]",
+                    "[Author] ",
                     texts({"Author"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -418,7 +411,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     1323, 0xabcd, 0x0003, 50, 2,
                     QRect(141, 165, 429, 21),
-                    "[Publisher],",
+                    "[Publisher], ",
                     texts({"Publisher"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -426,7 +419,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     1478, 0xabcd, 0x0005, 50, 3,
                     QRect(570, 165, 111, 21),
-                    "[Year published]",
+                    "[Year published] ",
                     texts({"Year published"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -434,7 +427,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     1633, 0xabcd, 0x0008, 50, 4,
                     QRect(681, 165, 84, 21),
-                    "[Pages]",
+                    "[Pages] ",
                     texts({"Pages"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -445,7 +438,7 @@ QVector<ReportDefinition> reports101()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1943, 0xabcd, 0x0000, 3, 6,
@@ -461,7 +454,7 @@ QVector<ReportDefinition> reports101()
                     "-{page}-",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
@@ -483,15 +476,15 @@ QVector<ReportDefinition> reports101()
                 frame(
                     3266, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 42, 435, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3421, 0xabcd, 0x0002, 50, 1,
                     QRect(93, 69, 384, 21),
-                    "[Author]",
+                    "[Author] ",
                     texts({"Author"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -499,7 +492,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     3576, 0xabcd, 0x0003, 50, 2,
                     QRect(93, 90, 384, 21),
-                    "[Publisher]",
+                    "[Publisher] ",
                     texts({"Publisher"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -507,7 +500,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     3731, 0xabcd, 0x0005, 50, 3,
                     QRect(93, 111, 141, 21),
-                    "[Year published],",
+                    "[Year published], ",
                     texts({"Year published"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -515,7 +508,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     3886, 0xabcd, 0x0008, 50, 4,
                     QRect(234, 111, 72, 21),
-                    "[Pages]",
+                    "[Pages] ",
                     texts({"Pages"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -523,7 +516,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     4041, 0xabcd, 0x0004, 50, 5,
                     QRect(42, 141, 243, 21),
-                    "CATALOG# [Catalog number]",
+                    "CATALOG# [Catalog number] ",
                     texts({"Catalog number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -531,7 +524,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     4196, 0xabcd, 0x000a, 50, 6,
                     QRect(42, 168, 436, 20),
-                    "SUBJECT: [Subject]",
+                    "SUBJECT: [Subject] ",
                     texts({"Subject"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -539,7 +532,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     4351, 0xabcd, 0x000b, 50, 7,
                     QRect(42, 195, 435, 90),
-                    "DESCRIPTION: [Description]",
+                    "DESCRIPTION: [Description] ",
                     texts({"Description"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -564,15 +557,15 @@ QVector<ReportDefinition> reports101()
                 frame(
                     5519, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 42, 435, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5674, 0xabcd, 0x0002, 50, 1,
                     QRect(93, 69, 384, 21),
-                    "[Author]",
+                    "[Author] ",
                     texts({"Author"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -580,7 +573,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     5829, 0xabcd, 0x0003, 50, 2,
                     QRect(93, 90, 384, 21),
-                    "[Publisher]",
+                    "[Publisher] ",
                     texts({"Publisher"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -588,7 +581,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     5984, 0xabcd, 0x0005, 50, 3,
                     QRect(93, 111, 141, 21),
-                    "[Year published],",
+                    "[Year published], ",
                     texts({"Year published"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -596,7 +589,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     6139, 0xabcd, 0x0008, 50, 4,
                     QRect(234, 111, 72, 21),
-                    "[Pages]",
+                    "[Pages] ",
                     texts({"Pages"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -604,7 +597,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     6294, 0xabcd, 0x0004, 50, 5,
                     QRect(42, 141, 243, 21),
-                    "CATALOG# [Catalog number]",
+                    "CATALOG# [Catalog number] ",
                     texts({"Catalog number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -612,7 +605,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     6449, 0xabcd, 0x000a, 50, 6,
                     QRect(42, 168, 436, 20),
-                    "SUBJECT: [Subject]",
+                    "SUBJECT: [Subject] ",
                     texts({"Subject"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -620,7 +613,7 @@ QVector<ReportDefinition> reports101()
                 frame(
                     6604, 0xabcd, 0x000b, 50, 7,
                     QRect(42, 195, 435, 90),
-                    "DESCRIPTION: [Description]",
+                    "DESCRIPTION: [Description] ",
                     texts({"Description"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -651,7 +644,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     1013, 0xabcd, 0x0000, 20, 0,
                     QRect(219, 117, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -659,7 +652,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     1168, 0xabcd, 0x000c, 50, 1,
                     QRect(516, 135, 201, 18),
-                    "FAX: [Fax]",
+                    "FAX: [Fax] ",
                     texts({"Fax"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -667,7 +660,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     1323, 0xabcd, 0x0002, 30, 2,
                     QRect(93, 117, 126, 18),
-                    "[Last Name],",
+                    "[Last Name], ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -675,7 +668,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     1478, 0xabcd, 0x0004, 50, 3,
                     QRect(342, 117, 171, 18),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -683,7 +676,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     1633, 0xabcd, 0x000b, 50, 4,
                     QRect(516, 117, 201, 18),
-                    "WORK: [Phone]",
+                    "WORK: [Phone] ",
                     texts({"Phone"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -694,7 +687,7 @@ QVector<ReportDefinition> reports102()
                     "NAME",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1943, 0xabcd, 0xffff, 25, 6,
@@ -702,7 +695,7 @@ QVector<ReportDefinition> reports102()
                     "COMPANY",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2098, 0xabcd, 0xffff, 25, 7,
@@ -710,7 +703,7 @@ QVector<ReportDefinition> reports102()
                     "PHONE NUMBERS",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2253, 0xabcd, 0x0009, 3, 8,
@@ -726,7 +719,7 @@ QVector<ReportDefinition> reports102()
                     "PHONE LIST",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBoldItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBoldUnderline | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2563, 0xabcd, 0x0000, 25, 10,
@@ -734,12 +727,12 @@ QVector<ReportDefinition> reports102()
                     "-{page}-",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2718, 0xabcd, 0x000d, 15, 11,
                     QRect(516, 153, 201, 18),
-                    "HOME: [Home]",
+                    "HOME: [Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -747,7 +740,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     2873, 0xabcd, 0x000e, 25, 12,
                     QRect(516, 171, 201, 18),
-                    "CELLULAR: [Cellular]",
+                    "CELLULAR: [Cellular] ",
                     texts({"Cellular"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -772,7 +765,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4041, 0xabcd, 0x0000, 20, 0,
                     QRect(231, 39, 123, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -780,7 +773,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4196, 0xabcd, 0x0001, 15, 1,
                     QRect(354, 39, 120, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -788,7 +781,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4351, 0xabcd, 0x0002, 30, 2,
                     QRect(66, 39, 165, 21),
-                    "[Last Name],",
+                    "[Last Name], ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -796,7 +789,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4506, 0xabcd, 0x0003, 50, 3,
                     QRect(66, 60, 375, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -804,7 +797,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4661, 0xabcd, 0x0004, 50, 4,
                     QRect(66, 81, 375, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -812,7 +805,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4816, 0xabcd, 0x0005, 50, 5,
                     QRect(66, 102, 375, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -820,7 +813,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     4971, 0xabcd, 0x0006, 50, 6,
                     QRect(66, 123, 375, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -828,7 +821,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     5126, 0xabcd, 0x0007, 25, 7,
                     QRect(66, 144, 189, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -836,7 +829,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     5281, 0xabcd, 0x0008, 5, 8,
                     QRect(255, 144, 36, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -844,7 +837,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     5436, 0xabcd, 0x0009, 10, 9,
                     QRect(291, 144, 81, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -852,7 +845,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     5591, 0xabcd, 0x000a, 25, 10,
                     QRect(66, 165, 306, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -860,7 +853,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     5746, 0xabcd, 0x000b, 25, 11,
                     QRect(141, 189, 153, 21),
-                    "[Phone]",
+                    "[Phone] ",
                     texts({"Phone"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -868,7 +861,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     5901, 0xabcd, 0x000c, 15, 12,
                     QRect(141, 213, 153, 21),
-                    "[Fax]",
+                    "[Fax] ",
                     texts({"Fax"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -892,7 +885,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     6366, 0xabcd, 0x000d, 15, 15,
                     QRect(141, 261, 153, 21),
-                    "[Home]",
+                    "[Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -908,7 +901,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     6676, 0xabcd, 0x000e, 25, 17,
                     QRect(141, 237, 153, 21),
-                    "[Cellular]",
+                    "[Cellular] ",
                     texts({"Cellular"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -941,7 +934,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     7999, 0xabcd, 0x0000, 20, 0,
                     QRect(231, 39, 123, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -949,7 +942,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     8154, 0xabcd, 0x0001, 15, 1,
                     QRect(354, 39, 120, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -957,7 +950,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     8309, 0xabcd, 0x0002, 30, 2,
                     QRect(66, 39, 165, 21),
-                    "[Last Name],",
+                    "[Last Name], ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -965,7 +958,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     8464, 0xabcd, 0x0003, 50, 3,
                     QRect(66, 60, 375, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -973,7 +966,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     8619, 0xabcd, 0x0004, 50, 4,
                     QRect(66, 81, 375, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -981,7 +974,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     8774, 0xabcd, 0x0005, 50, 5,
                     QRect(66, 102, 375, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -989,7 +982,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     8929, 0xabcd, 0x0006, 50, 6,
                     QRect(66, 123, 375, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -997,7 +990,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     9084, 0xabcd, 0x0007, 25, 7,
                     QRect(66, 144, 189, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1005,7 +998,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     9239, 0xabcd, 0x0008, 5, 8,
                     QRect(255, 144, 36, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1013,7 +1006,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     9394, 0xabcd, 0x0009, 10, 9,
                     QRect(291, 144, 81, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1021,7 +1014,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     9549, 0xabcd, 0x000a, 25, 10,
                     QRect(66, 165, 306, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1029,7 +1022,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     9704, 0xabcd, 0x000b, 25, 11,
                     QRect(141, 189, 153, 21),
-                    "[Phone]",
+                    "[Phone] ",
                     texts({"Phone"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1037,7 +1030,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     9859, 0xabcd, 0x000c, 15, 12,
                     QRect(141, 213, 153, 21),
-                    "[Fax]",
+                    "[Fax] ",
                     texts({"Fax"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1061,7 +1054,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     10324, 0xabcd, 0x000d, 15, 15,
                     QRect(141, 261, 153, 21),
-                    "[Home]",
+                    "[Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1077,7 +1070,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     10634, 0xabcd, 0x000e, 25, 17,
                     QRect(141, 237, 153, 21),
-                    "[Cellular]",
+                    "[Cellular] ",
                     texts({"Cellular"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1110,7 +1103,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     11957, 0xabcd, 0x0000, 20, 0,
                     QRect(405, 210, 120, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1118,7 +1111,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     12112, 0xabcd, 0x0001, 15, 1,
                     QRect(525, 210, 75, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1126,7 +1119,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     12267, 0xabcd, 0x0002, 30, 2,
                     QRect(600, 210, 216, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1134,7 +1127,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     12422, 0xabcd, 0x0003, 50, 3,
                     QRect(405, 231, 411, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1142,7 +1135,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     12577, 0xabcd, 0x0004, 50, 4,
                     QRect(405, 252, 411, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1150,7 +1143,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     12732, 0xabcd, 0x0005, 50, 5,
                     QRect(405, 273, 411, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1158,7 +1151,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     12887, 0xabcd, 0x0006, 50, 6,
                     QRect(405, 294, 411, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1166,7 +1159,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     13042, 0xabcd, 0x0007, 25, 7,
                     QRect(405, 315, 306, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1174,7 +1167,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     13197, 0xabcd, 0x0008, 5, 8,
                     QRect(711, 315, 39, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1182,7 +1175,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     13352, 0xabcd, 0x0009, 10, 9,
                     QRect(750, 315, 66, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1190,7 +1183,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     13507, 0xabcd, 0x000a, 25, 10,
                     QRect(405, 336, 411, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1215,7 +1208,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     14675, 0xabcd, 0x0000, 20, 0,
                     QRect(405, 210, 120, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1223,7 +1216,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     14830, 0xabcd, 0x0001, 15, 1,
                     QRect(525, 210, 75, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1231,7 +1224,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     14985, 0xabcd, 0x0002, 30, 2,
                     QRect(600, 210, 216, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1239,7 +1232,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     15140, 0xabcd, 0x0003, 50, 3,
                     QRect(405, 231, 411, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1247,7 +1240,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     15295, 0xabcd, 0x0004, 50, 4,
                     QRect(405, 252, 411, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1255,7 +1248,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     15450, 0xabcd, 0x0005, 50, 5,
                     QRect(405, 273, 411, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1263,7 +1256,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     15605, 0xabcd, 0x0006, 50, 6,
                     QRect(405, 294, 411, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1271,7 +1264,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     15760, 0xabcd, 0x0007, 25, 7,
                     QRect(405, 315, 306, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1279,7 +1272,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     15915, 0xabcd, 0x0008, 5, 8,
                     QRect(711, 315, 39, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1287,7 +1280,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     16070, 0xabcd, 0x0009, 10, 9,
                     QRect(750, 315, 66, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1295,7 +1288,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     16225, 0xabcd, 0x000a, 25, 10,
                     QRect(405, 336, 411, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1320,7 +1313,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     17393, 0xabcd, 0x0000, 20, 0,
                     QRect(36, 18, 117, 15),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1328,7 +1321,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     17548, 0xabcd, 0x0001, 15, 1,
                     QRect(153, 18, 30, 15),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1336,7 +1329,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     17703, 0xabcd, 0x0002, 30, 2,
                     QRect(183, 18, 156, 15),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1344,7 +1337,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     17858, 0xabcd, 0x0003, 50, 3,
                     QRect(36, 33, 303, 15),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1352,7 +1345,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18013, 0xabcd, 0x0004, 50, 4,
                     QRect(36, 48, 303, 15),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1360,7 +1353,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18168, 0xabcd, 0x0005, 50, 5,
                     QRect(36, 63, 303, 15),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1368,7 +1361,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18323, 0xabcd, 0x0006, 50, 6,
                     QRect(36, 78, 303, 15),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1376,7 +1369,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18478, 0xabcd, 0x0007, 25, 7,
                     QRect(36, 93, 126, 15),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1384,7 +1377,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18633, 0xabcd, 0x0008, 5, 8,
                     QRect(162, 93, 30, 15),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1392,7 +1385,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18788, 0xabcd, 0x0009, 10, 9,
                     QRect(192, 93, 60, 15),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1400,7 +1393,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     18943, 0xabcd, 0x000a, 25, 10,
                     QRect(252, 93, 87, 15),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1425,7 +1418,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     20111, 0xabcd, 0x0000, 20, 0,
                     QRect(54, 21, 117, 15),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1433,7 +1426,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     20266, 0xabcd, 0x0001, 15, 1,
                     QRect(171, 21, 30, 15),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1441,7 +1434,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     20421, 0xabcd, 0x0002, 30, 2,
                     QRect(201, 21, 156, 15),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1449,7 +1442,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     20576, 0xabcd, 0x0003, 50, 3,
                     QRect(54, 36, 303, 15),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1457,7 +1450,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     20731, 0xabcd, 0x0004, 50, 4,
                     QRect(54, 51, 303, 15),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1465,7 +1458,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     20886, 0xabcd, 0x0005, 50, 5,
                     QRect(54, 66, 303, 15),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1473,7 +1466,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     21041, 0xabcd, 0x0006, 50, 6,
                     QRect(54, 81, 303, 15),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1481,7 +1474,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     21196, 0xabcd, 0x0007, 25, 7,
                     QRect(54, 96, 126, 15),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1489,7 +1482,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     21351, 0xabcd, 0x0008, 5, 8,
                     QRect(180, 96, 30, 15),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1497,7 +1490,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     21506, 0xabcd, 0x0009, 10, 9,
                     QRect(210, 96, 60, 15),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1505,7 +1498,7 @@ QVector<ReportDefinition> reports102()
                 frame(
                     21661, 0xabcd, 0x000a, 25, 10,
                     QRect(270, 96, 87, 15),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1536,15 +1529,15 @@ QVector<ReportDefinition> reports103()
                 frame(
                     1013, 0xabcd, 0x0000, 30, 0,
                     QRect(42, 42, 180, 18),
-                    "[Type]",
+                    "[Type] ",
                     texts({"Type"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
                     QRect(99, 156, 300, 18),
-                    "[Institution]",
+                    "[Institution] ",
                     texts({"Institution"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1552,7 +1545,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     1323, 0xabcd, 0x0002, 35, 2,
                     QRect(99, 174, 300, 18),
-                    "[Address]",
+                    "[Address] ",
                     texts({"Address"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1560,7 +1553,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     1478, 0xabcd, 0x0003, 35, 3,
                     QRect(99, 192, 210, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1568,7 +1561,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     1633, 0xabcd, 0x0004, 5, 4,
                     QRect(309, 192, 30, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1576,7 +1569,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     1788, 0xabcd, 0x0005, 10, 5,
                     QRect(339, 192, 60, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1584,7 +1577,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     1943, 0xabcd, 0x0006, 20, 6,
                     QRect(66, 63, 267, 18),
-                    "Card number:  [Card number]",
+                    "Card number:  [Card number] ",
                     texts({"Card number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1592,7 +1585,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     2098, 0xabcd, 0x0007, 5, 7,
                     QRect(66, 81, 120, 18),
-                    "Expires: [Expiration]",
+                    "Expires: [Expiration] ",
                     texts({"Expiration"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1600,7 +1593,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     2253, 0xabcd, 0x0008, 50, 8,
                     QRect(66, 99, 300, 18),
-                    "[Cardholder]",
+                    "[Cardholder] ",
                     texts({"Cardholder"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1608,7 +1601,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     2408, 0xabcd, 0x0009, 28, 9,
                     QRect(66, 117, 273, 18),
-                    "PIN: [PIN]",
+                    "PIN: [PIN] ",
                     texts({"PIN"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1616,7 +1609,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     2563, 0xabcd, 0x000a, 11, 10,
                     QRect(66, 135, 180, 18),
-                    "Credit limit: [Credit limit]",
+                    "Credit limit: [Credit limit] ",
                     texts({"Credit limit"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1624,7 +1617,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     2718, 0xabcd, 0x000b, 20, 11,
                     QRect(42, 213, 210, 18),
-                    "Call if lost: [Call if lost]",
+                    "Call if lost: [Call if lost] ",
                     texts({"Call if lost"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1632,7 +1625,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     2873, 0xabcd, 0x000c, 20, 12,
                     QRect(42, 231, 249, 18),
-                    "Customer Service: [Cust. Service]",
+                    "Customer Service: [Cust. Service] ",
                     texts({"Cust. Service"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1640,7 +1633,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     3028, 0xabcd, 0x000d, 40, 13,
                     QRect(42, 252, 432, 36),
-                    "NOTES: [Notes]",
+                    "NOTES: [Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1673,15 +1666,15 @@ QVector<ReportDefinition> reports103()
                 frame(
                     4351, 0xabcd, 0x0000, 30, 0,
                     QRect(42, 42, 180, 18),
-                    "[Type]",
+                    "[Type] ",
                     texts({"Type"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4506, 0xabcd, 0x0001, 50, 1,
                     QRect(99, 156, 300, 18),
-                    "[Institution]",
+                    "[Institution] ",
                     texts({"Institution"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1689,7 +1682,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     4661, 0xabcd, 0x0002, 35, 2,
                     QRect(99, 174, 300, 18),
-                    "[Address]",
+                    "[Address] ",
                     texts({"Address"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1697,7 +1690,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     4816, 0xabcd, 0x0003, 35, 3,
                     QRect(99, 192, 210, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1705,7 +1698,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     4971, 0xabcd, 0x0004, 5, 4,
                     QRect(309, 192, 30, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1713,7 +1706,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     5126, 0xabcd, 0x0005, 10, 5,
                     QRect(339, 192, 60, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1721,7 +1714,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     5281, 0xabcd, 0x0006, 20, 6,
                     QRect(66, 63, 267, 18),
-                    "Card number:  [Card number]",
+                    "Card number:  [Card number] ",
                     texts({"Card number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1729,7 +1722,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     5436, 0xabcd, 0x0007, 5, 7,
                     QRect(66, 81, 120, 18),
-                    "Expires: [Expiration]",
+                    "Expires: [Expiration] ",
                     texts({"Expiration"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1737,7 +1730,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     5591, 0xabcd, 0x0008, 50, 8,
                     QRect(66, 99, 300, 18),
-                    "[Cardholder]",
+                    "[Cardholder] ",
                     texts({"Cardholder"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1745,7 +1738,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     5746, 0xabcd, 0x0009, 28, 9,
                     QRect(66, 117, 273, 18),
-                    "PIN: [PIN]",
+                    "PIN: [PIN] ",
                     texts({"PIN"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1753,7 +1746,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     5901, 0xabcd, 0x000a, 11, 10,
                     QRect(66, 135, 180, 18),
-                    "Credit limit: [Credit limit]",
+                    "Credit limit: [Credit limit] ",
                     texts({"Credit limit"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1761,7 +1754,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     6056, 0xabcd, 0x000b, 20, 11,
                     QRect(42, 213, 210, 18),
-                    "Call if lost: [Call if lost]",
+                    "Call if lost: [Call if lost] ",
                     texts({"Call if lost"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1769,7 +1762,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     6211, 0xabcd, 0x000c, 20, 12,
                     QRect(42, 231, 249, 18),
-                    "Customer Service: [Cust. Service]",
+                    "Customer Service: [Cust. Service] ",
                     texts({"Cust. Service"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1777,7 +1770,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     6366, 0xabcd, 0x000d, 40, 13,
                     QRect(42, 252, 432, 36),
-                    "NOTES: [Notes]",
+                    "NOTES: [Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1810,39 +1803,39 @@ QVector<ReportDefinition> reports103()
                 frame(
                     7689, 0xabcd, 0x0001, 50, 0,
                     QRect(249, 96, 300, 18),
-                    "[Institution]",
+                    "[Institution] ",
                     texts({"Institution"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7844, 0xabcd, 0x0000, 30, 1,
                     QRect(66, 96, 180, 18),
-                    "[Type]",
+                    "[Type] ",
                     texts({"Type"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7999, 0xabcd, 0x0006, 20, 2,
                     QRect(552, 96, 120, 18),
-                    "[Card number]",
+                    "[Card number] ",
                     texts({"Card number"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     8154, 0xabcd, 0x0007, 5, 3,
                     QRect(711, 96, 66, 18),
-                    "[Expiration]",
+                    "[Expiration] ",
                     texts({"Expiration"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     8309, 0xabcd, 0x000a, 11, 4,
                     QRect(171, 117, 66, 18),
-                    "[Credit limit]",
+                    "[Credit limit] ",
                     texts({"Credit limit"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1850,7 +1843,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     8464, 0xabcd, 0x0008, 50, 5,
                     QRect(318, 117, 252, 18),
-                    "[Cardholder]",
+                    "[Cardholder] ",
                     texts({"Cardholder"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1858,7 +1851,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     8619, 0xabcd, 0x0009, 28, 6,
                     QRect(615, 117, 162, 18),
-                    "[PIN]",
+                    "[PIN] ",
                     texts({"PIN"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1866,7 +1859,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     8774, 0xabcd, 0x000b, 20, 7,
                     QRect(165, 138, 120, 18),
-                    "[Call if lost]",
+                    "[Call if lost] ",
                     texts({"Call if lost"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1874,7 +1867,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     8929, 0xabcd, 0x000c, 20, 8,
                     QRect(405, 138, 120, 18),
-                    "[Cust. Service]",
+                    "[Cust. Service] ",
                     texts({"Cust. Service"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -1882,7 +1875,7 @@ QVector<ReportDefinition> reports103()
                 frame(
                     9084, 0xabcd, 0x000d, 40, 9,
                     QRect(96, 159, 681, 18),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -1890,10 +1883,10 @@ QVector<ReportDefinition> reports103()
                 frame(
                     9239, 0xabcd, 0xffff, 25, 10,
                     QRect(675, 96, 36, 18),
-                    "Exp.",
+                    "Exp. ",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9394, 0xabcd, 0xffff, 25, 11,
@@ -1901,7 +1894,7 @@ QVector<ReportDefinition> reports103()
                     "Credit Limit:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9549, 0xabcd, 0xffff, 25, 12,
@@ -1909,7 +1902,7 @@ QVector<ReportDefinition> reports103()
                     "Cardholder:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9704, 0xabcd, 0xffff, 25, 13,
@@ -1917,7 +1910,7 @@ QVector<ReportDefinition> reports103()
                     "PIN#",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     9859, 0xabcd, 0xffff, 25, 14,
@@ -1925,7 +1918,7 @@ QVector<ReportDefinition> reports103()
                     "Call if lost:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     10014, 0xabcd, 0xffff, 25, 15,
@@ -1933,7 +1926,7 @@ QVector<ReportDefinition> reports103()
                     "Customer Service:",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextUnderline,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     10169, 0xabcd, 0x0000, 3, 16,
@@ -1949,7 +1942,7 @@ QVector<ReportDefinition> reports103()
                     "Listing of Credit Cards",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     10479, 0xabcd, 0x0000, 25, 18,
@@ -1957,7 +1950,7 @@ QVector<ReportDefinition> reports103()
                     "-{page}-",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
@@ -1996,12 +1989,12 @@ QVector<ReportDefinition> reports104()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1323, 0xabcd, 0x0000, 75, 2,
                     QRect(114, 93, 624, 18),
-                    "[Data Box 1]",
+                    "[Data Box 1] ",
                     texts({"Data Box 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2009,7 +2002,7 @@ QVector<ReportDefinition> reports104()
                 frame(
                     1478, 0xabcd, 0x0001, 75, 3,
                     QRect(114, 111, 624, 18),
-                    "[Data Box 2]",
+                    "[Data Box 2] ",
                     texts({"Data Box 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2017,7 +2010,7 @@ QVector<ReportDefinition> reports104()
                 frame(
                     1633, 0xabcd, 0x0002, 75, 4,
                     QRect(114, 129, 624, 18),
-                    "[Data Box 3]",
+                    "[Data Box 3] ",
                     texts({"Data Box 3"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2025,7 +2018,7 @@ QVector<ReportDefinition> reports104()
                 frame(
                     1788, 0xabcd, 0x0003, 75, 5,
                     QRect(114, 147, 624, 18),
-                    "[Data Box 4]",
+                    "[Data Box 4] ",
                     texts({"Data Box 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2033,7 +2026,7 @@ QVector<ReportDefinition> reports104()
                 frame(
                     1943, 0xabcd, 0x0004, 75, 6,
                     QRect(114, 165, 624, 18),
-                    "[Data Box 5]",
+                    "[Data Box 5] ",
                     texts({"Data Box 5"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2041,7 +2034,7 @@ QVector<ReportDefinition> reports104()
                 frame(
                     2098, 0xabcd, 0x0005, 40, 7,
                     QRect(114, 183, 624, 60),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -2072,15 +2065,15 @@ QVector<ReportDefinition> reports105()
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 21, 300, 18),
-                    "[Main Heading]",
+                    "[Main Heading] ",
                     texts({"Main Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
                     QRect(42, 39, 300, 18),
-                    "[Sub Heading]",
+                    "[Sub Heading] ",
                     texts({"Sub Heading"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2105,15 +2098,15 @@ QVector<ReportDefinition> reports105()
                 frame(
                     2336, 0xabcd, 0x0000, 50, 0,
                     QRect(33, 30, 300, 18),
-                    "[Main Heading]",
+                    "[Main Heading] ",
                     texts({"Main Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2491, 0xabcd, 0x0001, 50, 1,
                     QRect(33, 48, 300, 18),
-                    "[Sub Heading]",
+                    "[Sub Heading] ",
                     texts({"Sub Heading"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2138,23 +2131,23 @@ QVector<ReportDefinition> reports105()
                 frame(
                     3659, 0xabcd, 0x0000, 50, 0,
                     QRect(114, 120, 300, 18),
-                    "[Main Heading]",
+                    "[Main Heading] ",
                     texts({"Main Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3814, 0xabcd, 0x0001, 50, 1,
                     QRect(414, 120, 324, 18),
-                    "- [Sub Heading]",
+                    " - [Sub Heading] ",
                     texts({"Sub Heading"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3969, 0xabcd, 0x0002, 35, 2,
                     QRect(138, 141, 354, 18),
-                    "Cabinet location: [Cabinet Location]",
+                    "Cabinet location: [Cabinet Location] ",
                     texts({"Cabinet Location"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2162,7 +2155,7 @@ QVector<ReportDefinition> reports105()
                 frame(
                     4124, 0xabcd, 0x0003, 15, 3,
                     QRect(138, 159, 354, 18),
-                    "Drawer: [Drawer]",
+                    "Drawer: [Drawer] ",
                     texts({"Drawer"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2170,7 +2163,7 @@ QVector<ReportDefinition> reports105()
                 frame(
                     4279, 0xabcd, 0x0004, 40, 4,
                     QRect(138, 177, 600, 18),
-                    "[Contents]",
+                    "[Contents] ",
                     texts({"Contents"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -2181,7 +2174,7 @@ QVector<ReportDefinition> reports105()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4589, 0xabcd, 0x0000, 3, 6,
@@ -2197,7 +2190,7 @@ QVector<ReportDefinition> reports105()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
@@ -2225,15 +2218,15 @@ QVector<ReportDefinition> reports106()
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
                     QRect(114, 114, 432, 18),
-                    "[Item]",
+                    "[Item] ",
                     texts({"Item"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
                     QRect(138, 138, 408, 18),
-                    "Make & model: [Make/Model]",
+                    "Make & model: [Make/Model] ",
                     texts({"Make/Model"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2241,7 +2234,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     1323, 0xabcd, 0x0002, 30, 2,
                     QRect(138, 156, 408, 18),
-                    "Serial number: [Serial number]",
+                    "Serial number: [Serial number] ",
                     texts({"Serial number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2249,7 +2242,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     1478, 0xabcd, 0x0003, 50, 3,
                     QRect(138, 192, 408, 18),
-                    "Location: [Location]",
+                    "Location: [Location] ",
                     texts({"Location"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2257,7 +2250,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     1633, 0xabcd, 0x0004, 20, 4,
                     QRect(138, 216, 408, 18),
-                    "Purchase date: [Purchase date]",
+                    "Purchase date: [Purchase date] ",
                     texts({"Purchase date"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2265,7 +2258,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     1788, 0xabcd, 0x0005, 15, 5,
                     QRect(138, 258, 219, 18),
-                    "Purchase price: [Purchase price]",
+                    "Purchase price: [Purchase price] ",
                     texts({"Purchase price"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2273,7 +2266,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     1943, 0xabcd, 0x0006, 30, 6,
                     QRect(138, 234, 408, 18),
-                    "Purchased from: [Purchased from]",
+                    "Purchased from: [Purchased from] ",
                     texts({"Purchased from"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2281,7 +2274,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     2098, 0xabcd, 0x0007, 15, 7,
                     QRect(138, 276, 219, 18),
-                    "Current value: [Current value]",
+                    "Current value: [Current value] ",
                     texts({"Current value"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2289,7 +2282,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     2253, 0xabcd, 0x0008, 15, 8,
                     QRect(138, 294, 219, 18),
-                    "Insured value: [Insured value]",
+                    "Insured value: [Insured value] ",
                     texts({"Insured value"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2297,7 +2290,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     2408, 0xabcd, 0x0009, 20, 9,
                     QRect(138, 174, 408, 18),
-                    "Warranty expires: [Warranty expires]",
+                    "Warranty expires: [Warranty expires] ",
                     texts({"Warranty expires"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2305,7 +2298,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     2563, 0xabcd, 0x000a, 40, 10,
                     QRect(138, 318, 600, 18),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -2316,7 +2309,7 @@ QVector<ReportDefinition> reports106()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2873, 0xabcd, 0x0000, 25, 12,
@@ -2324,7 +2317,7 @@ QVector<ReportDefinition> reports106()
                     "{longdate}",
                     texts({}),
                     texts({"longdate"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextRightAligned,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3028, 0xabcd, 0x0000, 3, 13,
@@ -2340,7 +2333,7 @@ QVector<ReportDefinition> reports106()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
@@ -2362,15 +2355,15 @@ QVector<ReportDefinition> reports106()
                 frame(
                     4351, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 42, 432, 18),
-                    "[Item]",
+                    "[Item] ",
                     texts({"Item"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4506, 0xabcd, 0x0001, 50, 1,
                     QRect(66, 69, 408, 18),
-                    "Make & model: [Make/Model]",
+                    "Make & model: [Make/Model] ",
                     texts({"Make/Model"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2378,7 +2371,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     4661, 0xabcd, 0x0002, 30, 2,
                     QRect(66, 87, 408, 18),
-                    "Serial number: [Serial number]",
+                    "Serial number: [Serial number] ",
                     texts({"Serial number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2386,7 +2379,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     4816, 0xabcd, 0x0003, 50, 3,
                     QRect(66, 123, 408, 18),
-                    "Location: [Location]",
+                    "Location: [Location] ",
                     texts({"Location"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2394,7 +2387,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     4971, 0xabcd, 0x0004, 20, 4,
                     QRect(66, 153, 408, 18),
-                    "Purchase date: [Purchase date]",
+                    "Purchase date: [Purchase date] ",
                     texts({"Purchase date"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2402,7 +2395,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     5126, 0xabcd, 0x0005, 15, 5,
                     QRect(66, 198, 219, 18),
-                    "Purchase price: [Purchase price]",
+                    "Purchase price: [Purchase price] ",
                     texts({"Purchase price"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2410,7 +2403,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     5281, 0xabcd, 0x0006, 30, 6,
                     QRect(66, 171, 408, 18),
-                    "Purchased from: [Purchased from]",
+                    "Purchased from: [Purchased from] ",
                     texts({"Purchased from"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2418,7 +2411,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     5436, 0xabcd, 0x0007, 15, 7,
                     QRect(66, 216, 219, 18),
-                    "Current value: [Current value]",
+                    "Current value: [Current value] ",
                     texts({"Current value"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2426,7 +2419,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     5591, 0xabcd, 0x0008, 15, 8,
                     QRect(66, 234, 219, 18),
-                    "Insured value: [Insured value]",
+                    "Insured value: [Insured value] ",
                     texts({"Insured value"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2434,7 +2427,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     5746, 0xabcd, 0x0009, 20, 9,
                     QRect(66, 105, 408, 18),
-                    "Warranty expires: [Warranty expires]",
+                    "Warranty expires: [Warranty expires] ",
                     texts({"Warranty expires"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2459,15 +2452,15 @@ QVector<ReportDefinition> reports106()
                 frame(
                     6914, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 42, 432, 18),
-                    "[Item]",
+                    "[Item] ",
                     texts({"Item"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7069, 0xabcd, 0x0001, 50, 1,
                     QRect(66, 69, 408, 18),
-                    "Make & model: [Make/Model]",
+                    "Make & model: [Make/Model] ",
                     texts({"Make/Model"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2475,7 +2468,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     7224, 0xabcd, 0x0002, 30, 2,
                     QRect(66, 87, 408, 18),
-                    "Serial number: [Serial number]",
+                    "Serial number: [Serial number] ",
                     texts({"Serial number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2483,7 +2476,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     7379, 0xabcd, 0x0003, 50, 3,
                     QRect(66, 123, 408, 18),
-                    "Location: [Location]",
+                    "Location: [Location] ",
                     texts({"Location"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2491,7 +2484,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     7534, 0xabcd, 0x0004, 20, 4,
                     QRect(66, 153, 408, 18),
-                    "Purchase date: [Purchase date]",
+                    "Purchase date: [Purchase date] ",
                     texts({"Purchase date"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2499,7 +2492,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     7689, 0xabcd, 0x0005, 15, 5,
                     QRect(66, 198, 219, 18),
-                    "Purchase price: [Purchase price]",
+                    "Purchase price: [Purchase price] ",
                     texts({"Purchase price"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2507,7 +2500,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     7844, 0xabcd, 0x0006, 30, 6,
                     QRect(66, 171, 408, 18),
-                    "Purchased from: [Purchased from]",
+                    "Purchased from: [Purchased from] ",
                     texts({"Purchased from"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2515,7 +2508,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     7999, 0xabcd, 0x0007, 15, 7,
                     QRect(66, 216, 219, 18),
-                    "Current value: [Current value]",
+                    "Current value: [Current value] ",
                     texts({"Current value"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2523,7 +2516,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     8154, 0xabcd, 0x0008, 15, 8,
                     QRect(66, 234, 219, 18),
-                    "Insured value: [Insured value]",
+                    "Insured value: [Insured value] ",
                     texts({"Insured value"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2531,7 +2524,7 @@ QVector<ReportDefinition> reports106()
                 frame(
                     8309, 0xabcd, 0x0009, 20, 9,
                     QRect(66, 105, 408, 18),
-                    "Warranty expires: [Warranty expires]",
+                    "Warranty expires: [Warranty expires] ",
                     texts({"Warranty expires"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2562,7 +2555,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     969, 0xabcd, 0x0000, OldReportLineOrder30, 0,
                     QRect(24, 24, 156, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2570,7 +2563,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     1124, 0xabcd, 0x0001, OldReportLineOrder30, 1,
                     QRect(180, 24, 147, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2578,7 +2571,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     1279, 0xabcd, 0x0002, OldReportLineOrder50, 2,
                     QRect(24, 45, 303, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2586,7 +2579,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     1434, 0xabcd, 0x0003, OldReportLineOrder50, 3,
                     QRect(24, 66, 303, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2594,7 +2587,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     1589, 0xabcd, 0x0004, OldReportLineOrder25, 4,
                     QRect(24, 87, 123, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2602,7 +2595,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     1744, 0xabcd, 0x0005, OldReportLineOrder2, 5,
                     QRect(174, 87, 15, 21),
-                    "[State:]",
+                    "[State:] ",
                     texts({"State:"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2610,7 +2603,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     1899, 0xabcd, 0x0006, OldReportLineOrder10, 6,
                     QRect(189, 87, 69, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2626,7 +2619,7 @@ QVector<ReportDefinition> reports107()
                 frame(
                     2209, 0xabcd, 0x0009, OldReportLineOrder25, 8,
                     QRect(264, 87, 126, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2657,10 +2650,10 @@ QVector<ReportDefinition> reports108()
                 frame(
                     1013, 0xabcd, 0x0000, 100, 0,
                     QRect(114, 117, 624, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0000, 3, 1,
@@ -2673,7 +2666,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     1323, 0xabcd, 0x000b, 50, 2,
                     QRect(162, 141, 528, 18),
-                    "[Tracks]",
+                    "[Tracks] ",
                     texts({"Tracks"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -2684,7 +2677,7 @@ QVector<ReportDefinition> reports108()
                     "Listings of {reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1633, 0xabcd, 0x0000, 25, 4,
@@ -2692,7 +2685,7 @@ QVector<ReportDefinition> reports108()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
@@ -2714,15 +2707,15 @@ QVector<ReportDefinition> reports108()
                 frame(
                     2801, 0xabcd, 0x0000, 100, 0,
                     QRect(114, 117, 624, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2956, 0xabcd, 0x0001, 50, 1,
                     QRect(162, 141, 387, 18),
-                    "Artist: [Artist]",
+                    "Artist: [Artist] ",
                     texts({"Artist"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2738,7 +2731,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     3266, 0xabcd, 0x0002, 50, 3,
                     QRect(162, 159, 387, 18),
-                    "Composer: [Composer]",
+                    "Composer: [Composer] ",
                     texts({"Composer"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2746,7 +2739,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     3421, 0xabcd, 0x0003, 35, 4,
                     QRect(162, 177, 387, 18),
-                    "Conductor: [Conductor]",
+                    "Conductor: [Conductor] ",
                     texts({"Conductor"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2754,7 +2747,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     3576, 0xabcd, 0x0004, 35, 5,
                     QRect(162, 195, 387, 18),
-                    "Soloist: [Soloist]",
+                    "Soloist: [Soloist] ",
                     texts({"Soloist"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2762,7 +2755,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     3731, 0xabcd, 0x0005, 30, 6,
                     QRect(162, 213, 231, 18),
-                    "Genre: [Category]",
+                    "Genre: [Category] ",
                     texts({"Category"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2770,7 +2763,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     3886, 0xabcd, 0x0006, 50, 7,
                     QRect(162, 234, 387, 18),
-                    "Label: [Label]",
+                    "Label: [Label] ",
                     texts({"Label"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2778,7 +2771,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4041, 0xabcd, 0x0007, 15, 8,
                     QRect(243, 288, 225, 18),
-                    "Catalog number: [Catalog number]",
+                    "Catalog number: [Catalog number] ",
                     texts({"Catalog number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2786,7 +2779,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4196, 0xabcd, 0x0008, 35, 9,
                     QRect(162, 252, 387, 18),
-                    "Producer: [Producer]",
+                    "Producer: [Producer] ",
                     texts({"Producer"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2794,7 +2787,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4351, 0xabcd, 0x0009, 35, 10,
                     QRect(162, 270, 387, 18),
-                    "Engineer: [Engineer]",
+                    "Engineer: [Engineer] ",
                     texts({"Engineer"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2802,7 +2795,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4506, 0xabcd, 0x000a, 4, 11,
                     QRect(162, 288, 75, 18),
-                    "Year: [Year]",
+                    "Year: [Year] ",
                     texts({"Year"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2810,7 +2803,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4661, 0xabcd, 0x000b, 40, 12,
                     QRect(162, 384, 528, 18),
-                    "[Tracks]",
+                    "[Tracks] ",
                     texts({"Tracks"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -2818,7 +2811,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4816, 0xabcd, 0x000c, 25, 13,
                     QRect(162, 309, 177, 18),
-                    "Date: [Date]",
+                    "Date: [Date] ",
                     texts({"Date"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2826,7 +2819,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     4971, 0xabcd, 0x000d, 20, 14,
                     QRect(162, 327, 177, 18),
-                    "Medium: [Medium]",
+                    "Medium: [Medium] ",
                     texts({"Medium"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2834,7 +2827,7 @@ QVector<ReportDefinition> reports108()
                 frame(
                     5126, 0xabcd, 0x000e, 10, 15,
                     QRect(162, 345, 123, 18),
-                    "Tape: [Tape number]",
+                    "Tape: [Tape number] ",
                     texts({"Tape number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -2853,7 +2846,7 @@ QVector<ReportDefinition> reports108()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5591, 0xabcd, 0x0000, 25, 18,
@@ -2861,7 +2854,7 @@ QVector<ReportDefinition> reports108()
                     "{longdate}",
                     texts({}),
                     texts({"longdate"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextRightAligned,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5746, 0xabcd, 0x0000, 25, 19,
@@ -2869,7 +2862,7 @@ QVector<ReportDefinition> reports108()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
@@ -2891,18 +2884,18 @@ QVector<ReportDefinition> reports108()
                 frame(
                     6914, 0xabcd, 0x0000, 50, 0,
                     QRect(30, 27, 309, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7069, 0xabcd, 0x0001, 50, 1,
                     QRect(30, 144, 312, 18),
-                    "[Artist]",
+                    "[Artist] ",
                     texts({"Artist"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
@@ -2933,7 +2926,7 @@ QVector<ReportDefinition> reports109()
                     "{deckname}",
                     texts({}),
                     texts({"deckname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0000, 25, 1,
@@ -2941,7 +2934,7 @@ QVector<ReportDefinition> reports109()
                     "{longdate}",
                     texts({}),
                     texts({"longdate"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextRightAligned,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1323, 0xabcd, 0x0000, 25, 2,
@@ -2949,12 +2942,12 @@ QVector<ReportDefinition> reports109()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1478, 0xabcd, 0x0000, 40, 3,
                     QRect(114, 120, 624, 18),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -2985,31 +2978,31 @@ QVector<ReportDefinition> reports110()
                 frame(
                     1013, 0xabcd, 0x0000, 20, 0,
                     QRect(222, 42, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 2, 1,
                     QRect(342, 42, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1323, 0xabcd, 0x0002, 30, 2,
                     QRect(42, 42, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1478, 0xabcd, 0x0003, 50, 3,
                     QRect(69, 66, 300, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3017,7 +3010,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     1633, 0xabcd, 0x0004, 30, 4,
                     QRect(69, 84, 300, 18),
-                    "[Department]",
+                    "[Department] ",
                     texts({"Department"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3025,7 +3018,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     1788, 0xabcd, 0x0005, 30, 5,
                     QRect(69, 102, 300, 18),
-                    "Supervisor:  [Supervisor]",
+                    "Supervisor:  [Supervisor] ",
                     texts({"Supervisor"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3033,7 +3026,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     1943, 0xabcd, 0x0006, 20, 6,
                     QRect(69, 123, 207, 18),
-                    "Date Hired: [Date Hired]",
+                    "Date Hired: [Date Hired] ",
                     texts({"Date Hired"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3041,7 +3034,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     2098, 0xabcd, 0x0007, 20, 7,
                     QRect(69, 141, 207, 18),
-                    "Birthday: [Birthday]",
+                    "Birthday: [Birthday] ",
                     texts({"Birthday"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3049,7 +3042,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     2253, 0xabcd, 0x0008, 25, 8,
                     QRect(294, 132, 180, 18),
-                    "Phone: [Phone]",
+                    "Phone: [Phone] ",
                     texts({"Phone"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3057,7 +3050,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     2408, 0xabcd, 0x0009, 20, 9,
                     QRect(294, 150, 180, 18),
-                    "Home: [Home]",
+                    "Home: [Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3065,7 +3058,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     2563, 0xabcd, 0x000a, 11, 10,
                     QRect(69, 159, 207, 18),
-                    "Social Security: [Social Security]",
+                    "Social Security: [Social Security] ",
                     texts({"Social Security"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3073,7 +3066,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     2718, 0xabcd, 0x000b, 50, 11,
                     QRect(69, 180, 300, 18),
-                    "[Address]",
+                    "[Address] ",
                     texts({"Address"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3081,7 +3074,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     2873, 0xabcd, 0x000c, 20, 12,
                     QRect(69, 198, 165, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3089,7 +3082,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     3028, 0xabcd, 0x000d, 2, 13,
                     QRect(234, 198, 21, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3097,7 +3090,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     3183, 0xabcd, 0x000e, 10, 14,
                     QRect(255, 198, 114, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3105,7 +3098,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     3338, 0xabcd, 0x000f, 25, 15,
                     QRect(249, 219, 180, 18),
-                    "[Emergency]",
+                    "[Emergency] ",
                     texts({"Emergency"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3113,7 +3106,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     3493, 0xabcd, 0x0010, 30, 16,
                     QRect(69, 219, 180, 18),
-                    "[Contact],",
+                    "[Contact], ",
                     texts({"Contact"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3121,7 +3114,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     3648, 0xabcd, 0x0011, 40, 17,
                     QRect(69, 240, 405, 42),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3146,31 +3139,31 @@ QVector<ReportDefinition> reports110()
                 frame(
                     4816, 0xabcd, 0x0000, 20, 0,
                     QRect(222, 42, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4971, 0xabcd, 0x0001, 2, 1,
                     QRect(342, 42, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5126, 0xabcd, 0x0002, 30, 2,
                     QRect(42, 42, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5281, 0xabcd, 0x0003, 50, 3,
                     QRect(69, 66, 300, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3178,7 +3171,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     5436, 0xabcd, 0x0004, 30, 4,
                     QRect(69, 84, 300, 18),
-                    "[Department]",
+                    "[Department] ",
                     texts({"Department"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3186,7 +3179,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     5591, 0xabcd, 0x0005, 30, 5,
                     QRect(69, 102, 300, 18),
-                    "Supervisor:  [Supervisor]",
+                    "Supervisor:  [Supervisor] ",
                     texts({"Supervisor"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3194,7 +3187,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     5746, 0xabcd, 0x0006, 20, 6,
                     QRect(69, 123, 207, 18),
-                    "Date Hired: [Date Hired]",
+                    "Date Hired: [Date Hired] ",
                     texts({"Date Hired"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3202,7 +3195,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     5901, 0xabcd, 0x0007, 20, 7,
                     QRect(69, 141, 207, 18),
-                    "Birthday: [Birthday]",
+                    "Birthday: [Birthday] ",
                     texts({"Birthday"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3210,7 +3203,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6056, 0xabcd, 0x0008, 25, 8,
                     QRect(294, 132, 180, 18),
-                    "Phone: [Phone]",
+                    "Phone: [Phone] ",
                     texts({"Phone"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3218,7 +3211,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6211, 0xabcd, 0x0009, 20, 9,
                     QRect(294, 150, 180, 18),
-                    "Home: [Home]",
+                    "Home: [Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3226,7 +3219,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6366, 0xabcd, 0x000a, 11, 10,
                     QRect(69, 159, 207, 18),
-                    "Social Security: [Social Security]",
+                    "Social Security: [Social Security] ",
                     texts({"Social Security"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3234,7 +3227,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6521, 0xabcd, 0x000b, 50, 11,
                     QRect(69, 180, 300, 18),
-                    "[Address]",
+                    "[Address] ",
                     texts({"Address"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3242,7 +3235,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6676, 0xabcd, 0x000c, 20, 12,
                     QRect(69, 198, 165, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3250,7 +3243,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6831, 0xabcd, 0x000d, 2, 13,
                     QRect(234, 198, 21, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3258,7 +3251,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     6986, 0xabcd, 0x000e, 10, 14,
                     QRect(255, 198, 114, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3266,7 +3259,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     7141, 0xabcd, 0x000f, 25, 15,
                     QRect(249, 219, 180, 18),
-                    "[Emergency]",
+                    "[Emergency] ",
                     texts({"Emergency"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3274,7 +3267,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     7296, 0xabcd, 0x0010, 30, 16,
                     QRect(69, 219, 180, 18),
-                    "[Contact],",
+                    "[Contact], ",
                     texts({"Contact"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3282,7 +3275,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     7451, 0xabcd, 0x0011, 40, 17,
                     QRect(69, 240, 405, 42),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3307,7 +3300,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     8619, 0xabcd, 0x0000, 20, 0,
                     QRect(30, 36, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3315,7 +3308,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     8774, 0xabcd, 0x0001, 2, 1,
                     QRect(150, 36, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3323,7 +3316,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     8929, 0xabcd, 0x0002, 30, 2,
                     QRect(162, 36, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3331,7 +3324,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     9084, 0xabcd, 0x000b, 50, 3,
                     QRect(30, 54, 312, 18),
-                    "[Address]",
+                    "[Address] ",
                     texts({"Address"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3339,7 +3332,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     9239, 0xabcd, 0x000c, 50, 4,
                     QRect(30, 72, 141, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3347,7 +3340,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     9394, 0xabcd, 0x000d, 50, 5,
                     QRect(171, 72, 45, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3355,7 +3348,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     9549, 0xabcd, 0x000e, 50, 6,
                     QRect(216, 72, 126, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3380,7 +3373,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     10717, 0xabcd, 0x0000, 20, 0,
                     QRect(30, 36, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3388,7 +3381,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     10872, 0xabcd, 0x0001, 2, 1,
                     QRect(150, 36, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3396,7 +3389,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     11027, 0xabcd, 0x0002, 30, 2,
                     QRect(162, 36, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3404,7 +3397,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     11182, 0xabcd, 0x000b, 50, 3,
                     QRect(30, 54, 312, 18),
-                    "[Address]",
+                    "[Address] ",
                     texts({"Address"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3412,7 +3405,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     11337, 0xabcd, 0x000c, 50, 4,
                     QRect(30, 72, 141, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3420,7 +3413,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     11492, 0xabcd, 0x000d, 50, 5,
                     QRect(171, 72, 45, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3428,7 +3421,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     11647, 0xabcd, 0x000e, 50, 6,
                     QRect(216, 72, 126, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3453,7 +3446,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     12815, 0xabcd, 0x0000, 20, 0,
                     QRect(270, 114, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3461,7 +3454,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     12970, 0xabcd, 0x0001, 2, 1,
                     QRect(390, 114, 24, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3469,7 +3462,7 @@ QVector<ReportDefinition> reports110()
                 frame(
                     13125, 0xabcd, 0x0002, 30, 2,
                     QRect(90, 114, 180, 18),
-                    "[Last Name],",
+                    "[Last Name], ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3480,12 +3473,12 @@ QVector<ReportDefinition> reports110()
                     "Employee",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     13435, 0xabcd, 0x0010, 30, 4,
                     QRect(429, 114, 180, 18),
-                    "[Contact]",
+                    "[Contact] ",
                     texts({"Contact"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3496,7 +3489,7 @@ QVector<ReportDefinition> reports110()
                     "Contact",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     13745, 0xabcd, 0xffff, 25, 6,
@@ -3504,7 +3497,7 @@ QVector<ReportDefinition> reports110()
                     "Phone",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     13900, 0xabcd, 0x0000, 3, 7,
@@ -3528,7 +3521,7 @@ QVector<ReportDefinition> reports110()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     14365, 0xabcd, 0x0000, 25, 10,
@@ -3536,7 +3529,7 @@ QVector<ReportDefinition> reports110()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     14520, 0xabcd, 0x0000, 25, 11,
@@ -3544,12 +3537,12 @@ QVector<ReportDefinition> reports110()
                     "{longdate}",
                     texts({}),
                     texts({"longdate"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextRightAligned,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     14675, 0xabcd, 0x000f, 25, 12,
                     QRect(612, 114, 150, 18),
-                    "[Emergency]",
+                    "[Emergency] ",
                     texts({"Emergency"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3580,15 +3573,15 @@ QVector<ReportDefinition> reports111()
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 42, 432, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 50, 1,
                     QRect(42, 66, 432, 21),
-                    "Category: [Category]",
+                    "Category: [Category] ",
                     texts({"Category"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3596,7 +3589,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     1323, 0xabcd, 0x0002, 50, 2,
                     QRect(42, 87, 432, 21),
-                    "From: [From]",
+                    "From: [From] ",
                     texts({"From"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3604,7 +3597,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     1478, 0xabcd, 0x0003, 20, 3,
                     QRect(42, 108, 183, 21),
-                    "Servings: [Servings]",
+                    "Servings: [Servings] ",
                     texts({"Servings"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3612,7 +3605,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     1633, 0xabcd, 0x0004, 8, 4,
                     QRect(225, 108, 168, 21),
-                    "Calories: [Calories]",
+                    "Calories: [Calories] ",
                     texts({"Calories"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3620,7 +3613,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     1788, 0xabcd, 0x0005, 20, 5,
                     QRect(42, 129, 432, 21),
-                    "Time to prepare: [Time to prepare]",
+                    "Time to prepare: [Time to prepare] ",
                     texts({"Time to prepare"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3628,7 +3621,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     1943, 0xabcd, 0x0006, 8, 6,
                     QRect(393, 108, 81, 21),
-                    "Fat: [Fat]",
+                    "Fat: [Fat] ",
                     texts({"Fat"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3636,7 +3629,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     2098, 0xabcd, 0x0007, 40, 7,
                     QRect(42, 150, 432, 132),
-                    "[Recipe]",
+                    "[Recipe] ",
                     texts({"Recipe"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3661,15 +3654,15 @@ QVector<ReportDefinition> reports111()
                 frame(
                     3266, 0xabcd, 0x0000, 50, 0,
                     QRect(42, 42, 432, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3421, 0xabcd, 0x0001, 50, 1,
                     QRect(42, 66, 432, 21),
-                    "Category: [Category]",
+                    "Category: [Category] ",
                     texts({"Category"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3677,7 +3670,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     3576, 0xabcd, 0x0002, 50, 2,
                     QRect(42, 87, 432, 21),
-                    "From: [From]",
+                    "From: [From] ",
                     texts({"From"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3685,7 +3678,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     3731, 0xabcd, 0x0003, 20, 3,
                     QRect(42, 108, 183, 21),
-                    "Servings: [Servings]",
+                    "Servings: [Servings] ",
                     texts({"Servings"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3693,7 +3686,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     3886, 0xabcd, 0x0004, 8, 4,
                     QRect(225, 108, 168, 21),
-                    "Calories: [Calories]",
+                    "Calories: [Calories] ",
                     texts({"Calories"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3701,7 +3694,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     4041, 0xabcd, 0x0005, 20, 5,
                     QRect(42, 129, 432, 21),
-                    "Time to prepare: [Time to prepare]",
+                    "Time to prepare: [Time to prepare] ",
                     texts({"Time to prepare"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3709,7 +3702,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     4196, 0xabcd, 0x0006, 8, 6,
                     QRect(393, 108, 81, 21),
-                    "Fat: [Fat]",
+                    "Fat: [Fat] ",
                     texts({"Fat"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3717,7 +3710,7 @@ QVector<ReportDefinition> reports111()
                 frame(
                     4351, 0xabcd, 0x0007, 40, 7,
                     QRect(42, 150, 432, 132),
-                    "[Recipe]",
+                    "[Recipe] ",
                     texts({"Recipe"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3748,7 +3741,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     1013, 0xabcd, 0x0000, 20, 0,
                     QRect(294, 117, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3756,7 +3749,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     1168, 0xabcd, 0x0001, 2, 1,
                     QRect(414, 117, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3764,7 +3757,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     1323, 0xabcd, 0x0002, 30, 2,
                     QRect(114, 117, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3775,7 +3768,7 @@ QVector<ReportDefinition> reports112()
                     "Name",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1633, 0xabcd, 0xffff, 25, 4,
@@ -3783,7 +3776,7 @@ QVector<ReportDefinition> reports112()
                     "Work Phone",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1788, 0xabcd, 0xffff, 25, 5,
@@ -3791,7 +3784,7 @@ QVector<ReportDefinition> reports112()
                     "Home Phone",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1943, 0xabcd, 0x0000, 3, 6,
@@ -3820,7 +3813,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     2408, 0xabcd, 0x0009, 25, 9,
                     QRect(438, 117, 168, 18),
-                    "[Work]",
+                    "[Work] ",
                     texts({"Work"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3828,7 +3821,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     2563, 0xabcd, 0x000a, 15, 10,
                     QRect(618, 117, 120, 18),
-                    "[Home]",
+                    "[Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3839,7 +3832,7 @@ QVector<ReportDefinition> reports112()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     2873, 0xabcd, 0x0000, 25, 12,
@@ -3847,7 +3840,7 @@ QVector<ReportDefinition> reports112()
                     "{longdate}",
                     texts({}),
                     texts({"longdate"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextRightAligned,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3028, 0xabcd, 0x0000, 25, 13,
@@ -3855,7 +3848,7 @@ QVector<ReportDefinition> reports112()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
         report(
@@ -3877,7 +3870,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     4196, 0xabcd, 0x0000, 20, 0,
                     QRect(30, 27, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3885,7 +3878,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     4351, 0xabcd, 0x0001, 2, 1,
                     QRect(150, 27, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3893,7 +3886,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     4506, 0xabcd, 0x0002, 30, 2,
                     QRect(162, 27, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3901,7 +3894,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     4661, 0xabcd, 0x0003, 40, 3,
                     QRect(30, 45, 312, 18),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3909,7 +3902,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     4816, 0xabcd, 0x0004, 40, 4,
                     QRect(30, 63, 312, 18),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3917,7 +3910,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     4971, 0xabcd, 0x0005, 20, 5,
                     QRect(30, 81, 120, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3925,7 +3918,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     5126, 0xabcd, 0x0006, 2, 6,
                     QRect(150, 81, 12, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3933,7 +3926,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     5281, 0xabcd, 0x0007, 10, 7,
                     QRect(162, 81, 60, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3941,7 +3934,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     5436, 0xabcd, 0x0008, 30, 8,
                     QRect(222, 81, 120, 18),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3966,7 +3959,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     6604, 0xabcd, 0x0000, 20, 0,
                     QRect(456, 210, 120, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3974,7 +3967,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     6759, 0xabcd, 0x0001, 15, 1,
                     QRect(576, 210, 75, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3982,7 +3975,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     6914, 0xabcd, 0x0002, 30, 2,
                     QRect(651, 210, 216, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3990,7 +3983,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7069, 0xabcd, 0x0003, 50, 3,
                     QRect(456, 231, 411, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -3998,7 +3991,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7224, 0xabcd, 0x0004, 50, 4,
                     QRect(456, 252, 411, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4006,7 +3999,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7379, 0xabcd, 0x0005, 50, 5,
                     QRect(456, 273, 411, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4014,7 +4007,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7534, 0xabcd, 0x0006, 50, 6,
                     QRect(456, 294, 411, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4022,7 +4015,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7689, 0xabcd, 0x0007, 25, 7,
                     QRect(456, 315, 306, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4030,7 +4023,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7844, 0xabcd, 0x0008, 5, 8,
                     QRect(762, 315, 39, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4038,7 +4031,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     7999, 0xabcd, 0x0009, 10, 9,
                     QRect(801, 315, 66, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4046,7 +4039,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     8154, 0xabcd, 0x000a, 25, 10,
                     QRect(456, 336, 411, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4071,7 +4064,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     9322, 0xabcd, 0x0000, 20, 0,
                     QRect(456, 210, 120, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4079,7 +4072,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     9477, 0xabcd, 0x0001, 15, 1,
                     QRect(576, 210, 75, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4087,7 +4080,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     9632, 0xabcd, 0x0002, 30, 2,
                     QRect(651, 210, 216, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4095,7 +4088,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     9787, 0xabcd, 0x0003, 50, 3,
                     QRect(456, 231, 411, 21),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4103,7 +4096,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     9942, 0xabcd, 0x0004, 50, 4,
                     QRect(456, 252, 411, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4111,7 +4104,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     10097, 0xabcd, 0x0005, 50, 5,
                     QRect(456, 273, 411, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4119,7 +4112,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     10252, 0xabcd, 0x0006, 50, 6,
                     QRect(456, 294, 411, 21),
-                    "[Address 2]",
+                    "[Address 2] ",
                     texts({"Address 2"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4127,7 +4120,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     10407, 0xabcd, 0x0007, 25, 7,
                     QRect(456, 315, 306, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4135,7 +4128,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     10562, 0xabcd, 0x0008, 5, 8,
                     QRect(762, 315, 39, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4143,7 +4136,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     10717, 0xabcd, 0x0009, 10, 9,
                     QRect(801, 315, 66, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4151,7 +4144,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     10872, 0xabcd, 0x000a, 25, 10,
                     QRect(456, 336, 411, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4176,7 +4169,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12040, 0xabcd, 0x0000, 20, 0,
                     QRect(30, 27, 120, 18),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4184,7 +4177,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12195, 0xabcd, 0x0001, 2, 1,
                     QRect(150, 27, 12, 18),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4192,7 +4185,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12350, 0xabcd, 0x0002, 30, 2,
                     QRect(162, 27, 180, 18),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4200,7 +4193,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12505, 0xabcd, 0x0003, 40, 3,
                     QRect(30, 45, 312, 18),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4208,7 +4201,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12660, 0xabcd, 0x0004, 40, 4,
                     QRect(30, 63, 312, 18),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4216,7 +4209,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12815, 0xabcd, 0x0005, 20, 5,
                     QRect(30, 81, 120, 18),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4224,7 +4217,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     12970, 0xabcd, 0x0006, 2, 6,
                     QRect(150, 81, 12, 18),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4232,7 +4225,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     13125, 0xabcd, 0x0007, 10, 7,
                     QRect(162, 81, 60, 18),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4240,7 +4233,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     13280, 0xabcd, 0x0008, 30, 8,
                     QRect(222, 81, 120, 18),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4265,7 +4258,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     14448, 0xabcd, 0x0000, 20, 0,
                     QRect(42, 42, 141, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4273,7 +4266,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     14603, 0xabcd, 0x0001, 2, 1,
                     QRect(183, 42, 15, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4281,7 +4274,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     14758, 0xabcd, 0x0002, 30, 2,
                     QRect(198, 42, 210, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4289,7 +4282,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     14913, 0xabcd, 0x0003, 40, 3,
                     QRect(66, 66, 279, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4297,7 +4290,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15068, 0xabcd, 0x0004, 40, 4,
                     QRect(66, 87, 279, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4305,7 +4298,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15223, 0xabcd, 0x0005, 20, 5,
                     QRect(66, 108, 141, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4313,7 +4306,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15378, 0xabcd, 0x0006, 2, 6,
                     QRect(207, 108, 15, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4321,7 +4314,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15533, 0xabcd, 0x0007, 10, 7,
                     QRect(222, 108, 69, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4329,7 +4322,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15688, 0xabcd, 0x0008, 30, 8,
                     QRect(66, 129, 210, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4337,7 +4330,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15843, 0xabcd, 0x0009, 25, 9,
                     QRect(66, 159, 216, 21),
-                    "Work: [Work]",
+                    "Work: [Work] ",
                     texts({"Work"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4345,7 +4338,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     15998, 0xabcd, 0x000a, 15, 10,
                     QRect(288, 159, 186, 21),
-                    "Home: [Home]",
+                    "Home: [Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4353,7 +4346,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     16153, 0xabcd, 0x000b, 20, 11,
                     QRect(291, 132, 183, 21),
-                    "Birthday: [Birthday]",
+                    "Birthday: [Birthday] ",
                     texts({"Birthday"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4361,7 +4354,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     16308, 0xabcd, 0x000c, 40, 12,
                     QRect(66, 186, 408, 96),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4386,7 +4379,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     17476, 0xabcd, 0x0000, 20, 0,
                     QRect(42, 42, 141, 21),
-                    "[First Name]",
+                    "[First Name] ",
                     texts({"First Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4394,7 +4387,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     17631, 0xabcd, 0x0001, 2, 1,
                     QRect(183, 42, 15, 21),
-                    "[Middle Initial]",
+                    "[Middle Initial] ",
                     texts({"Middle Initial"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4402,7 +4395,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     17786, 0xabcd, 0x0002, 30, 2,
                     QRect(198, 42, 210, 21),
-                    "[Last Name]",
+                    "[Last Name] ",
                     texts({"Last Name"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4410,7 +4403,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     17941, 0xabcd, 0x0003, 40, 3,
                     QRect(66, 66, 279, 21),
-                    "[Company]",
+                    "[Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4418,7 +4411,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     18096, 0xabcd, 0x0004, 40, 4,
                     QRect(66, 87, 279, 21),
-                    "[Address 1]",
+                    "[Address 1] ",
                     texts({"Address 1"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4426,7 +4419,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     18251, 0xabcd, 0x0005, 20, 5,
                     QRect(66, 108, 141, 21),
-                    "[City]",
+                    "[City] ",
                     texts({"City"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4434,7 +4427,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     18406, 0xabcd, 0x0006, 2, 6,
                     QRect(207, 108, 15, 21),
-                    "[State]",
+                    "[State] ",
                     texts({"State"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4442,7 +4435,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     18561, 0xabcd, 0x0007, 10, 7,
                     QRect(222, 108, 69, 21),
-                    "[Zip + 4]",
+                    "[Zip + 4] ",
                     texts({"Zip + 4"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4450,7 +4443,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     18716, 0xabcd, 0x0008, 30, 8,
                     QRect(66, 129, 210, 21),
-                    "[Country]",
+                    "[Country] ",
                     texts({"Country"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4458,7 +4451,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     18871, 0xabcd, 0x0009, 25, 9,
                     QRect(66, 159, 216, 21),
-                    "Work: [Work]",
+                    "Work: [Work] ",
                     texts({"Work"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4466,7 +4459,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     19026, 0xabcd, 0x000a, 15, 10,
                     QRect(288, 159, 186, 21),
-                    "Home: [Home]",
+                    "Home: [Home] ",
                     texts({"Home"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4474,7 +4467,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     19181, 0xabcd, 0x000b, 20, 11,
                     QRect(291, 132, 183, 21),
-                    "Birthday: [Birthday]",
+                    "Birthday: [Birthday] ",
                     texts({"Birthday"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4482,7 +4475,7 @@ QVector<ReportDefinition> reports112()
                 frame(
                     19336, 0xabcd, 0x000c, 40, 12,
                     QRect(66, 186, 408, 96),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4513,23 +4506,23 @@ QVector<ReportDefinition> reports113()
                 frame(
                     1013, 0xabcd, 0x0000, 30, 0,
                     QRect(42, 42, 180, 18),
-                    "[Product]",
+                    "[Product] ",
                     texts({"Product"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 10, 1,
                     QRect(222, 42, 120, 18),
-                    "Version [Version]",
+                    "Version [Version] ",
                     texts({"Version"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1323, 0xabcd, 0x0002, 50, 2,
                     QRect(42, 63, 411, 18),
-                    "Manufacturer: [Company]",
+                    "Manufacturer: [Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4537,7 +4530,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     1478, 0xabcd, 0x0003, 25, 3,
                     QRect(42, 81, 210, 18),
-                    "Serial# [Serial #]",
+                    "Serial# [Serial #] ",
                     texts({"Serial #"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4545,7 +4538,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     1633, 0xabcd, 0x0004, 50, 4,
                     QRect(42, 99, 300, 18),
-                    "Registered to: [Registered to]",
+                    "Registered to: [Registered to] ",
                     texts({"Registered to"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4553,7 +4546,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     1788, 0xabcd, 0x0005, 20, 5,
                     QRect(42, 117, 198, 18),
-                    "Date purchased: [Purchased]",
+                    "Date purchased: [Purchased] ",
                     texts({"Purchased"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4561,7 +4554,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     1943, 0xabcd, 0x0006, 30, 6,
                     QRect(243, 117, 231, 18),
-                    "Purchased from: [From]",
+                    "Purchased from: [From] ",
                     texts({"From"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4569,7 +4562,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     2098, 0xabcd, 0x0007, 20, 7,
                     QRect(42, 138, 255, 18),
-                    "Technical support: [Tech support]",
+                    "Technical support: [Tech support] ",
                     texts({"Tech support"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4577,7 +4570,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     2253, 0xabcd, 0x0008, 20, 8,
                     QRect(42, 156, 255, 18),
-                    "Support plan: [Support plan]",
+                    "Support plan: [Support plan] ",
                     texts({"Support plan"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4585,7 +4578,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     2408, 0xabcd, 0x0009, 20, 9,
                     QRect(42, 174, 255, 18),
-                    "Customer service: [Customer servic]",
+                    "Customer service: [Customer servic] ",
                     texts({"Customer servic"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4593,7 +4586,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     2563, 0xabcd, 0x000a, 40, 10,
                     QRect(42, 192, 432, 90),
-                    "Notes: [Notes]",
+                    "Notes: [Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4618,23 +4611,23 @@ QVector<ReportDefinition> reports113()
                 frame(
                     3731, 0xabcd, 0x0000, 30, 0,
                     QRect(42, 42, 180, 18),
-                    "[Product]",
+                    "[Product] ",
                     texts({"Product"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3886, 0xabcd, 0x0001, 10, 1,
                     QRect(222, 42, 120, 18),
-                    "Version [Version]",
+                    "Version [Version] ",
                     texts({"Version"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     4041, 0xabcd, 0x0002, 50, 2,
                     QRect(42, 63, 411, 18),
-                    "Manufacturer: [Company]",
+                    "Manufacturer: [Company] ",
                     texts({"Company"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4642,7 +4635,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     4196, 0xabcd, 0x0003, 25, 3,
                     QRect(42, 81, 210, 18),
-                    "Serial# [Serial #]",
+                    "Serial# [Serial #] ",
                     texts({"Serial #"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4650,7 +4643,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     4351, 0xabcd, 0x0004, 50, 4,
                     QRect(42, 99, 300, 18),
-                    "Registered to: [Registered to]",
+                    "Registered to: [Registered to] ",
                     texts({"Registered to"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4658,7 +4651,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     4506, 0xabcd, 0x0005, 20, 5,
                     QRect(42, 117, 198, 18),
-                    "Date purchased: [Purchased]",
+                    "Date purchased: [Purchased] ",
                     texts({"Purchased"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4666,7 +4659,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     4661, 0xabcd, 0x0006, 30, 6,
                     QRect(243, 117, 231, 18),
-                    "Purchased from: [From]",
+                    "Purchased from: [From] ",
                     texts({"From"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4674,7 +4667,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     4816, 0xabcd, 0x0007, 20, 7,
                     QRect(42, 138, 255, 18),
-                    "Technical support: [Tech support]",
+                    "Technical support: [Tech support] ",
                     texts({"Tech support"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4682,7 +4675,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     4971, 0xabcd, 0x0008, 20, 8,
                     QRect(42, 156, 255, 18),
-                    "Support plan: [Support plan]",
+                    "Support plan: [Support plan] ",
                     texts({"Support plan"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4690,7 +4683,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     5126, 0xabcd, 0x0009, 20, 9,
                     QRect(42, 174, 255, 18),
-                    "Customer service: [Customer servic]",
+                    "Customer service: [Customer servic] ",
                     texts({"Customer servic"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4698,7 +4691,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     5281, 0xabcd, 0x000a, 40, 10,
                     QRect(42, 192, 432, 90),
-                    "Notes: [Notes]",
+                    "Notes: [Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4723,7 +4716,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     6449, 0xabcd, 0x0000, 30, 0,
                     QRect(114, 114, 180, 18),
-                    "[Product]",
+                    "[Product] ",
                     texts({"Product"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4731,7 +4724,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     6604, 0xabcd, 0x0001, 10, 1,
                     QRect(297, 114, 60, 18),
-                    "[Version]",
+                    "[Version] ",
                     texts({"Version"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4742,12 +4735,12 @@ QVector<ReportDefinition> reports113()
                     "Program",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     6914, 0xabcd, 0x0003, 25, 3,
                     QRect(360, 114, 150, 18),
-                    "[Serial #]",
+                    "[Serial #] ",
                     texts({"Serial #"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4755,7 +4748,7 @@ QVector<ReportDefinition> reports113()
                 frame(
                     7069, 0xabcd, 0x0004, 50, 4,
                     QRect(525, 114, 213, 18),
-                    "[Registered to]",
+                    "[Registered to] ",
                     texts({"Registered to"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4766,7 +4759,7 @@ QVector<ReportDefinition> reports113()
                     "Version",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7379, 0xabcd, 0xffff, 25, 6,
@@ -4774,7 +4767,7 @@ QVector<ReportDefinition> reports113()
                     "Serial Number",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7534, 0xabcd, 0xffff, 25, 7,
@@ -4782,7 +4775,7 @@ QVector<ReportDefinition> reports113()
                     "Registered To",
                     texts({}),
                     texts({}),
-                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Text, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7689, 0xabcd, 0x0000, 3, 8,
@@ -4822,7 +4815,7 @@ QVector<ReportDefinition> reports113()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     8464, 0xabcd, 0x0000, 25, 13,
@@ -4830,7 +4823,7 @@ QVector<ReportDefinition> reports113()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };
@@ -4858,15 +4851,15 @@ QVector<ReportDefinition> reports114()
                 frame(
                     1013, 0xabcd, 0x0000, 50, 0,
                     QRect(39, 33, 246, 36),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     1168, 0xabcd, 0x0001, 30, 1,
                     QRect(39, 72, 246, 18),
-                    "Category: [Category]",
+                    "Category: [Category] ",
                     texts({"Category"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4874,7 +4867,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     1323, 0xabcd, 0x0003, 5, 3,
                     QRect(39, 93, 108, 18),
-                    "Rating: [Rating]",
+                    "Rating: [Rating] ",
                     texts({"Rating"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4882,7 +4875,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     1478, 0xabcd, 0x0004, 10, 4,
                     QRect(159, 93, 126, 18),
-                    "Review: [Review]",
+                    "Review: [Review] ",
                     texts({"Review"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4890,7 +4883,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     1633, 0xabcd, 0x0005, 20, 5,
                     QRect(39, 114, 144, 18),
-                    "Date taped: [Date taped]",
+                    "Date taped: [Date taped] ",
                     texts({"Date taped"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4898,7 +4891,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     1788, 0xabcd, 0x0006, 20, 6,
                     QRect(183, 114, 102, 18),
-                    "Format: [Format]",
+                    "Format: [Format] ",
                     texts({"Format"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4906,7 +4899,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     1943, 0xabcd, 0x0007, 12, 7,
                     QRect(39, 135, 81, 18),
-                    "Tape# [Tape number]",
+                    "Tape# [Tape number] ",
                     texts({"Tape number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4914,7 +4907,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     2098, 0xabcd, 0x0008, 6, 8,
                     QRect(39, 156, 75, 18),
-                    "Start: [Start]",
+                    "Start: [Start] ",
                     texts({"Start"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4922,7 +4915,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     2253, 0xabcd, 0x0009, 6, 9,
                     QRect(114, 156, 81, 18),
-                    "End: [End]",
+                    "End: [End] ",
                     texts({"End"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4930,7 +4923,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     2408, 0xabcd, 0x000a, 30, 10,
                     QRect(195, 156, 87, 18),
-                    "Length: [Length]",
+                    "Length: [Length] ",
                     texts({"Length"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4955,15 +4948,15 @@ QVector<ReportDefinition> reports114()
                 frame(
                     3576, 0xabcd, 0x0000, 50, 0,
                     QRect(30, 30, 528, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     3731, 0xabcd, 0x0001, 30, 1,
                     QRect(45, 51, 246, 18),
-                    "Category: [Category]",
+                    "Category: [Category] ",
                     texts({"Category"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4971,7 +4964,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     3886, 0xabcd, 0x0003, 5, 3,
                     QRect(294, 51, 108, 18),
-                    "Rating: [Rating]",
+                    "Rating: [Rating] ",
                     texts({"Rating"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -4979,7 +4972,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     4041, 0xabcd, 0x0007, 12, 7,
                     QRect(477, 51, 81, 18),
-                    "Tape# [Tape number]",
+                    "Tape# [Tape number] ",
                     texts({"Tape number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5004,15 +4997,15 @@ QVector<ReportDefinition> reports114()
                 frame(
                     5209, 0xabcd, 0x0000, 50, 0,
                     QRect(114, 120, 612, 18),
-                    "[Title]",
+                    "[Title] ",
                     texts({"Title"}),
                     texts({}),
-                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextBold,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     5364, 0xabcd, 0x0001, 30, 1,
                     QRect(162, 144, 264, 18),
-                    "Category: [Category]",
+                    "Category: [Category] ",
                     texts({"Category"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5020,7 +5013,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     5519, 0xabcd, 0x0002, 4, 2,
                     QRect(162, 162, 207, 18),
-                    "Year made: [Year made]",
+                    "Year made: [Year made] ",
                     texts({"Year made"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5028,7 +5021,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     5674, 0xabcd, 0x0003, 5, 3,
                     QRect(162, 180, 135, 18),
-                    "Rating: [Rating]",
+                    "Rating: [Rating] ",
                     texts({"Rating"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5036,7 +5029,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     5829, 0xabcd, 0x0004, 10, 4,
                     QRect(162, 198, 207, 18),
-                    "Review: [Review]",
+                    "Review: [Review] ",
                     texts({"Review"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5044,7 +5037,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     5984, 0xabcd, 0x0005, 20, 5,
                     QRect(162, 216, 207, 18),
-                    "Date taped: [Date taped]",
+                    "Date taped: [Date taped] ",
                     texts({"Date taped"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5052,7 +5045,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     6139, 0xabcd, 0x0006, 20, 6,
                     QRect(162, 234, 207, 18),
-                    "Format: [Format]",
+                    "Format: [Format] ",
                     texts({"Format"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5060,7 +5053,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     6294, 0xabcd, 0x0007, 12, 7,
                     QRect(162, 252, 207, 18),
-                    "Tape number: [Tape number]",
+                    "Tape number: [Tape number] ",
                     texts({"Tape number"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5068,7 +5061,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     6449, 0xabcd, 0x0008, 6, 8,
                     QRect(162, 270, 75, 18),
-                    "Start: [Start]",
+                    "Start: [Start] ",
                     texts({"Start"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5076,7 +5069,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     6604, 0xabcd, 0x0009, 6, 9,
                     QRect(237, 270, 84, 18),
-                    "End: [End]",
+                    "End: [End] ",
                     texts({"End"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5084,7 +5077,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     6759, 0xabcd, 0x000a, 30, 10,
                     QRect(321, 270, 96, 18),
-                    "Length: [Length]",
+                    "Length: [Length] ",
                     texts({"Length"}),
                     texts({}),
                     ReportFrameKind::Data, PrintNormal, NoValidationFlags, TextPlain,
@@ -5092,7 +5085,7 @@ QVector<ReportDefinition> reports114()
                 frame(
                     6914, 0xabcd, 0x000b, 40, 11,
                     QRect(162, 288, 528, 18),
-                    "[Notes]",
+                    "[Notes] ",
                     texts({"Notes"}),
                     texts({}),
                     ReportFrameKind::Data, PrintEntireContents, NoValidationFlags, TextPlain,
@@ -5111,7 +5104,7 @@ QVector<ReportDefinition> reports114()
                     "{reportname}",
                     texts({}),
                     texts({"reportname"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextItalic,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextBold | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
                 frame(
                     7379, 0xabcd, 0x0000, 25, 14,
@@ -5119,7 +5112,7 @@ QVector<ReportDefinition> reports114()
                     "- {page} -",
                     texts({}),
                     texts({"page"}),
-                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain,
+                    ReportFrameKind::SystemText, PrintNormal, NoValidationFlags, TextPlain | TextCentered,
                     NoLineBoxShape, LineSolid, FillClear, NoCornerRadius),
             }),
     };

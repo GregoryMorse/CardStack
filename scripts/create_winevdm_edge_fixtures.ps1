@@ -212,7 +212,7 @@ $plainBytes = [IO.File]::ReadAllBytes($plainPath)
     $plainBytes[0..([Math]::Min(2047, $plainBytes.Length - 1))])
 
 Write-ManyFieldsFixture (Join-Path $FixtureDir "many_fields.BTN")
-Copy-Item -LiteralPath $plainPath -Destination (Join-Path $FixtureDir "security_cycle.BTN") -Force
+Write-Warning "Synthetic boundary fixtures only. Security-cycle evidence must be generated through the oracle UI."
 
 Get-Item -LiteralPath `
     (Join-Path $FixtureDir "notes_heavy.BTN"), `
@@ -220,7 +220,6 @@ Get-Item -LiteralPath `
     (Join-Path $FixtureDir "max_lengths.BTN"), `
     (Join-Path $FixtureDir "oem_text.BTN"), `
     (Join-Path $FixtureDir "unusual_index.BTN"), `
-    (Join-Path $FixtureDir "damaged_truncated.BTN"), `
-    (Join-Path $FixtureDir "security_cycle.BTN") |
+    (Join-Path $FixtureDir "damaged_truncated.BTN") |
     Select-Object Name, Length |
     Format-Table -AutoSize
