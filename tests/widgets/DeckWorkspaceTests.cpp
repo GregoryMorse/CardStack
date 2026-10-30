@@ -138,6 +138,8 @@ private slots:
     }
     void emptyDiscontinuousSelectionPreservesTextAndNotes() { Tests::KeyboardSelectionProbe::emptyDiscontinuousSelectionAndNotes(); }
     void modifierSelectionAndSchemaChanges() { Tests::KeyboardSelectionProbe::modifierClicksPreserveModeAndSchemaClearsSelection(); }
+    void undoEditorRebuildIsNotReentrant() { Tests::KeyboardSelectionProbe::undoRebuildDoesNotResetModelReentrantly(); }
+    void selectionTeardownDoesNotAccessDocumentAfterDestruction() { Tests::KeyboardSelectionProbe::destructionDoesNotCommitPendingEditors(); }
     void selectionBindingsAndCoincidentFrames() { Tests::KeyboardSelectionProbe::bindingMatrixAndCoordinateTies(); }
     void writesSelectionModeInspectionImages() { Tests::KeyboardSelectionProbe::deckGallery(); }
 

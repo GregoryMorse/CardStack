@@ -243,20 +243,27 @@ QJsonObject saveUndo(const QDir& output)
 {
     const QString path = output.filePath(QStringLiteral("undo-fingerprint.cardstack"));
     QString error;
+    qInfo("saveUndo: creating disposable package");
     require(SQLitePackageStore::saveDeckPackage(makeDeck(), path, &error), error);
+    qInfo("saveUndo: loading disposable package");
     Deck loaded;
     {
         SQLiteDeckStore store;
         require(store.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly) && store.loadDeck(&loaded, &error), error);
     }
+    qInfo("saveUndo: constructing workspace");
     DeckWorkspace workspace(loaded);
+    qInfo("saveUndo: editing and saving revision");
     workspace.setDeckDescription(QStringLiteral("Save this revision"));
     require(SQLitePackageStore::saveDeckPackage(workspace.deck(), path, &error), error);
     workspace.setStorageOrigin(path, documentFileFingerprint(path));
     workspace.clearDirty();
+    qInfo("saveUndo: restoring content snapshot");
     require(workspace.undo(), QStringLiteral("Undo missing"));
     const bool fingerprintMatches = workspace.deck().storageFingerprint() == documentFileFingerprint(path);
+    qInfo("saveUndo: saving restored snapshot");
     const bool saved = SQLitePackageStore::saveDeckPackage(workspace.deck(), path, &error);
+    qInfo("saveUndo: verifying result and destroying workspace");
     return outcome(!fingerprintMatches && !saved,
         {{QStringLiteral("fingerprint_matches_disk"), fingerprintMatches},
          {QStringLiteral("save_succeeded"), saved}, {QStringLiteral("error"), error}});

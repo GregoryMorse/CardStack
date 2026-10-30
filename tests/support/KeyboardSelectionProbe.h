@@ -15,6 +15,8 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QScopeGuard>
+#include <QPointer>
+#include <QSignalSpy>
 #include <QTableView>
 #include <QTableWidget>
 #include <QTest>
@@ -321,6 +323,47 @@ inline void modifierClicksPreserveModeAndSchemaClearsSelection()
     QCOMPARE(workspace.fieldSelectionMode(), KeyboardSelection::Mode::None);
     QVERIFY(workspace.selectedFieldIndexes().isEmpty());
     QCOMPARE(workspace.deck().fieldCount(), 1);
+}
+
+inline void undoRebuildDoesNotResetModelReentrantly()
+{
+    DeckWorkspace workspace(deck());
+    activate(workspace);
+    workspace.setDeckDescription(QStringLiteral("Snapshot before editor rebuild"));
+    workspace.focusFieldBoundary(DeckWorkspace::FieldBoundary::First);
+    QPointer<QLineEdit> abandoned = workspace.findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+    QVERIFY(abandoned);
+    abandoned->setText(QStringLiteral("Abandoned editor text"));
+    abandoned->setModified(true);
+    QVERIFY(!abandoned->isUndoAvailable());
+    auto* table = workspace.findChild<QTableView*>();
+    QVERIFY(table);
+    QSignalSpy resets(table->model(), &QAbstractItemModel::modelReset);
+    QVERIFY(workspace.undo());
+    QVERIFY(abandoned.isNull());
+    QCOMPARE(workspace.deck().cardAt(0).valueAt(0), QStringLiteral("Alpha"));
+    QCOMPARE(resets.count(), 1);
+}
+
+inline void destructionDoesNotCommitPendingEditors()
+{
+    for (int iteration = 0; iteration < 12; ++iteration) {
+        auto* workspace = new DeckWorkspace(deck(iteration % 2 == 0));
+        activate(*workspace);
+        if (iteration % 3 == 0) workspace->showTableView();
+        workspace->focusFieldBoundary(DeckWorkspace::FieldBoundary::First);
+        key(workspace, Qt::Key_F8, iteration % 2 ? Qt::ShiftModifier : Qt::NoModifier);
+        int editsDuringTeardown = 0;
+        QObject receiver;
+        QObject::connect(workspace, &DeckWorkspace::dirtyChanged, &receiver,
+                         [&] { ++editsDuringTeardown; });
+        auto* edit = workspace->findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("Uncommitted edit"));
+        delete workspace;
+        QCoreApplication::processEvents();
+        QCOMPARE(editsDuringTeardown, 0);
+    }
 }
 
 inline void bindingMatrixAndCoordinateTies()

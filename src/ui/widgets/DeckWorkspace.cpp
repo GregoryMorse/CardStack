@@ -654,6 +654,20 @@ void DeckWorkspace::focusFieldBoundary(FieldBoundary boundary)
     if (m_viewMode == ViewMode::Table) m_tableView->setFocus(Qt::TabFocusReason);
 }
 
+DeckWorkspace::~DeckWorkspace()
+{
+    // QWidget destroys child editors after C++ document members have been torn down.
+    // Stop focus/edit callbacks while those members are still alive.
+    if (qApp) {
+        qApp->removeEventFilter(this);
+        QObject::disconnect(qApp, nullptr, this, nullptr);
+    }
+    for (QObject* child : findChildren<QObject*>()) {
+        child->blockSignals(true);
+        QObject::disconnect(child, nullptr, this, nullptr);
+    }
+}
+
 bool DeckWorkspace::eventFilter(QObject* target, QEvent* event)
 {
     if (handleFieldSelectionEvent(target, event)) return true;
@@ -715,6 +729,8 @@ void DeckWorkspace::refreshFieldSelection()
 
 bool DeckWorkspace::handleFieldSelectionEvent(QObject* target, QEvent* event)
 {
+    if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::ShortcutOverride
+        && event->type() != QEvent::KeyPress) return false;
     auto* widget = qobject_cast<QWidget*>(target);
     if (!widget || (widget != this && !isAncestorOf(widget))
         || QApplication::activeModalWidget() || QApplication::activePopupWidget()) return false;
@@ -1490,6 +1506,7 @@ void DeckWorkspace::attachCardDetailPanelToTablePage()
 
 void DeckWorkspace::rebuildCardEditor()
 {
+    QScopedValueRollback<bool> rebuilding(m_restoringSnapshot, true);
     resetFieldSelection();
     if (QLayout* existingLayout = m_cardEditorContent->layout()) {
         delete existingLayout;
@@ -1508,6 +1525,7 @@ void DeckWorkspace::rebuildCardEditor()
             textEdit->setMinimumHeight(90);
             textEdit->setProperty("maxLength", field.maxLength());
             QObject::connect(textEdit, &QPlainTextEdit::textChanged, textEdit, [this, textEdit, fieldIndex]() {
+                if (m_restoringSnapshot) return;
                 m_valueEditors[fieldIndex] = textEdit;
                 const QString normalized = normalizedFieldValue(fieldIndex, textEdit->toPlainText());
                 for (QWidget* other : m_cardEditorContent->findChildren<QWidget*>(textEdit->objectName())) {
@@ -1533,6 +1551,7 @@ void DeckWorkspace::rebuildCardEditor()
                 lineEdit->setMaxLength(field.maxLength());
             }
             connect(lineEdit, &QLineEdit::textEdited, lineEdit, [this, lineEdit, fieldIndex](const QString& text) {
+                if (m_restoringSnapshot) return;
                 m_valueEditors[fieldIndex] = lineEdit;
                 for (QWidget* other : m_cardEditorContent->findChildren<QWidget*>(lineEdit->objectName())) {
                     if (other == lineEdit) continue;
@@ -1541,6 +1560,7 @@ void DeckWorkspace::rebuildCardEditor()
                 }
             });
             connect(lineEdit, &QLineEdit::editingFinished, this, [this, lineEdit, fieldIndex]() {
+                if (m_restoringSnapshot) return;
                 m_valueEditors[fieldIndex] = lineEdit;
                 syncCardEditorToDeck();
                 for (QWidget* other : m_cardEditorContent->findChildren<QWidget*>(lineEdit->objectName())) {

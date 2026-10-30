@@ -106,6 +106,31 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
+      - name: Repeat Windows save and focus workflows
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build -C Release --output-on-failure -R '^FocusedAuditRegressionTests$' --repeat until-fail:3
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Repeat macOS workspace lifetime regressions
+        if: runner.os == 'macOS'
+        run: ctest --test-dir build --output-on-failure -R '^DeckWorkspaceTests$' --repeat until-fail:10
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Capture macOS selection crash diagnostics
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          executable="$(find build -type f -name CardStackTests -perm -111 -print -quit)"
+          if [ -n "$executable" ]; then
+            mkdir -p build/tests
+            lldb --batch -o run -o 'thread backtrace all' -- "$executable" --test DeckWorkspaceTests wholeFieldKeyboardSelection -o build/tests/macos-selection-replay.txt,txt > build/tests/macos-selection-lldb.txt 2>&1
+          fi
+        env:
+          QT_QPA_PLATFORM: offscreen
+
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -152,8 +177,8 @@ jobs:
           -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
       - name: Build instrumented tests
         run: cmake --build build-sanitized --target CardStackTests --parallel 2
-      - name: Run instrumented import and persistence regressions
-        run: ctest --test-dir build-sanitized --output-on-failure -R 'ImportSecurityTests|Legacy.*ReaderTests|Btrieve.*Tests|SQLite.*StoreTests|DelimitedTextTests|PhoneCallLogTests'
+      - name: Run instrumented import, persistence and UI regressions
+        run: ctest --test-dir build-sanitized --output-on-failure -R 'ImportSecurityTests|Legacy.*ReaderTests|Btrieve.*Tests|SQLite.*StoreTests|DelimitedTextTests|PhoneCallLogTests|DeckWorkspaceTests|ReportDesignerWidgetTests|TemplateDesignerWidgetTests|MainWindowActionTests|FocusedAuditRegressionTests'
         env:
           QT_QPA_PLATFORM: offscreen
           ASAN_OPTIONS: detect_leaks=0:halt_on_error=1

@@ -91,6 +91,7 @@ public:
     };
 
     explicit DeckWorkspace(Deck deck, QWidget* parent = nullptr);
+    ~DeckWorkspace() override;
 
     const Deck& deck() const;
     int currentCardIndex() const;
