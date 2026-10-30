@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QLabel>
 #include "DesignerSelection.h"
+#include "DesignerFrameTable.h"
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QScopeGuard>
@@ -251,6 +252,37 @@ void designerModes(Designer& designer, bool tableMode, const QString& canvasName
     key(target, Qt::Key_F8);
     key(target, Qt::Key_F8);
     QCOMPARE(canvas->property("keyboardSelectionMode").toInt(), int(KeyboardSelection::Mode::None));
+}
+
+template <class Designer>
+void designerTeardown(Designer* designer, const QString& canvasName)
+{
+    activate(*designer);
+    auto* canvas = designer->template findChild<QWidget*>(canvasName);
+    QVERIFY(canvas);
+    key(canvas, Qt::Key_F8);
+    key(canvas, Qt::Key_Tab);
+    int dirtyDuringTeardown = 0;
+    QObject receiver;
+    QObject::connect(designer, &Designer::dirtyChanged, &receiver, [&] { ++dirtyDuringTeardown; });
+    QPointer<QObject> guardedCanvas(canvas);
+    delete designer;
+    QCoreApplication::processEvents();
+    QVERIFY(guardedCanvas.isNull());
+    QCOMPARE(dirtyDuringTeardown, 0);
+}
+
+inline void frameTableIgnoresLifecycleEvents()
+{
+    int calls = 0;
+    DesignerFrameTable table;
+    table.selectionKeyHandler = [&](QEvent*) { ++calls; return false; };
+    QEvent other(QEvent::User);
+    QCoreApplication::sendEvent(&table, &other);
+    QCOMPARE(calls, 0);
+    QKeyEvent key(QEvent::ShortcutOverride, Qt::Key_F8, Qt::NoModifier);
+    QCoreApplication::sendEvent(&table, &key);
+    QCOMPARE(calls, 1);
 }
 
 inline void capture(QWidget& widget, const QString& name)

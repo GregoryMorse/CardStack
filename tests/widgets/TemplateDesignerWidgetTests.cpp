@@ -54,6 +54,11 @@ class TemplateDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void selectionCallbacksStopBeforeDesignerTeardown()
+    {
+        Tests::KeyboardSelectionProbe::designerTeardown(new TemplateDesignerWidget(Tests::KeyboardSelectionProbe::layout(), {}), QStringLiteral("templateDesignCanvas"));
+    }
+    void frameTableDoesNotCallOwnerForLifecycleEvents() { Tests::KeyboardSelectionProbe::frameTableIgnoresLifecycleEvents(); }
     void modalFrameKeyboardSelection_data()
     {
         QTest::addColumn<bool>("tableMode");

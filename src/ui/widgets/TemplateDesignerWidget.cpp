@@ -1,4 +1,5 @@
 #include "TemplateDesignerWidget.h"
+#include "WidgetTeardown.h"
 #include "DesignerResizeHandles.h"
 #include "DesignerFrameTable.h"
 #include "DesignerSelection.h"
@@ -753,6 +754,18 @@ QStringList TemplateDesignerWidget::fieldNames() const
         names.append(field.name());
     }
     return names;
+}
+
+TemplateDesignerWidget::~TemplateDesignerWidget()
+{
+    if (auto* table = static_cast<DesignerFrameTable*>(m_frameTable)) {
+        table->selectionKeyHandler = {};
+        table->selectionCancelled = {};
+    }
+    Detail::prepareWidgetTeardown(*this);
+    // The canvas references the document; destroy it before document members.
+    delete m_canvas;
+    m_canvas = nullptr;
 }
 
 int TemplateDesignerWidget::selectedFrameIndex() const

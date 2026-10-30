@@ -17,7 +17,8 @@ public:
 protected:
     bool event(QEvent* event) override
     {
-        if (selectionKeyHandler && selectionKeyHandler(event)) return true;
+        if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)
+            && selectionKeyHandler && selectionKeyHandler(event)) return true;
         return QTableWidget::event(event);
     }
     void mousePressEvent(QMouseEvent* event) override

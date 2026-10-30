@@ -4565,28 +4565,26 @@ void initializePhoneDefinitionDialog(QDialog* dialog)
     if (quickDials == nullptr) {
         return;
     }
-    const QPointer<QListWidget> guardedQuickDials(quickDials);
-    const QPointer<QAbstractButton> addButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialAdd));
-    const QPointer<QAbstractButton> modifyButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialModify));
-    const QPointer<QAbstractButton> deleteButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialDelete));
-    const QPointer<QAbstractButton> okButton(findUiControl<QAbstractButton>(dialog, Control::Ok));
+    const QPointer<QObject> guardedQuickDials(quickDials);
+    const QPointer<QObject> addButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialAdd));
+    const QPointer<QObject> modifyButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialModify));
+    const QPointer<QObject> deleteButton(findUiControl<QAbstractButton>(dialog, Control::PhoneQuickDialDelete));
+    const QPointer<QObject> okButton(findUiControl<QAbstractButton>(dialog, Control::Ok));
     const auto updateQuickDialButtons = [guardedQuickDials, addButton, modifyButton, deleteButton, okButton]() {
-        if (guardedQuickDials.isNull()) {
-            return;
-        }
-        const int count = guardedQuickDials->count();
-        const auto setEnabled = [okButton](const QPointer<QAbstractButton>& button, bool enabled) {
-            if (button.isNull()) {
-                return;
-            }
+        // QObject guards remain valid during base-widget destruction; derived casts may not.
+        auto* list = qobject_cast<QListWidget*>(guardedQuickDials.data());
+        if (!list) return;
+        constexpr int MaximumQuickDials = 100;
+        const int count = list->count();
+        const auto setEnabled = [okButton](const QPointer<QObject>& guardedButton, bool enabled) {
+            auto* button = qobject_cast<QAbstractButton*>(guardedButton.data());
+            if (!button) return;
             if (!enabled && button->hasFocus()) {
-                if (!okButton.isNull()) {
-                    okButton->setFocus();
-                }
+                if (auto* ok = qobject_cast<QAbstractButton*>(okButton.data())) ok->setFocus();
             }
             button->setEnabled(enabled);
         };
-        setEnabled(addButton, count < 100);
+        setEnabled(addButton, count < MaximumQuickDials);
         setEnabled(modifyButton, count > 0);
         setEnabled(deleteButton, count > 0);
     };

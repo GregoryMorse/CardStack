@@ -30,6 +30,7 @@ public:
         QWidget* parent = nullptr,
         DeckAppearance appearance = {},
         QString description = {});
+    ~TemplateDesignerWidget() override;
 
     const CardTemplateLayout& layoutDefinition() const;
     const QVector<FieldDefinition>& fieldDefinitions() const;

@@ -1,6 +1,7 @@
 #include <QFrame>
 #include <QTextDocument>
 #include "DeckWorkspace.h"
+#include "WidgetTeardown.h"
 #include "DeckIndexOrder.h"
 #include "ReportFieldBindings.h"
 
@@ -656,16 +657,7 @@ void DeckWorkspace::focusFieldBoundary(FieldBoundary boundary)
 
 DeckWorkspace::~DeckWorkspace()
 {
-    // QWidget destroys child editors after C++ document members have been torn down.
-    // Stop focus/edit callbacks while those members are still alive.
-    if (qApp) {
-        qApp->removeEventFilter(this);
-        QObject::disconnect(qApp, nullptr, this, nullptr);
-    }
-    for (QObject* child : findChildren<QObject*>()) {
-        child->blockSignals(true);
-        QObject::disconnect(child, nullptr, this, nullptr);
-    }
+    Detail::prepareWidgetTeardown(*this);
 }
 
 bool DeckWorkspace::eventFilter(QObject* target, QEvent* event)

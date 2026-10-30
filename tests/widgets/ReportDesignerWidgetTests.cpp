@@ -68,6 +68,11 @@ class ReportDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void selectionCallbacksStopBeforeDesignerTeardown()
+    {
+        Tests::KeyboardSelectionProbe::designerTeardown(new ReportDesignerWidget(Tests::KeyboardSelectionProbe::report(), {}), QStringLiteral("reportDesignCanvas"));
+    }
+    void frameTableDoesNotCallOwnerForLifecycleEvents() { Tests::KeyboardSelectionProbe::frameTableIgnoresLifecycleEvents(); }
     void modalFrameKeyboardSelection_data()
     {
         QTest::addColumn<bool>("tableMode");

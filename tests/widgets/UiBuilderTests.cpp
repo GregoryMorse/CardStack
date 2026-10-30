@@ -23,6 +23,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QPixmap>
+#include <QPointer>
 #include <QSet>
 #include <QSpinBox>
 #include <QStyle>
@@ -513,6 +514,41 @@ class UiBuilderTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void phoneListRefreshDoesNotDowncastPartiallyDestroyedWidgets()
+    {
+        auto dialog = UiBuilder::createDialog(QStringLiteral("PHNDEF"));
+        QVERIFY(dialog);
+        auto* list = qobject_cast<QListWidget*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDials));
+        auto* add = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDialAdd));
+        auto* modify = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDialModify));
+        auto* remove = qobject_cast<QAbstractButton*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDialDelete));
+        QVERIFY(list && add && modify && remove);
+        QVERIFY(add->isEnabled()); QVERIFY(!modify->isEnabled()); QVERIFY(!remove->isEnabled());
+        constexpr int MaximumQuickDials = 100;
+        for (int index = 0; index < MaximumQuickDials; ++index) list->addItem(QString::number(index));
+        QVERIFY(!add->isEnabled()); QVERIFY(modify->isEnabled()); QVERIFY(remove->isEnabled());
+        delete list->takeItem(0);
+        QVERIFY(add->isEnabled());
+        QPointer<QObject> guard(list);
+        delete list;
+        QVERIFY(guard.isNull());
+    }
+
+    void writesPhoneLifetimeInspectionImages()
+    {
+        const QString output = qEnvironmentVariable("CARDSTACK_SELECTION_GALLERY_DIR");
+        if (output.isEmpty()) QSKIP("Set CARDSTACK_SELECTION_GALLERY_DIR for native phone-dialog screenshots.");
+        QDir directory(output);
+        QVERIFY(directory.exists() || directory.mkpath(QStringLiteral(".")));
+        auto dialog = UiBuilder::createDialog(QStringLiteral("PHNDEF"));
+        QVERIFY(dialog);
+        QVERIFY(Tests::saveWidgetImage(*dialog, directory, QStringLiteral("phone_quick_dials_empty.png")));
+        auto* list = qobject_cast<QListWidget*>(UiBuilder::controlById(dialog.get(), UiIds::Control::PhoneQuickDials));
+        QVERIFY(list);
+        list->addItems({QStringLiteral("Studio: +1 555 0100"), QStringLiteral("Support: +1 555 0101")});
+        QVERIFY(Tests::saveWidgetImage(*dialog, directory, QStringLiteral("phone_quick_dials_populated.png")));
+    }
+
     void populatesMainDeckMenuCommands()
     {
         QMenuBar startupMenuBar;

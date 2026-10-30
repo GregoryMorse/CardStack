@@ -177,8 +177,8 @@ jobs:
           -DCARDSTACK_DEPLOY_QT_AFTER_BUILD=OFF
       - name: Build instrumented tests
         run: cmake --build build-sanitized --target CardStackTests --parallel 2
-      - name: Run instrumented import, persistence and UI regressions
-        run: ctest --test-dir build-sanitized --output-on-failure -R 'ImportSecurityTests|Legacy.*ReaderTests|Btrieve.*Tests|SQLite.*StoreTests|DelimitedTextTests|PhoneCallLogTests|DeckWorkspaceTests|ReportDesignerWidgetTests|TemplateDesignerWidgetTests|MainWindowActionTests|FocusedAuditRegressionTests'
+      - name: Run full instrumented regression suite
+        run: ctest --test-dir build-sanitized --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
           ASAN_OPTIONS: detect_leaks=0:halt_on_error=1

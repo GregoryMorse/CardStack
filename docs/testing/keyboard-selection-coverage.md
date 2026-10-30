@@ -12,7 +12,7 @@ Designers navigate frames in top-to-bottom, left-to-right position order, not st
 
 - DeckWorkspaceTests: populated/empty card and table views, range and discontinuous modes, boundaries, cancellation, modal isolation, clipboard, field-length constraints, one-step undo and mouse modifiers.
 - ReportDesignerWidgetTests and TemplateDesignerWidgetTests: canvas/frame-list routes, spatial ordering, wrap, range shrinking, toggling, retained selection, modal isolation and unchanged document dirty state.
-- Workspace teardown is tested with pending edits and both modes; macOS repeats the workspace suite ten times. UI action/workspace/designer suites also run in the sanitizer job.
+- Workspace teardown is tested with pending edits and both modes; macOS repeats the workspace suite ten times. All existing CTest suites, including UI builder, action/workflow, workspace and designer regressions, also run in the sanitizer job.
 - MainWindowActionTests: selection-mode Page Down must not navigate cards or fall through to the application navigation action.
 - Optional screenshot functions write production-styled images and metadata when CARDSTACK_SELECTION_GALLERY_DIR is set. Native captures run only through the private-desktop runner. They do not synthesize physical input or request OS foreground activation.
 

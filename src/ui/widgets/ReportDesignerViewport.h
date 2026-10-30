@@ -1,5 +1,7 @@
 #pragma once
 
+#include "WidgetTeardown.h"
+
 #include <QApplication>
 #include <QFontMetricsF>
 #include <QKeyEvent>
@@ -56,6 +58,8 @@ public:
         setProperty("scrollLockActive", m_scrollLock);
         qApp->installEventFilter(this);
     }
+
+    ~ReportDesignerViewport() override { Detail::prepareWidgetTeardown(*this); }
 
     void setDocumentSize(QSize mils)
     {

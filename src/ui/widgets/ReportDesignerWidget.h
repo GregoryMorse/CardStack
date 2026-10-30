@@ -32,6 +32,7 @@ public:
         ReportDefinition report,
         QStringList fieldNames,
         QWidget* parent = nullptr);
+    ~ReportDesignerWidget() override;
 
     const ReportDefinition& report() const;
     int selectedFrameIndex() const;
