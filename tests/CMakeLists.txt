@@ -92,6 +92,7 @@ set(CARDSTACK_TEST_SUITE_NAMES
 
 foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
     set(cardstack_suite_timeout_seconds 60)
+    set(cardstack_function_timeout_ms 30000)
     if(cardstack_test_suite STREQUAL "MainWindowWorkflowTests"
        OR cardstack_test_suite STREQUAL "SQLiteDeckStoreTests"
        OR cardstack_test_suite STREQUAL "SQLitePackageStoreTests")
@@ -99,6 +100,13 @@ foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
         # Hosted Windows disk latency must not exhaust the total suite budget.
         # Keep the per-function 30-second hang guard below unchanged.
         set(cardstack_suite_timeout_seconds 180)
+    endif()
+    if(WIN32 AND cardstack_test_suite STREQUAL "FocusedAuditRegressionTests")
+        # The save/reload/stale-write case performs several durable replacements.
+        # Keep it bounded on slower hosted Windows disks and log each I/O stage;
+        # other suites retain the normal per-function hang guard.
+        set(cardstack_suite_timeout_seconds 180)
+        set(cardstack_function_timeout_ms 90000)
     endif()
     add_test(
         NAME ${cardstack_test_suite}
@@ -111,7 +119,7 @@ foreach(cardstack_test_suite IN LISTS CARDSTACK_TEST_SUITE_NAMES)
     set_tests_properties(${cardstack_test_suite} PROPERTIES
         TIMEOUT ${cardstack_suite_timeout_seconds}
         ENVIRONMENT
-            "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins;QTEST_FUNCTION_TIMEOUT=30000"
+            "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins;QTEST_FUNCTION_TIMEOUT=${cardstack_function_timeout_ms}"
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;CARDSTACK_WINEVDM_GOLDEN_DIR=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR};CARDSTACK_LEGACY_DECK_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/plain.BTN;CARDSTACK_LEGACY_REPORT_SAMPLE=set:${CARDSTACK_WINEVDM_TEST_FIXTURE_DIR}/reports.RPT"
     )

@@ -5,6 +5,8 @@
 #include "ReportPrintEngine.h"
 #include "ReportTextLayout.h"
 #include <QClipboard>
+#include <QDebug>
+#include <QElapsedTimer>
 #include <QFileDialog>
 #include <QFontDialog>
 #include <QMessageBox>
@@ -327,22 +329,44 @@ inline void bulkOrdering()
 
 inline void reusedStore(const QDir& directory)
 {
+    QElapsedTimer totalTime;
+    QElapsedTimer stageTime;
+    totalTime.start();
+    stageTime.start();
+    const auto checkpoint = [&](const char* stage) {
+        qInfo().noquote().nospace() << "[reused-store] " << stage << ": +"
+            << stageTime.restart() << " ms, total " << totalTime.elapsed() << " ms";
+    };
+    checkpoint("start");
     const QString path = directory.filePath(QStringLiteral("reused.cardstack"));
     QString error;
     require(SQLitePackageStore::saveDeckPackage(makeDeck(), path, &error), error);
+    checkpoint("initial package saved");
     SQLiteDeckStore store;
     Deck loaded;
-    require(store.open(path, &error) && store.loadDeck(&loaded, &error), error);
+    require(store.open(path, &error), error);
+    checkpoint("store opened");
+    require(store.loadDeck(&loaded, &error), error);
+    checkpoint("initial deck loaded");
     Deck stale = loaded;
     loaded.setDescription(QStringLiteral("First edit"));
-    require(store.saveDeck(loaded, &error) && store.loadDeck(&loaded, &error), error);
+    require(store.saveDeck(loaded, &error), error);
+    checkpoint("first edit saved");
+    require(store.loadDeck(&loaded, &error), error);
+    checkpoint("first edit reloaded");
     loaded.setDescription(QStringLiteral("Second edit"));
     require(store.saveDeck(loaded, &error), error);
+    checkpoint("second edit saved");
     require(!store.saveDeck(stale, &error), QStringLiteral("Truly stale snapshot accepted after reload"));
+    checkpoint("stale snapshot rejected");
     SQLiteDeckStore disk;
     Deck saved;
-    require(disk.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly) && disk.loadDeck(&saved, &error), error);
+    require(disk.open(path, &error, {}, SQLiteDeckStore::OpenMode::ReadOnly), error);
+    checkpoint("read-only store opened");
+    require(disk.loadDeck(&saved, &error), error);
+    checkpoint("saved deck reloaded");
     require(saved.description() == QStringLiteral("Second edit"), QStringLiteral("Second save not persisted"));
+    checkpoint("persisted value verified");
 }
 
 inline ReportDesignerWidget* customGrid(MainWindow& window, int rows, int columns, bool margins)

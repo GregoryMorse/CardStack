@@ -117,7 +117,19 @@ jobs:
 
       - name: Repeat Windows save and focus workflows
         if: runner.os == 'Windows'
-        run: ctest --test-dir build -C Release --output-on-failure -R '^FocusedAuditRegressionTests$' --repeat until-fail:3
+        shell: pwsh
+        run: |
+          for ($iteration = 1; $iteration -le 3; ++$iteration) {
+            Write-Host "Focused workflow repetition $iteration of 3"
+            ctest --test-dir build -C Release --output-on-failure -R '^FocusedAuditRegressionTests$'
+            $testExit = $LASTEXITCODE
+            $log = "build/tests/FocusedAuditRegressionTests.txt"
+            if (Test-Path -LiteralPath $log) {
+              Copy-Item -LiteralPath $log -Destination "build/tests/FocusedAuditRegressionTests-repeat-$iteration.txt"
+              Select-String -LiteralPath $log -Pattern '\[reused-store\]' | ForEach-Object { Write-Host $_.Line }
+            }
+            if ($testExit -ne 0) { exit $testExit }
+          }
         env:
           QT_QPA_PLATFORM: offscreen
 
