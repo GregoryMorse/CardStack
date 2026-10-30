@@ -3,6 +3,7 @@
 #include "CardDetailPanel.h"
 #include "DeckMerge.h"
 #include "Deck.h"
+#include "KeyboardSelection.h"
 
 #include <QWidget>
 
@@ -113,6 +114,9 @@ public:
     void lastCard();
     bool jumpToIndexPrefix(const QString& prefix);
     void focusFieldBoundary(FieldBoundary boundary);
+    bool handleFieldSelectionEvent(QObject* target, QEvent* event);
+    QVector<int> selectedFieldIndexes() const { return m_selectedFields; }
+    KeyboardSelection::Mode fieldSelectionMode() const { return m_fieldSelection.mode(); }
     void addCard();
     void deleteCurrentCard();
     void duplicateCurrentCard();
@@ -164,12 +168,18 @@ public:
 signals:
     void dirtyChanged(bool dirty);
     void cardPositionChanged(int currentCardIndex, int cardCount);
+    void fieldSelectionModeChanged();
 
 protected:
     void showEvent(QShowEvent* event) override;
+    bool eventFilter(QObject* target, QEvent* event) override;
 
 private:
     void applyStoredAppearance();
+    void resetFieldSelection();
+    void refreshFieldSelection();
+    bool replaceSelectedFieldValues(const QStringList& values);
+    int eventFieldIndex(QObject* target) const;
     QList<QWidget*> valueEditors() const;
     QWidget* createCardPage();
     QWidget* createTablePage();
@@ -236,6 +246,9 @@ private:
     CardTableModel* m_tableModel = nullptr;
     QVector<QWidget*> m_valueEditors;
     bool m_applyingColumnWidths = false;
+    bool m_applyingFieldSelection = false;
+    KeyboardSelection m_fieldSelection;
+    QVector<int> m_selectedFields;
 };
 
 } // namespace CardStack

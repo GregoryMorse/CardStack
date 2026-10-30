@@ -1,6 +1,7 @@
 ﻿#include "TemplateDesignerWidget.h"
 #include <QApplication>
 
+#include "../support/KeyboardSelectionProbe.h"
 #include "../support/ModalDialogDriver.h"
 #include "UiIds.h"
 #include "../support/DesignerResizeProbe.h"
@@ -53,6 +54,23 @@ class TemplateDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void modalFrameKeyboardSelection_data()
+    {
+        QTest::addColumn<bool>("tableMode");
+        QTest::newRow("canvas") << false; QTest::newRow("frame-list") << true;
+    }
+    void modalFrameKeyboardSelection()
+    {
+        QFETCH(bool, tableMode);
+        TemplateDesignerWidget designer(Tests::KeyboardSelectionProbe::layout(), {});
+        Tests::KeyboardSelectionProbe::designerModes(designer, tableMode, QStringLiteral("templateDesignCanvas"));
+    }
+    void writesSelectionModeInspectionImages()
+    {
+        TemplateDesignerWidget designer(Tests::KeyboardSelectionProbe::layout(), {});
+        Tests::KeyboardSelectionProbe::designerGallery(designer, QStringLiteral("templateDesignCanvas"), QStringLiteral("template"));
+    }
+
     void sourceGridMatchesOriginalIntegerAlgorithm() { CardStack::Tests::DesignerGridProbe::sourceAlgorithm(); }
     void keyboardGridDoesNotAccumulateRoundingError() { CardStack::Tests::DesignerGridProbe::templateKeyboard(); }
     void pointerGridIsIndependentOfViewportZoom() { CardStack::Tests::DesignerGridProbe::templatePointer(); }

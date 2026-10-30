@@ -1,5 +1,6 @@
 ﻿#include "ReportDesignerWidget.h"
 
+#include "../support/KeyboardSelectionProbe.h"
 #include "../support/ModalDialogDriver.h"
 #include "BuiltInReportTemplates.h"
 #include "Deck.h"
@@ -67,6 +68,23 @@ class ReportDesignerWidgetTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void modalFrameKeyboardSelection_data()
+    {
+        QTest::addColumn<bool>("tableMode");
+        QTest::newRow("canvas") << false; QTest::newRow("frame-list") << true;
+    }
+    void modalFrameKeyboardSelection()
+    {
+        QFETCH(bool, tableMode);
+        ReportDesignerWidget designer(Tests::KeyboardSelectionProbe::report(), {});
+        Tests::KeyboardSelectionProbe::designerModes(designer, tableMode, QStringLiteral("reportDesignCanvas"));
+    }
+    void writesSelectionModeInspectionImages()
+    {
+        ReportDesignerWidget designer(Tests::KeyboardSelectionProbe::report(), {});
+        Tests::KeyboardSelectionProbe::designerGallery(designer, QStringLiteral("reportDesignCanvas"), QStringLiteral("report"));
+    }
+
     void sourceGridMatchesOriginalIntegerAlgorithm() { CardStack::Tests::DesignerGridProbe::sourceAlgorithm(); }
     void fontFallbackAndSignedHeightPreserveLayoutMetrics() { CardStack::Tests::DesignerGridProbe::reportFonts(); }
     void keyboardGridDoesNotAccumulateRoundingError() { CardStack::Tests::DesignerGridProbe::reportKeyboard(); }

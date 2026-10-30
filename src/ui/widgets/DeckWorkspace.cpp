@@ -19,6 +19,9 @@
 #include <QApplication>
 #include <QAbstractButton>
 #include <QClipboard>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QResizeEvent>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHeaderView>
@@ -81,6 +84,51 @@ bool dispatchTextClipboard(QWidget* workspace, TextClipboardCommand command)
         || dispatch(qobject_cast<QPlainTextEdit*>(focused));
 }
 
+// A transparent selection layer leaves the saved editor geometry and font untouched.
+class FieldSelectionOverlay final : public QWidget {
+public:
+    explicit FieldSelectionOverlay(QWidget* parent) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("fieldSelectionOverlay"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        setFocusPolicy(Qt::NoFocus);
+        parent->installEventFilter(this);
+        setGeometry(parent->rect());
+        hide();
+    }
+    void setSelection(bool selected, bool cursor)
+    {
+        m_selected = selected;
+        m_cursor = cursor;
+        setVisible(selected || cursor);
+        raise();
+        update();
+    }
+protected:
+    bool eventFilter(QObject* target, QEvent* event) override
+    {
+        if (target == parentWidget() && event->type() == QEvent::Resize) setGeometry(parentWidget()->rect());
+        return QWidget::eventFilter(target, event);
+    }
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        if (m_selected) {
+            QColor tint = palette().highlight().color();
+            tint.setAlpha(48);
+            painter.fillRect(rect(), tint);
+        }
+        if (m_cursor) {
+            painter.setPen(QPen(palette().highlight().color(), 1, Qt::DotLine));
+            painter.drawRect(rect().adjusted(1, 1, -2, -2));
+        }
+    }
+private:
+    bool m_selected = false;
+    bool m_cursor = false;
+};
+
 class DeckCellEditor : public QLineEdit {
 public:
     using QLineEdit::QLineEdit;
@@ -96,6 +144,19 @@ protected:
 class DeckCellDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        QStyledItemDelegate::paint(painter, option, index);
+        const auto* table = qobject_cast<QTableView*>(parent());
+        if (table && table->property("keyboardSelectionMode").toInt() == int(KeyboardSelection::Mode::Discontinuous)
+            && index == table->currentIndex()) {
+            painter->save();
+            painter->setPen(QPen(option.palette.highlight().color(), 1, Qt::DotLine));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRect(option.rect.adjusted(1, 1, -2, -2));
+            painter->restore();
+        }
+    }
     QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
         // Keep editing inside the cell instead of expanding over its neighbors.
@@ -337,6 +398,8 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     , m_tableModel(new CardTableModel(this))
 {
     ensureEditableCard();
+    setFocusPolicy(Qt::ClickFocus);
+    qApp->installEventFilter(this);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -384,11 +447,12 @@ DeckWorkspace::DeckWorkspace(Deck deck, QWidget* parent)
     m_tableView->verticalHeader()->setDefaultSectionSize(DefaultTableRowHeightPx);
     m_tableView->setObjectName(QStringLiteral("deckTableView"));
     connect(m_tableView->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& current) {
-        if (!current.isValid()) {
+        if (m_applyingFieldSelection || !current.isValid()) {
             return;
         }
 
         syncCardEditorToDeck();
+        if (m_currentCardIndex != current.row()) resetFieldSelection();
         m_currentCardIndex = current.row();
         m_currentFieldIndex = current.column();
         refreshCardEditor();
@@ -590,6 +654,175 @@ void DeckWorkspace::focusFieldBoundary(FieldBoundary boundary)
     if (m_viewMode == ViewMode::Table) m_tableView->setFocus(Qt::TabFocusReason);
 }
 
+bool DeckWorkspace::eventFilter(QObject* target, QEvent* event)
+{
+    if (handleFieldSelectionEvent(target, event)) return true;
+    return QWidget::eventFilter(target, event);
+}
+
+int DeckWorkspace::eventFieldIndex(QObject* target) const
+{
+    for (auto* widget = qobject_cast<QWidget*>(target); widget && widget != this; widget = widget->parentWidget()) {
+        const QVariant field = widget->property("fieldIndex");
+        if (field.isValid()) return field.toInt();
+    }
+    return -1;
+}
+
+void DeckWorkspace::resetFieldSelection()
+{
+    m_fieldSelection.reset();
+    m_selectedFields.clear();
+    refreshFieldSelection();
+}
+
+void DeckWorkspace::refreshFieldSelection()
+{
+    QScopedValueRollback<bool> updating(m_applyingFieldSelection, true);
+    const bool modeChanged = property("keyboardSelectionMode").toInt() != int(m_fieldSelection.mode());
+    setProperty("keyboardSelectionMode", int(m_fieldSelection.mode()));
+    setProperty("keyboardSelectionCursor", m_fieldSelection.cursor());
+    m_tableView->setProperty("keyboardSelectionMode", int(m_fieldSelection.mode()));
+    if (modeChanged) emit fieldSelectionModeChanged();
+    for (QWidget* editor : valueEditors()) {
+        const int field = editor->property("fieldIndex").toInt();
+        editor->setProperty("wholeFieldSelected", m_selectedFields.contains(field));
+        QWidget* surface = qobject_cast<QPlainTextEdit*>(editor)
+            ? qobject_cast<QPlainTextEdit*>(editor)->viewport() : editor;
+        if (auto* overlay = surface->findChild<QWidget*>(QStringLiteral("fieldSelectionOverlay"), Qt::FindDirectChildrenOnly))
+            static_cast<FieldSelectionOverlay*>(overlay)->setSelection(m_selectedFields.contains(field),
+                m_fieldSelection.mode() != KeyboardSelection::Mode::None && m_fieldSelection.cursor() == field);
+    }
+    if (m_viewMode == ViewMode::Table && m_tableView->selectionModel()) {
+        auto* selection = m_tableView->selectionModel();
+        const int cursor = m_fieldSelection.mode() == KeyboardSelection::Mode::None
+            ? m_currentFieldIndex : m_fieldSelection.cursor();
+        const QModelIndex current = m_tableModel->index(m_currentCardIndex, cursor);
+        if (current.isValid()) selection->setCurrentIndex(current, QItemSelectionModel::NoUpdate);
+        if (!m_selectedFields.isEmpty() || m_fieldSelection.mode() != KeyboardSelection::Mode::None) {
+            QItemSelection cells;
+            for (int field : m_selectedFields) {
+                const QModelIndex cell = m_tableModel->index(m_currentCardIndex, field);
+                if (cell.isValid()) cells.select(cell, cell);
+            }
+            selection->select(cells, QItemSelectionModel::ClearAndSelect);
+        } else if (current.isValid()) {
+            selection->select(current, QItemSelectionModel::ClearAndSelect);
+        }
+        if (current.isValid()) m_tableView->scrollTo(current);
+    }
+}
+
+bool DeckWorkspace::handleFieldSelectionEvent(QObject* target, QEvent* event)
+{
+    auto* widget = qobject_cast<QWidget*>(target);
+    if (!widget || (widget != this && !isAncestorOf(widget))
+        || QApplication::activeModalWidget() || QApplication::activePopupWidget()) return false;
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (mouse->button() != Qt::LeftButton) return false;
+        int field = eventFieldIndex(target);
+        if (target == m_tableView->viewport()) {
+            const QModelIndex cell = m_tableView->indexAt(mouse->position().toPoint());
+            if (cell.isValid() && cell.row() == m_currentCardIndex) field = cell.column();
+        }
+        if (field < 0 || field >= m_deck.fieldCount()) { resetFieldSelection(); return false; }
+        const bool range = mouse->modifiers().testFlag(Qt::ShiftModifier);
+        const bool toggle = mouse->modifiers().testFlag(Qt::ControlModifier);
+        if (!range && !toggle) { resetFieldSelection(); return false; }
+        const int anchor = m_fieldSelection.anchor() >= 0 && m_fieldSelection.anchor() < m_deck.fieldCount()
+            ? m_fieldSelection.anchor() : m_currentFieldIndex;
+        syncCardEditorToDeck();
+        if (range) {
+            m_selectedFields.clear();
+            for (int index = std::min(anchor, field); index <= std::max(anchor, field); ++index)
+                m_selectedFields.append(index);
+        } else if (m_selectedFields.contains(field)) m_selectedFields.removeAll(field);
+        else m_selectedFields.append(field);
+        std::sort(m_selectedFields.begin(), m_selectedFields.end());
+        m_fieldSelection.setPointerPosition(range ? anchor : field, field);
+        m_currentFieldIndex = field;
+        if (m_viewMode == ViewMode::Table) m_tableView->setFocus(Qt::MouseFocusReason);
+        else setFocus(Qt::MouseFocusReason);
+        refreshFieldSelection();
+        event->accept();
+        return true;
+    }
+    if (event->type() != QEvent::ShortcutOverride && event->type() != QEvent::KeyPress) return false;
+    auto* key = static_cast<QKeyEvent*>(event);
+    const auto command = m_fieldSelection.command(*key);
+    const bool clipboard = !m_selectedFields.isEmpty() && (key->matches(QKeySequence::Copy)
+        || key->matches(QKeySequence::Cut) || key->matches(QKeySequence::Paste)
+        || key->matches(QKeySequence::Undo) || (key->key() == Qt::Key_Delete && key->modifiers() == Qt::NoModifier));
+    if (command == KeyboardSelection::Command::None && !clipboard) {
+        if (event->type() == QEvent::KeyPress && !key->text().isEmpty()
+            && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))
+            && (!m_selectedFields.isEmpty() || m_fieldSelection.mode() != KeyboardSelection::Mode::None)) {
+            resetFieldSelection();
+            if (m_currentFieldIndex < m_valueEditors.size()) {
+                QWidget* editor = m_valueEditors.at(m_currentFieldIndex);
+                editor->setFocus(Qt::OtherFocusReason);
+                if (widget != editor) { QCoreApplication::sendEvent(editor, event); return true; }
+            }
+        }
+        return false;
+    }
+    if (event->type() == QEvent::KeyPress) {
+        if (clipboard) {
+            if (key->matches(QKeySequence::Copy)) copy();
+            else if (key->matches(QKeySequence::Cut)) cut();
+            else if (key->matches(QKeySequence::Paste)) paste();
+            else if (key->matches(QKeySequence::Undo)) undo();
+            else clearCurrentValue();
+        } else if (!(key->key() == Qt::Key_F8 && key->isAutoRepeat())) {
+            syncCardEditorToDeck();
+            QVector<int> order;
+            for (int field = 0; field < m_deck.fieldCount(); ++field) order.append(field);
+            const auto result = m_fieldSelection.apply(command, order, m_selectedFields, selectedFieldIndex(), false);
+            m_selectedFields = result.selected;
+            std::sort(m_selectedFields.begin(), m_selectedFields.end());
+            if (result.cursor >= 0) m_currentFieldIndex = result.cursor;
+            if (m_viewMode == ViewMode::Table) m_tableView->setFocus(Qt::OtherFocusReason);
+            else if (m_selectedFields.isEmpty() && m_currentFieldIndex >= 0 && m_currentFieldIndex < m_valueEditors.size())
+                m_valueEditors.at(m_currentFieldIndex)->setFocus(Qt::OtherFocusReason);
+            else setFocus(Qt::OtherFocusReason);
+            refreshFieldSelection();
+        }
+    }
+    event->accept();
+    return true;
+}
+
+bool DeckWorkspace::replaceSelectedFieldValues(const QStringList& values)
+{
+    if (m_selectedFields.isEmpty()) return false;
+    syncCardEditorToDeck();
+    if (m_currentCardIndex < 0 || m_currentCardIndex >= m_deck.cardCount()) return false;
+    CardRecord updated = m_deck.cardAt(m_currentCardIndex);
+    int source = 0;
+    for (int field : m_selectedFields) {
+        QString value;
+        if (source < values.size()) {
+            if (field == m_deck.fieldCount() - 1 && m_deck.fieldAt(field).isNotes())
+                value = values.mid(source).join(QStringLiteral("\r\n"));
+            else value = values.at(source);
+        }
+        ++source;
+        updated.setValueAt(field, normalizedFieldValue(field, value));
+    }
+    bool changed = false;
+    for (int field : m_selectedFields) changed |= updated.valueAt(field) != m_deck.cardAt(m_currentCardIndex).valueAt(field);
+    if (!changed) return false;
+    pushUndoSnapshot();
+    m_deck.cardAt(m_currentCardIndex) = std::move(updated);
+    refreshCardEditor();
+    sortCardsByTitleIfNeeded();
+    syncModel();
+    refreshFieldSelection();
+    markDirty();
+    return true;
+}
+
 void DeckWorkspace::addCard()
 {
     syncCardEditorToDeck();
@@ -646,12 +879,20 @@ void DeckWorkspace::duplicateCurrentCard()
 
 void DeckWorkspace::copy()
 {
+    if (!m_selectedFields.isEmpty()) {
+        syncCardEditorToDeck();
+        QStringList values;
+        for (int field : m_selectedFields) values.append(m_deck.cardAt(m_currentCardIndex).valueAt(field));
+        QApplication::clipboard()->setText(values.join(QStringLiteral("\r\n")));
+        return;
+    }
     if (dispatchTextClipboard(this, TextClipboardCommand::Copy)) return;
     QApplication::clipboard()->setText(currentValue());
 }
 
 void DeckWorkspace::cut()
 {
+    if (!m_selectedFields.isEmpty()) { copy(); replaceSelectedFieldValues({}); return; }
     if (dispatchTextClipboard(this, TextClipboardCommand::Cut)) return;
     copy();
     clearCurrentValue();
@@ -659,12 +900,20 @@ void DeckWorkspace::cut()
 
 void DeckWorkspace::paste()
 {
+    if (!m_selectedFields.isEmpty()) {
+        QString text = QApplication::clipboard()->text();
+        text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+        text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+        replaceSelectedFieldValues(text.split(QLatin1Char('\n')));
+        return;
+    }
     if (dispatchTextClipboard(this, TextClipboardCommand::Paste)) return;
     setCurrentValue(QApplication::clipboard()->text());
 }
 
 void DeckWorkspace::smartPaste()
 {
+    if (!m_selectedFields.isEmpty()) { paste(); return; }
     QString text = QApplication::clipboard()->text();
     if (!text.contains(QLatin1Char('\t')) &&
         !text.contains(QLatin1Char('\n')) &&
@@ -730,6 +979,7 @@ void DeckWorkspace::smartPaste()
 
 void DeckWorkspace::clearCurrentValue()
 {
+    if (!m_selectedFields.isEmpty()) { replaceSelectedFieldValues({}); return; }
     setCurrentValue({});
 }
 
@@ -745,7 +995,7 @@ bool DeckWorkspace::canUndelete() const
 
 bool DeckWorkspace::undo()
 {
-    if (hasLiveTextUndo(this, m_tableView)) {
+    if (m_selectedFields.isEmpty() && hasLiveTextUndo(this, m_tableView)) {
         QWidget* focused = QApplication::focusWidget();
         if (auto* edit = qobject_cast<QLineEdit*>(focused)) edit->undo();
         else if (auto* edit = qobject_cast<QPlainTextEdit*>(focused)) edit->undo();
@@ -1240,6 +1490,7 @@ void DeckWorkspace::attachCardDetailPanelToTablePage()
 
 void DeckWorkspace::rebuildCardEditor()
 {
+    resetFieldSelection();
     if (QLayout* existingLayout = m_cardEditorContent->layout()) {
         delete existingLayout;
     }
@@ -1307,6 +1558,9 @@ void DeckWorkspace::rebuildCardEditor()
         editor->setProperty("fieldIndex", fieldIndex);
         editor->setObjectName(QStringLiteral("fieldValue_%1").arg(fieldIndex));
         m_valueEditors[fieldIndex] = editor;
+        QWidget* surface = qobject_cast<QPlainTextEdit*>(editor)
+            ? qobject_cast<QPlainTextEdit*>(editor)->viewport() : editor;
+        new FieldSelectionOverlay(surface);
         return editor;
     };
 
@@ -1590,6 +1844,7 @@ void DeckWorkspace::refreshCardEditor()
         editor->setEnabled(true);
         setEditorText(editor, record.valueAt(editor->property("fieldIndex").toInt()));
     }
+    refreshFieldSelection();
 }
 
 bool DeckWorkspace::ensureEditableCard()
@@ -1709,6 +1964,7 @@ void DeckWorkspace::pushUndoSnapshot()
 void DeckWorkspace::restoreSnapshot(const UndoSnapshot& snapshot)
 {
     QScopedValueRollback<bool> restoring(m_restoringSnapshot, true);
+    resetFieldSelection();
     const QString passwordRecord = m_deck.securityPassword();
     const bool encrypted = m_deck.hasEncryptedSecurity();
     const auto key = m_deck.securityKey();
@@ -1776,6 +2032,7 @@ QString DeckWorkspace::normalizedFieldValue(int fieldIndex, QString value) const
 void DeckWorkspace::setCurrentCardIndex(int index)
 {
     syncCardEditorToDeck();
+    if (index != m_currentCardIndex) resetFieldSelection();
     if (ensureEditableCard()) {
         syncModel();
     }

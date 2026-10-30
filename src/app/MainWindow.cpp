@@ -1918,6 +1918,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         && QApplication::activePopupWidget() == nullptr;
     const bool deckKeyContext = commandKeyContext
         && (keyTarget == keyDeck || keyDeck->isAncestorOf(keyTarget));
+    if (deckKeyContext && activeDeckWorkspace()->handleFieldSelectionEvent(watched, event)) return true;
     if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) && commandKeyContext) {
         auto* key = static_cast<QKeyEvent*>(event);
         if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab)
@@ -6891,8 +6892,24 @@ QVector<DeckWorkspace::SortLevel> MainWindow::sortLevelsFromDialog(const QDialog
     return levels;
 }
 
+void MainWindow::updateFieldSelectionStatus()
+{
+    QString message;
+    if (const auto* workspace = activeDeckWorkspace()) {
+        if (workspace->fieldSelectionMode() == KeyboardSelection::Mode::Continuous)
+            message = tr("Continuous field selection: arrows extend the range. F8 or Escape finishes.");
+        else if (workspace->fieldSelectionMode() == KeyboardSelection::Mode::Discontinuous)
+            message = tr("Discontinuous field selection: arrows move; Space or Enter toggles. Shift+F8 or Escape finishes.");
+    }
+    const QString previous = statusBar()->property("fieldSelectionStatus").toString();
+    statusBar()->setProperty("fieldSelectionStatus", message);
+    if (!message.isEmpty()) statusBar()->showMessage(message);
+    else if (!previous.isEmpty() && statusBar()->currentMessage() == previous) statusBar()->clearMessage();
+}
+
 void MainWindow::updateCommandState()
 {
+    updateFieldSelectionStatus();
     updateIndexBarVisibility();
     updateToolbarCardPosition();
 
@@ -7212,6 +7229,7 @@ DeckWorkspace* MainWindow::openDeckWindow(const Deck& deck, const QString& fileP
         updateDeckWindowTitle(subWindow, workspace);
         updateWindowMenuEntries();
     });
+    connect(workspace, &DeckWorkspace::fieldSelectionModeChanged, this, &MainWindow::updateFieldSelectionStatus);
     connect(workspace, &DeckWorkspace::cardPositionChanged, this, [this](int, int) {
         updateToolbarCardPosition();
     });

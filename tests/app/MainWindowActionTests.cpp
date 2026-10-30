@@ -39,6 +39,7 @@
 #include <QListWidget>
 #include <QTimer>
 #include <QSpinBox>
+#include <QStatusBar>
 
 #include <algorithm>
 #include <functional>
@@ -1113,6 +1114,61 @@ private slots:
         QTest::keyClick(&modal, Qt::Key_Tab, Qt::ControlModifier);
         QCOMPARE(table->currentIndex(), before);
         modal.reject();
+    }
+
+    void writesFieldSelectionStatusInspectionImages()
+    {
+        const QString output = qEnvironmentVariable("CARDSTACK_SELECTION_GALLERY_DIR");
+        if (output.isEmpty()) QSKIP("Set CARDSTACK_SELECTION_GALLERY_DIR for native selection status screenshots.");
+        QDir directory(output);
+        QVERIFY(directory.exists() || directory.mkpath(QStringLiteral(".")));
+        MainWindow window(nullptr, true);
+        window.show();
+        QCoreApplication::processEvents();
+        activateLogicalTestWindow(window);
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        QVERIFY(workspace);
+        workspace->focusFieldBoundary(DeckWorkspace::FieldBoundary::First);
+        QTest::keyClick(workspace, Qt::Key_F8);
+        QTest::keyClick(workspace, Qt::Key_Down);
+        QVERIFY(saveMainWindowImage(window, directory, QStringLiteral("shell_card_selection.png")));
+        QAction* tableAction = findCommandAction(window.menuBar(), UiIds::Command::ViewTable);
+        QVERIFY(tableAction);
+        tableAction->trigger();
+        auto* table = workspace->findChild<QTableView*>();
+        QVERIFY(table);
+        QTest::keyClick(table, Qt::Key_F8, Qt::ShiftModifier);
+        QTest::keyClick(table, Qt::Key_End);
+        QVERIFY(saveMainWindowImage(window, directory, QStringLiteral("shell_table_selection.png")));
+    }
+
+    void fieldSelectionNavigationPrecedesCardCommands()
+    {
+        MainWindow window(nullptr, true);
+        window.show();
+        QCoreApplication::processEvents();
+        activateLogicalTestWindow(window);
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        QVERIFY(workspace != nullptr);
+        const int cards = workspace->deck().cardCount();
+        const int row = workspace->currentCardIndex();
+        workspace->focusFieldBoundary(DeckWorkspace::FieldBoundary::First);
+        QTest::keyClick(workspace, Qt::Key_F8);
+        QVERIFY(window.statusBar()->currentMessage().startsWith(QStringLiteral("Continuous field selection:")));
+        QTest::keyClick(workspace, Qt::Key_PageDown);
+        QCOMPARE(workspace->selectedFieldIndexes().size(), workspace->deck().fieldCount());
+        QCOMPARE(workspace->currentCardIndex(), row);
+        QCOMPARE(workspace->deck().cardCount(), cards);
+        QVERIFY(!workspace->isDirty());
+        QDialog modal(&window);
+        modal.setWindowModality(Qt::ApplicationModal);
+        modal.show();
+        QCoreApplication::processEvents();
+        QTest::keyClick(&modal, Qt::Key_F8);
+        QCOMPARE(workspace->fieldSelectionMode(), KeyboardSelection::Mode::Continuous);
+        modal.reject();
+        QTest::keyClick(workspace, Qt::Key_Escape);
+        QCOMPARE(workspace->fieldSelectionMode(), KeyboardSelection::Mode::None);
     }
 
     void deckViewShortcutsAndCheckmarksFollowActiveView()

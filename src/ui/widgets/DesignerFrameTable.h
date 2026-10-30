@@ -2,6 +2,7 @@
 
 #include <QKeyEvent>
 #include <QTableWidget>
+#include <functional>
 
 namespace CardStack {
 
@@ -10,7 +11,20 @@ class DesignerFrameTable final : public QTableWidget {
 public:
     explicit DesignerFrameTable(QWidget* parent = nullptr) : QTableWidget(parent) {}
 
+    std::function<bool(QEvent*)> selectionKeyHandler;
+    std::function<void()> selectionCancelled;
+
 protected:
+    bool event(QEvent* event) override
+    {
+        if (selectionKeyHandler && selectionKeyHandler(event)) return true;
+        return QTableWidget::event(event);
+    }
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        if (selectionCancelled) selectionCancelled();
+        QTableWidget::mousePressEvent(event);
+    }
     void keyPressEvent(QKeyEvent* event) override
     {
         constexpr auto CommandModifiers = Qt::ShiftModifier | Qt::ControlModifier

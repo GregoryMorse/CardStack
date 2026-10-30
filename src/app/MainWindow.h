@@ -91,6 +91,7 @@ private:
     void configureToolBarForMenu(int menuId);
     void rebuildDesignerPropertyToolbar();
     void updateToolbarCardPosition();
+    void updateFieldSelectionStatus();
     void resizeIndexBarButtons();
     void updateIndexBarVisibility();
     void updateWindowMenuEntries();

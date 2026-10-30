@@ -152,6 +152,41 @@ public:
         update();
     }
 
+    void endKeyboardSelection()
+    {
+        const bool wasActive = m_keyboardSelection.mode() != KeyboardSelection::Mode::None;
+        m_keyboardSelection.reset();
+        setProperty("keyboardSelectionMode", int(KeyboardSelection::Mode::None));
+        setProperty("keyboardSelectionCursor", -1);
+        if (wasActive && selectionModeChanged) selectionModeChanged();
+        update();
+    }
+
+    bool selectionEvent(QEvent* event)
+    {
+        if (!m_report || QApplication::activeModalWidget() || QApplication::activePopupWidget()) return false;
+        if (event->type() != QEvent::ShortcutOverride && event->type() != QEvent::KeyPress) return false;
+        auto* key = static_cast<QKeyEvent*>(event);
+        const auto command = m_keyboardSelection.command(*key);
+        if (command == KeyboardSelection::Command::None) return false;
+        if (event->type() == QEvent::KeyPress && !(key->key() == Qt::Key_F8 && key->isAutoRepeat())) {
+            const int current = m_keyboardSelection.cursor() >= 0 ? m_keyboardSelection.cursor() : m_selectedFrameIndex;
+            const QVector<int> order = DesignerSelection::positionalOrder(m_report->frames, current);
+            const int fallback = current >= 0 ? current : (order.isEmpty() ? -1 : order.last());
+            auto result = m_keyboardSelection.apply(command, order, m_selectedFrameIndices, fallback, true);
+            if (result.range) result.selected = DesignerSelection::positionalRange(m_report->frames, m_keyboardSelection.anchor(), result.cursor);
+            setProperty("keyboardSelectionMode", int(m_keyboardSelection.mode()));
+            setProperty("keyboardSelectionCursor", result.cursor);
+            notifySelection(result.selected, m_keyboardSelection.anchor());
+            if (result.cursor >= 0) {
+                ensureDocumentRectVisible(scaledBounds(m_report->frames.at(result.cursor).bounds, *m_report, pageRect()));
+            }
+            update();
+        }
+        event->accept();
+        return true;
+    }
+
     int selectionAnchor() const { return m_selectionAnchor; }
     void setSelectionAnchor(int anchor) { m_selectionAnchor = anchor; }
 
@@ -164,6 +199,7 @@ public:
         update();
     }
 
+    std::function<void()> selectionModeChanged;
     std::function<void(int)> frameSelected;
     std::function<void(const QVector<int>&)> framesSelected;
     std::function<void(const DesignerSelection::BoundsChanges&)> framesBoundsChanged;
@@ -173,6 +209,12 @@ public:
     std::function<void(int, QRect)> frameBoundsChanged;
 
 protected:
+    bool event(QEvent* event) override
+    {
+        if (selectionEvent(event)) return true;
+        return ReportDesignerViewport::event(event);
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QPainter painter(this);
@@ -293,6 +335,7 @@ protected:
 
     void mousePressEvent(QMouseEvent* event) override
     {
+        endKeyboardSelection();
         if (event->button() != Qt::LeftButton || m_report == nullptr) {
             QWidget::mousePressEvent(event);
             return;
@@ -539,6 +582,13 @@ private:
     void drawSelectionOverlay(QPainter& painter) const
     {
         painter.save();
+        const int cursor = m_keyboardSelection.cursor();
+        if (m_keyboardSelection.mode() == KeyboardSelection::Mode::Discontinuous
+            && cursor >= 0 && cursor < m_report->frames.size()) {
+            painter.setPen(QPen(palette().highlight().color(), 1, Qt::DotLine));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(scaledBounds(m_report->frames.at(cursor).bounds, *m_report, pageRect()).adjusted(-2, -2, 2, 2));
+        }
         if (m_selectedFrameIndices.size() > 1) {
             QRectF bounds;
             for (int index : m_selectedFrameIndices)
@@ -560,6 +610,7 @@ private:
     const ReportDefinition* m_report = nullptr;
     int m_selectedFrameIndex = -1;
     QVector<int> m_selectedFrameIndices;
+    KeyboardSelection m_keyboardSelection;
     int m_selectionAnchor = -1;
     bool m_marqueeActive = false;
     QPointF m_marqueeStart;
@@ -1200,6 +1251,21 @@ void ReportDesignerWidget::buildUi()
         selectFrame(row);
         emit commandRequested(UiIds::Command::ToolFrameAttributes);
     });
+    auto* selectionTable = static_cast<DesignerFrameTable*>(m_frameTable);
+    selectionTable->selectionKeyHandler = [this](QEvent* event) {
+        if (!m_canvas->selectionEvent(event)) return false;
+        if (event->type() == QEvent::KeyPress) {
+            const int cursor = m_canvas->property("keyboardSelectionCursor").toInt();
+            if (cursor >= 0 && cursor < m_frameTable->rowCount()) {
+                const QSignalBlocker blocker(m_frameTable);
+                m_frameTable->setCurrentCell(cursor, 0, QItemSelectionModel::NoUpdate);
+                m_frameTable->scrollToItem(m_frameTable->item(cursor, 0));
+            }
+        }
+        return true;
+    };
+    selectionTable->selectionCancelled = [this] { m_canvas->endKeyboardSelection(); };
+    m_canvas->selectionModeChanged = [this] { refreshFrameProperties(); };
     m_canvas->deleteRequested = [this]() { deleteSelectedFrame(); };
     m_canvas->frameSelected = [this](int frameIndex) {
         selectFrame(frameIndex);
@@ -1285,8 +1351,13 @@ void ReportDesignerWidget::refreshFrameProperties()
 {
     const bool group = m_selectedFrameIndices.size() > 1;
     const bool hasFrame = m_selectedFrameIndices.size() == 1 && m_selectedFrameIndex >= 0 && m_selectedFrameIndex < m_report.frames.size();
-    m_selectionSummary->setVisible(!hasFrame);
-    if (group) m_selectionSummary->setText(tr("%1 frames selected. Drag the selection or use arrows to move the group.").arg(m_selectedFrameIndices.size()));
+    const auto selectionMode = KeyboardSelection::Mode(m_canvas->property("keyboardSelectionMode").toInt());
+    m_selectionSummary->setVisible(!hasFrame || selectionMode != KeyboardSelection::Mode::None);
+    if (selectionMode == KeyboardSelection::Mode::Continuous)
+        m_selectionSummary->setText(tr("Continuous selection: arrows extend the range. F8 or Escape finishes."));
+    else if (selectionMode == KeyboardSelection::Mode::Discontinuous)
+        m_selectionSummary->setText(tr("Discontinuous selection: arrows move the cursor; Space or Enter toggles. Shift+F8 or Escape finishes."));
+    else if (group) m_selectionSummary->setText(tr("%1 frames selected. Drag the selection or use arrows to move the group.").arg(m_selectedFrameIndices.size()));
     else if (!hasFrame) m_selectionSummary->setText(tr("No frame selected. Click a frame or drag a rectangle to select frames."));
     for (int row = 0; row < m_propertyForm->rowCount(); ++row) m_propertyForm->setRowVisible(row, hasFrame);
     for (QWidget* widget : {static_cast<QWidget*>(m_kindCombo), static_cast<QWidget*>(m_alignmentCombo),

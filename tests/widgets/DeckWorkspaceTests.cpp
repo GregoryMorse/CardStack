@@ -1,5 +1,6 @@
 #include "DeckWorkspace.h"
 #include "DeckTemplate.h"
+#include "../support/KeyboardSelectionProbe.h"
 
 #include "Deck.h"
 #include "DeckMerge.h"
@@ -121,6 +122,24 @@ class DeckWorkspaceTests : public QObject {
     Q_OBJECT
 
 private slots:
+
+    void wholeFieldKeyboardSelection_data()
+    {
+        QTest::addColumn<bool>("tableMode"); QTest::addColumn<bool>("empty");
+        QTest::newRow("card-populated") << false << false;
+        QTest::newRow("table-populated") << true << false;
+        QTest::newRow("card-empty") << false << true;
+        QTest::newRow("table-empty") << true << true;
+    }
+    void wholeFieldKeyboardSelection()
+    {
+        QFETCH(bool, tableMode); QFETCH(bool, empty);
+        Tests::KeyboardSelectionProbe::deckModes(tableMode, empty);
+    }
+    void emptyDiscontinuousSelectionPreservesTextAndNotes() { Tests::KeyboardSelectionProbe::emptyDiscontinuousSelectionAndNotes(); }
+    void modifierSelectionAndSchemaChanges() { Tests::KeyboardSelectionProbe::modifierClicksPreserveModeAndSchemaClearsSelection(); }
+    void selectionBindingsAndCoincidentFrames() { Tests::KeyboardSelectionProbe::bindingMatrixAndCoordinateTies(); }
+    void writesSelectionModeInspectionImages() { Tests::KeyboardSelectionProbe::deckGallery(); }
 
     void cardAndSchemaEditsPreserveUnrelatedDeckState()
     {
