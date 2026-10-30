@@ -472,6 +472,29 @@ QString displayTextAndShortcut(const QString& rawText, QKeySequence* shortcut)
     return modernizedVisibleText(parts.first());
 }
 
+void addCommandShortcutAliases(QAction* action)
+{
+    QKeySequence alias;
+    switch (action->data().toInt()) {
+    case UiIds::Command::EditUndo: alias = QKeySequence(Qt::ALT | Qt::Key_Backspace); break;
+    case UiIds::Command::EditCut: alias = QKeySequence(Qt::SHIFT | Qt::Key_Delete); break;
+    case UiIds::Command::EditCopy: alias = QKeySequence(Qt::CTRL | Qt::Key_Insert); break;
+    case UiIds::Command::EditPaste: alias = QKeySequence(Qt::SHIFT | Qt::Key_Insert); break;
+    case UiIds::Command::CardAdd: alias = QKeySequence(Qt::Key_F7); break;
+    case UiIds::Command::CardDuplicate: alias = QKeySequence(Qt::SHIFT | Qt::Key_F7); break;
+    case UiIds::Command::CardDelete: alias = QKeySequence(Qt::CTRL | Qt::Key_F7); break;
+    case UiIds::Command::CardUndelete: alias = QKeySequence(Qt::ALT | Qt::Key_F7); break;
+    case UiIds::Command::SearchFind: alias = QKeySequence(Qt::SHIFT | Qt::Key_F3); break;
+    case UiIds::Command::SearchFindNext: alias = QKeySequence(Qt::Key_F3); break;
+    default: return;
+    }
+    QList<QKeySequence> sequences = action->shortcuts();
+    if (!sequences.isEmpty() && !sequences.contains(alias)) {
+        sequences.append(alias);
+        action->setShortcuts(sequences);
+    }
+}
+
 void populateMenu(
     QMenu* menu,
     const UiResourceData::UiMenuItem* items,
@@ -499,6 +522,7 @@ void populateMenu(
         if (!shortcut.isEmpty()) {
             action->setShortcut(shortcut);
         }
+        addCommandShortcutAliases(action);
         if (configureAction) {
             configureAction(action);
         }
@@ -4721,6 +4745,7 @@ bool UiBuilder::populateMenuBar(
             if (!shortcut.isEmpty()) {
                 action->setShortcut(shortcut);
             }
+            addCommandShortcutAliases(action);
             if (configureAction) {
                 configureAction(action);
             }

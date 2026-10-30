@@ -74,6 +74,8 @@ public:
         Table
     };
 
+    enum class FieldBoundary { First, Last };
+
     struct DeletedCard {
         CardRecord record;
         int index = 0;
@@ -110,6 +112,7 @@ public:
     void nextCard();
     void lastCard();
     bool jumpToIndexPrefix(const QString& prefix);
+    void focusFieldBoundary(FieldBoundary boundary);
     void addCard();
     void deleteCurrentCard();
     void duplicateCurrentCard();

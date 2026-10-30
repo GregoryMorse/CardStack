@@ -7,6 +7,8 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QCoreApplication>
+#include <QApplication>
+#include <QSignalSpy>
 #include <QFile>
 #include <QFileDialog>
 #include <QElapsedTimer>
@@ -56,6 +58,15 @@
 using namespace CardStack;
 
 namespace {
+
+void activateLogicalTestWindow(QWidget& widget)
+{
+    // Test-only activation updates Qt state without requesting OS foreground activation.
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_DEPRECATED
+    QApplication::setActiveWindow(&widget);
+    QT_WARNING_POP
+}
 
 bool saveRuntimeDialogImage(QDialog* dialog, const QString& fileName)
 {
@@ -872,6 +883,236 @@ private slots:
             QCoreApplication::processEvents();
             QVERIFY(!buttons.first()->visibleRegion().isEmpty());
         }
+    }
+
+    void originalCommandAliasesPreservePrimaryShortcuts()
+    {
+        const std::pair<int, QKeySequence> aliases[] = {
+            {UiIds::Command::EditUndo, QKeySequence(Qt::ALT | Qt::Key_Backspace)},
+            {UiIds::Command::EditCut, QKeySequence(Qt::SHIFT | Qt::Key_Delete)},
+            {UiIds::Command::EditCopy, QKeySequence(Qt::CTRL | Qt::Key_Insert)},
+            {UiIds::Command::EditPaste, QKeySequence(Qt::SHIFT | Qt::Key_Insert)},
+            {UiIds::Command::CardAdd, QKeySequence(Qt::Key_F7)},
+            {UiIds::Command::CardDuplicate, QKeySequence(Qt::SHIFT | Qt::Key_F7)},
+            {UiIds::Command::CardDelete, QKeySequence(Qt::CTRL | Qt::Key_F7)},
+            {UiIds::Command::CardUndelete, QKeySequence(Qt::ALT | Qt::Key_F7)},
+            {UiIds::Command::SearchFind, QKeySequence(Qt::SHIFT | Qt::Key_F3)},
+            {UiIds::Command::SearchFindNext, QKeySequence(Qt::Key_F3)},
+        };
+        for (int menu : {UiIds::Menu::Startup, UiIds::Menu::MainDeck,
+                         UiIds::Menu::TemplateDesigner, UiIds::Menu::ReportDesigner}) {
+            QMenuBar bar;
+            QVERIFY(UiBuilder::populateMenuBar(&bar, menu, &bar, {}));
+            for (const auto& [command, alias] : aliases) {
+                if (QAction* action = findCommandAction(&bar, command))
+                    QVERIFY2(action->shortcuts().contains(alias), qPrintable(alias.toString()));
+            }
+        }
+        MainWindow window(nullptr, true);
+        window.show();
+        QCoreApplication::processEvents();
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        QVERIFY(workspace != nullptr);
+        const int count = workspace->deck().cardCount();
+        QCOMPARE(findCommandAction(window.menuBar(), UiIds::Command::CardAdd)->shortcut(),
+                 QKeySequence(Qt::CTRL | Qt::Key_A));
+        QTest::keyClick(&window, Qt::Key_F7);
+        QCOMPARE(workspace->deck().cardCount(), count + 1);
+        auto* title = workspace->findChild<QLineEdit*>(QStringLiteral("fieldValue_0"));
+        QVERIFY(title != nullptr);
+        title->setText(QStringLiteral("Alias test"));
+        emit title->editingFinished();
+        workspace->commitPendingEdits();
+        QCoreApplication::processEvents();
+        auto* duplicate = findCommandAction(window.menuBar(), UiIds::Command::CardDuplicate);
+        QVERIFY(duplicate != nullptr && duplicate->isEnabled());
+        QSignalSpy duplicateKeys(duplicate, &QAction::triggered);
+        QVERIFY(window.isActiveWindow());
+        QTest::keyClick(&window, Qt::Key_F7, Qt::ShiftModifier);
+        QCOMPARE(duplicateKeys.count(), 1);
+        QCOMPARE(workspace->deck().cardCount(), count + 2);
+        Tests::chooseNextMessageBoxButton(QMessageBox::Yes);
+        QTest::keyClick(&window, Qt::Key_F7, Qt::ControlModifier);
+        QCOMPARE(workspace->deck().cardCount(), count + 1);
+        QCoreApplication::processEvents();
+        activateLogicalTestWindow(window);
+        QTest::keyClick(&window, Qt::Key_F7, Qt::AltModifier);
+        QCOMPARE(workspace->deck().cardCount(), count + 2);
+        bool sawFind = false;
+        handleNextDialogByLegacyName(QStringLiteral("SEARCH"), [&sawFind](QDialog* dialog) {
+            sawFind = true;
+            dialog->reject();
+        });
+        QTest::keyClick(&window, Qt::Key_F3, Qt::ShiftModifier);
+        QVERIFY(sawFind);
+    }
+
+    void originalIndexShortcutsFollowActiveDeck_data()
+    {
+        QTest::addColumn<bool>("tableMode");
+        QTest::addColumn<bool>("hideBars");
+        QTest::newRow("card-visible") << false << false;
+        QTest::newRow("card-hidden") << false << true;
+        QTest::newRow("table-visible") << true << false;
+        QTest::newRow("table-hidden") << true << true;
+    }
+
+    void originalIndexShortcutsFollowActiveDeck()
+    {
+        QFETCH(bool, tableMode);
+        QFETCH(bool, hideBars);
+        const Qt::KeyboardModifiers modifiers = Qt::ControlModifier | Qt::ShiftModifier;
+        QStringList prefixes{QString()};
+        for (int key = 'A'; key <= 'Z'; ++key) prefixes.append(QString(QChar(key)));
+        for (int key = '0'; key <= '9'; ++key) prefixes.append(QString(QChar(key)));
+        Deck deck = createSampleProjectDeck();
+        const CardRecord prototype = deck.cardAt(0);
+        deck.setCards({});
+        for (const QString& prefix : prefixes) {
+            CardRecord card = prototype;
+            card.setValueAt(0, prefix.isEmpty() ? QString() : prefix + QStringLiteral(" item"));
+            deck.addCard(card);
+        }
+        deck.setSortKeys({DeckSortKey{0, false}});
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QString error;
+        const QString path = temporary.filePath(QStringLiteral("index-shortcuts.cardstack"));
+        {
+            SQLiteDeckStore store;
+            QVERIFY2(store.create(path, &error), qPrintable(error));
+            QVERIFY2(store.saveDeck(deck, &error), qPrintable(error));
+        }
+        MainWindow window(nullptr, false);
+        Tests::prepareNativeTestSurface(window);
+        window.show();
+        acceptNextOpenDialogWithFile(path);
+        findCommandAction(window.menuBar(), UiIds::Command::FileOpen)->trigger();
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        QVERIFY(workspace != nullptr);
+        auto* mdi = window.findChild<QMdiArea*>();
+        QVERIFY(mdi != nullptr);
+        QMdiSubWindow* deckWindow = mdi->activeSubWindow();
+        QVERIFY(deckWindow != nullptr && deckWindow->widget() == workspace);
+        if (tableMode) findCommandAction(window.menuBar(), UiIds::Command::ViewTable)->trigger();
+        if (hideBars) findCommandAction(window.menuBar(), UiIds::Command::ConfigureShowButtonBar)->trigger();
+        QCoreApplication::processEvents();
+        auto* bar = window.findChild<QToolBar*>(QStringLiteral("indexBar"));
+        QVERIFY(bar != nullptr);
+        QCOMPARE(bar->isHidden(), hideBars);
+        activateLogicalTestWindow(window);
+        for (const QString& prefix : prefixes) {
+            const QString keyName = prefix.isEmpty() ? QStringLiteral("SPACE") : prefix;
+            auto* shortcut = window.findChild<QAction*>(QStringLiteral("indexJumpShortcut_%1").arg(keyName));
+            QVERIFY(shortcut != nullptr && shortcut->isEnabled());
+            const auto key = prefix.isEmpty() ? Qt::Key_Space : static_cast<Qt::Key>(prefix.front().unicode());
+            QCOMPARE(shortcut->shortcut(), QKeySequence(QKeyCombination(modifiers, key)));
+            workspace->lastCard();
+            QSignalSpy activated(shortcut, &QAction::triggered);
+            QVERIFY2(window.isActiveWindow(), "Index shortcuts require a logically active test window.");
+            QTest::keyClick(&window, key, modifiers);
+            QCoreApplication::processEvents();
+            QCOMPARE(activated.count(), 1);
+            QCOMPARE(workspace->deck().cardAt(workspace->currentCardIndex()).valueAt(0),
+                     prefix.isEmpty() ? QString() : prefix + QStringLiteral(" item"));
+        }
+        const QString output = qEnvironmentVariable("CARDSTACK_INPUT_GALLERY_DIR");
+        if (!output.isEmpty()) {
+            QDir directory(output);
+            QVERIFY(directory.exists() || directory.mkpath(QStringLiteral(".")));
+            QVERIFY(Tests::saveWidgetImage(window, directory,
+                QStringLiteral("index_%1_%2.png").arg(tableMode ? QStringLiteral("table") : QStringLiteral("card"),
+                                                      hideBars ? QStringLiteral("hidden") : QStringLiteral("visible"))));
+        }
+        workspace->firstCard();
+        const int before = workspace->currentCardIndex();
+        QDialog modal(&window);
+        modal.setWindowModality(Qt::ApplicationModal);
+        modal.show();
+        QCoreApplication::processEvents();
+        QCOMPARE(QApplication::activeModalWidget(), &modal);
+        QTest::keyClick(&modal, Qt::Key_Z, modifiers);
+        QCOMPARE(workspace->currentCardIndex(), before);
+        modal.reject();
+        QCoreApplication::processEvents();
+        activateLogicalTestWindow(window);
+        auto* other = mdi->addSubWindow(new QWidget);
+        other->show();
+        mdi->setActiveSubWindow(other);
+        QCoreApplication::processEvents();
+        for (const QString& prefix : prefixes) {
+            auto* shortcut = window.findChild<QAction*>(QStringLiteral("indexJumpShortcut_%1")
+                .arg(prefix.isEmpty() ? QStringLiteral("SPACE") : prefix));
+            QVERIFY(shortcut != nullptr && !shortcut->isEnabled());
+        }
+        QTest::keyClick(&window, Qt::Key_Z, modifiers);
+        QCOMPARE(workspace->currentCardIndex(), before);
+        mdi->setActiveSubWindow(deckWindow);
+        QCoreApplication::processEvents();
+        auto* shortcut = window.findChild<QAction*>(QStringLiteral("indexJumpShortcut_Z"));
+        QVERIFY(shortcut != nullptr && shortcut->isEnabled());
+    }
+
+    void originalControlTabTargetsFieldBoundaries_data()
+    {
+        QTest::addColumn<bool>("tableMode");
+        QTest::addColumn<bool>("empty");
+        QTest::newRow("card-populated") << false << false;
+        QTest::newRow("card-empty") << false << true;
+        QTest::newRow("table-populated") << true << false;
+        QTest::newRow("table-empty") << true << true;
+    }
+
+    void originalControlTabTargetsFieldBoundaries()
+    {
+        QFETCH(bool, tableMode);
+        QFETCH(bool, empty);
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Deck deck = makeOpenFixtureDeck();
+        if (empty) deck.setCards({});
+        const QString path = temporary.filePath(QStringLiteral("field-boundaries.cardstack"));
+        QString error;
+        { SQLiteDeckStore store; QVERIFY2(store.create(path, &error), qPrintable(error));
+          QVERIFY2(store.saveDeck(deck, &error), qPrintable(error)); }
+        MainWindow window(nullptr, false);
+        window.show();
+        acceptNextOpenDialogWithFile(path);
+        findCommandAction(window.menuBar(), UiIds::Command::FileOpen)->trigger();
+        auto* workspace = window.findChild<DeckWorkspace*>();
+        QVERIFY(workspace != nullptr);
+        if (tableMode) findCommandAction(window.menuBar(), UiIds::Command::ViewTable)->trigger();
+        QCoreApplication::processEvents();
+        activateLogicalTestWindow(window);
+        const int cardCount = workspace->deck().cardCount();
+        const bool dirty = workspace->isDirty();
+        auto* table = workspace->findChild<QTableView*>();
+        QVERIFY(table != nullptr);
+        const auto verifyField = [&](int field) {
+            if (tableMode) {
+                QVERIFY(table->hasFocus());
+                if (!empty) QCOMPARE(table->currentIndex().column(), field);
+            } else {
+                QCOMPARE(QApplication::focusWidget(), workspace->findChild<QWidget*>(QStringLiteral("fieldValue_%1").arg(field)));
+            }
+        };
+        QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier);
+        verifyField(deck.fieldCount() - 1);
+        QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier | Qt::ShiftModifier);
+        verifyField(0);
+        QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier);
+        QTest::keyClick(&window, Qt::Key_Backtab, Qt::ControlModifier | Qt::ShiftModifier);
+        verifyField(0);
+        QCOMPARE(workspace->deck().cardCount(), cardCount);
+        QCOMPARE(workspace->isDirty(), dirty);
+        QDialog modal(&window);
+        modal.setWindowModality(Qt::ApplicationModal);
+        modal.show();
+        QCoreApplication::processEvents();
+        const QModelIndex before = table->currentIndex();
+        QTest::keyClick(&modal, Qt::Key_Tab, Qt::ControlModifier);
+        QCOMPARE(table->currentIndex(), before);
+        modal.reject();
     }
 
     void deckViewShortcutsAndCheckmarksFollowActiveView()

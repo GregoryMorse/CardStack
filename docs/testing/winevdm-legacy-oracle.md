@@ -85,6 +85,12 @@ The inventory covers initial/widest-choice dialog states, Find AND/OR, form type
 
 Report Form and Define Custom Form comparison rows are captured through the initialized MainWindow workflows, including live measurements, form-type changes, portrait/landscape and pixel-widest choices. The modern gallery runs seven capture functions. Raw resource-construction samples remain supplemental: they must not be mistaken for the initialized runtime dialogs or used as their canonical comparison images. Designer captures keep saved frame rectangles; connected text flow and blank-row compaction belong to print/preview, not to the editable designer canvas. Modern galleries additionally capture expanded dropdowns and designer element variants. Routes not yet calibrated on the original remain explicitly pending. RequireComplete fails if any inventory row is not paired; pairing alone does not certify visual or behavioral equivalence.
 
+## Input-route evidence
+
+The original message loop uses context-specific accelerator tables and MDI system translation before ordinary key dispatch. Posting a command therefore does not prove that its corresponding key works. The input audit decodes the accelerator tables independently of menu captions and keeps source-confirmed routing separate from witnessed native key delivery.
+
+CardStack regression probes exercise Ctrl+Shift+Space/A-Z/0-9 in card/table views, with the bars visible/hidden, and verify suppression behind modal dialogs and outside deck mode. They also cover alternate F7 commands, Shift+F3 Find, and Ctrl+Tab/Ctrl+Shift+Tab last/first-field navigation on populated and empty decks. Qt-only logical activation restores the headless test precondition after disposable dialogs; it does not request OS foreground activation. Native capture still requires the private-desktop runner.
+
 ## Scenario authoring
 
 - command: posts a menu command ID; this is not an accelerator test.

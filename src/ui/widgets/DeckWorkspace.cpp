@@ -551,6 +551,7 @@ bool DeckWorkspace::jumpToIndexPrefix(const QString& prefix)
         return values;
     }();
     const QString requestedBucket = normalizedPrefix.isEmpty()
+            || normalizedPrefix == QString::fromLatin1(IndexSpaceBucketKey)
         ? QString::fromLatin1(IndexSpaceBucketKey)
         : normalizedPrefix.left(1);
     const int requestedIndex = std::max(0, static_cast<int>(bucketOrder.indexOf(requestedBucket)));
@@ -579,6 +580,14 @@ bool DeckWorkspace::jumpToIndexPrefix(const QString& prefix)
     }
 
     return false;
+}
+
+void DeckWorkspace::focusFieldBoundary(FieldBoundary boundary)
+{
+    syncCardEditorToDeck();
+    if (m_deck.fieldCount() <= 0) return;
+    moveToMatch(m_currentCardIndex, boundary == FieldBoundary::First ? 0 : m_deck.fieldCount() - 1);
+    if (m_viewMode == ViewMode::Table) m_tableView->setFocus(Qt::TabFocusReason);
 }
 
 void DeckWorkspace::addCard()

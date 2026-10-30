@@ -321,6 +321,8 @@ constexpr int DefaultLabelColumns = 3;
 constexpr int MainToolbarIconSizePx = 24;
 constexpr int IndexBarButtonMinHeightPx = 22;
 constexpr int IndexBarButtonMaxHeightPx = 24;
+constexpr auto IndexJumpModifiers = Qt::ControlModifier | Qt::ShiftModifier;
+constexpr char IndexJumpShortcutProperty[] = "indexJumpShortcut";
 constexpr int IndexBarHorizontalMarginPx = 2;
 constexpr int IndexBarVerticalMarginPx = 1;
 constexpr int IndexBarButtonGapPx = 1;
@@ -1910,10 +1912,26 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 
     QWidget* keyTarget = qobject_cast<QWidget*>(watched);
     const DeckWorkspace* keyDeck = activeDeckWorkspace();
-    const bool deckKeyContext = keyDeck != nullptr && keyTarget != nullptr
-        && (keyTarget == keyDeck || keyDeck->isAncestorOf(keyTarget))
+    const bool commandKeyContext = keyDeck != nullptr && keyTarget != nullptr
+        && (keyTarget == this || isAncestorOf(keyTarget))
         && QApplication::activeModalWidget() == nullptr
         && QApplication::activePopupWidget() == nullptr;
+    const bool deckKeyContext = commandKeyContext
+        && (keyTarget == keyDeck || keyDeck->isAncestorOf(keyTarget));
+    if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) && commandKeyContext) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab)
+            && (key->modifiers() == Qt::ControlModifier
+                || key->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier))) {
+            if (event->type() == QEvent::KeyPress) {
+                const bool first = key->key() == Qt::Key_Backtab || key->modifiers().testFlag(Qt::ShiftModifier);
+                activeDeckWorkspace()->focusFieldBoundary(first
+                    ? DeckWorkspace::FieldBoundary::First : DeckWorkspace::FieldBoundary::Last);
+            }
+            event->accept();
+            return true;
+        }
+    }
     if (event->type() == QEvent::KeyPress && deckKeyContext) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         if ((keyEvent->key() == Qt::Key_PageUp || keyEvent->key() == Qt::Key_PageDown)
@@ -2073,8 +2091,12 @@ void MainWindow::updateIndexBarVisibility()
         return;
     }
 
+    const bool deckActive = activeDeckWorkspace() != nullptr;
+    for (QAction* action : actions()) {
+        if (action->property(IndexJumpShortcutProperty).toBool()) action->setEnabled(deckActive);
+    }
     const bool buttonBarsVisible = m_buttonBar == nullptr || !m_buttonBar->isHidden();
-    m_indexBar->setVisible(buttonBarsVisible && activeDeckWorkspace() != nullptr);
+    m_indexBar->setVisible(buttonBarsVisible && deckActive);
     resizeIndexBarButtons();
 }
 
@@ -2348,16 +2370,25 @@ void MainWindow::createIndexBar()
         button->setMaximumWidth(QWIDGETSIZE_MAX);
         button->setMinimumHeight(IndexBarButtonMinHeightPx);
         button->setMaximumHeight(IndexBarButtonMaxHeightPx);
-        connect(button, &QPushButton::clicked, this, [this, key = definition.key, statusText = definition.statusText]() {
+        const auto jump = [this, key = definition.key, statusText = definition.statusText]() {
             DeckWorkspace* workspace = activeDeckWorkspace();
-            if (workspace == nullptr) {
-                return;
-            }
+            if (workspace == nullptr || QApplication::activeModalWidget() != nullptr
+                || QApplication::activePopupWidget() != nullptr) return;
             if (!workspace->jumpToIndexPrefix(key)) {
                 statusBar()->showMessage(tr("No cards found for %1.").arg(statusText), StatusMessageTimeoutMs);
             }
             updateCommandState();
-        });
+        };
+        connect(button, &QPushButton::clicked, this, jump);
+        auto* shortcut = new QAction(button->accessibleName(), this);
+        shortcut->setObjectName(QStringLiteral("indexJumpShortcut_%1").arg(definition.key));
+        shortcut->setProperty(IndexJumpShortcutProperty, true);
+        const auto key = definition.key == QStringLiteral("SPACE")
+            ? Qt::Key_Space : static_cast<Qt::Key>(definition.label.front().unicode());
+        shortcut->setShortcut(QKeySequence(QKeyCombination(IndexJumpModifiers, key)));
+        shortcut->setEnabled(activeDeckWorkspace() != nullptr);
+        addAction(shortcut);
+        connect(shortcut, &QAction::triggered, this, jump);
     }
 
     m_indexBar->addWidget(container);

@@ -664,6 +664,9 @@ private slots:
 
         QVERIFY(workspace.jumpToIndexPrefix(QStringLiteral("4")));
         QCOMPARE(workspace.currentCardIndex(), 0);
+
+        QVERIFY(workspace.jumpToIndexPrefix(QStringLiteral("SPACE")));
+        QCOMPARE(workspace.currentCardIndex(), 0);
     }
 
     void titleEditsKeepDeckInIndexOrder()
